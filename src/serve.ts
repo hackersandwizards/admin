@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { buildSite, siteData } from "./build.ts";
 import { findRepos } from "./hub.ts";
-import { git, readRepo, type RepoData } from "./repo.ts";
+import { fileHref, git, readRepo, type RepoData } from "./repo.ts";
 
 export type ServeOptions = { root: string; rescanMs?: number };
 
@@ -29,7 +29,6 @@ export function stateOf(repo: string) {
 }
 
 const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
-const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
 
 export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   let paths: string[] = [];

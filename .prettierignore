@@ -2,3 +2,5 @@ node_modules/
 bun.lock
 site/.build-*/
 .astro/
+dist/
+.eslintcache

@@ -1,6 +1,6 @@
 {
   "name": "@hackersandwizards/admin",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -22,30 +22,52 @@
     "bin",
     "src",
     "site/astro.config.ts",
-    "site/src"
+    "site/src",
+    "scripts/repo/only-bun.cjs"
   ],
   "scripts": {
+    "preinstall": "node scripts/repo/only-bun.cjs",
     "prepare": "[ \"$(git rev-parse --show-toplevel 2>/dev/null)\" = \"$(pwd -P)\" ] && git config core.hooksPath .githooks || true",
-    "start": "bun bin/admin-serve.ts",
-    "check": "bun install --frozen-lockfile && bun --bun prettier --check . && bun --bun tsc --noEmit && bun test/no-values.ts && bun test && bun bin/admin-check.ts test/fixtures/spoke && bun --bun astro build --root design-system && brand-elements",
-    "check:staged": "gitleaks git --pre-commit --staged --redact --no-banner && bun run check",
-    "format": "bun --bun prettier --write .",
-    "design-system": "cd design-system && bun --bun astro dev"
+    "dev": "bun bin/admin-serve.ts",
+    "start": "bun run dev",
+    "catalog": "ASTRO_DEV_BACKGROUND=1 bun --bun astro dev --root catalog",
+    "build": "bun --bun astro build --root catalog",
+    "check": "scaffolding check",
+    "check:values": "bun test/no-values.ts",
+    "check:fixture": "bun bin/admin-check.ts test/fixtures/spoke",
+    "check:elements": "brand-elements",
+    "check:staged": "check-staged",
+    "lint": "bun --bun eslint --cache --concurrency=auto .",
+    "format:check": "bun --bun prettier --check .",
+    "fix": "bun --bun eslint --cache --concurrency=auto . --fix && bun --bun prettier --write .",
+    "typecheck": "bun --bun tsc --noEmit",
+    "test": "bun test"
   },
   "dependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v0.30.0",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v0.32.0",
     "@tailwindcss/vite": "4.3.3",
     "astro": "7.4.4",
     "tailwindcss": "4.3.3"
   },
   "devDependencies": {
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v0.3.3",
     "@types/bun": "latest",
     "astrobook": "0.13.3",
+    "eslint": "10.14.0",
     "prettier": "3.9.10",
     "prettier-plugin-astro": "1.1.2",
+    "stylelint": "17.16.0",
     "typescript": "6.0.3"
   },
   "admin": {
-    "designSystem": "http://127.0.0.1:4332/design-system/"
+    "designSystem": "http://127.0.0.1:4332/catalog/"
+  },
+  "scaffolding": {
+    "test": "test",
+    "check": [
+      "check:values",
+      "check:fixture",
+      "check:elements"
+    ]
   }
 }

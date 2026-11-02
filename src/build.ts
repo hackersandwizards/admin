@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { compareItems, imagesOf, type Item } from "./items.ts";
-import { withElements, type RepoData } from "./repo.ts";
+import { fileHref, withElements, type RepoData } from "./repo.ts";
 
 const PKG = join(import.meta.dirname, "..");
 export const VERSION = JSON.parse(readFileSync(join(PKG, "package.json"), "utf8"))
@@ -39,7 +39,7 @@ export type Page = {
     | "reviews"
     | "docs"
     | "doc"
-    | "design-system"
+    | "catalog"
     | "product"
     | "architecture"
     | "checks"
@@ -59,7 +59,6 @@ export type SiteData = {
   pages: Page[];
 };
 
-const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
 const escape = (s: string) =>
   s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
@@ -121,8 +120,7 @@ export function siteData(repos: RepoData[], hub: boolean): SiteData {
     add({ path: "work", type: "work", title: "Work" });
     add({ path: "reviews", type: "reviews", title: "Reviews" });
     add({ path: "docs", type: "docs", title: "Docs" });
-    if (r.designSystem)
-      add({ path: "design-system", type: "design-system", title: "Design system" });
+    if (r.designSystem) add({ path: "catalog", type: "catalog", title: "Catalog" });
     r.products.forEach((p, n) =>
       add({ path: `products-${n + 1}`, type: "product", product: n, title: p.label }),
     );
@@ -146,7 +144,7 @@ export function siteData(repos: RepoData[], hub: boolean): SiteData {
 }
 
 // The stylesheet entry the site imports as admin:styles, with every path resolved: the package
-// may sit hoisted or nested. The design system (design-system/) imports the same entry.
+// may sit hoisted or nested. The catalog (catalog/) imports the same entry.
 export function stylesheet() {
   const at = (spec: string) => Bun.resolveSync(spec, PKG);
   const brand = dirname(at("@hackersandwizards/brand/tokens.css"));
@@ -157,7 +155,7 @@ export function stylesheet() {
     `@import "${at("@hackersandwizards/brand/expert.css")}";`,
     `@import "${at("@hackersandwizards/brand/header.css")}";`,
     `@import "${at("@hackersandwizards/brand/elements.css")}";`,
-    `@import "${at("@hackersandwizards/brand/catalogue.css")}";`,
+    `@import "${join(PKG, "site/src/layout.css")}";`,
     `@source "${join(PKG, "site/src")}";`,
     `@source "${join(brandRoot, "expert")}";`,
     `@source "${join(brandRoot, "elements")}";`,

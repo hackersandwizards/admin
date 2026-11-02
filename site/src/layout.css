@@ -1,0 +1,98 @@
+/* The admin shell's own layout (Layout.astro): a sticky rail with the search and the menu, then
+   the title, lead and provenance line. It reads brand's token roles (the expert set's, which
+   admin.css loads) by name; the lengths are the shell's own. Taken over from brand's catalogue.css,
+   which leaves brand with the catalog shell (repo-uniformity-plan): the style-only tree lets the
+   admin pages take styles only from brand's elements and tokens or from this repository. */
+
+@layer components {
+  .admin-shell {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr);
+    gap: 2rem;
+    padding-block: 1.5rem 3rem;
+    color: var(--foreground);
+    font-family: var(--font-sans);
+  }
+  .admin-rail {
+    position: sticky;
+    top: calc(var(--spacing-app-header) + 1.5rem);
+    align-self: start;
+    max-height: calc(100vh - var(--spacing-app-header) - 3rem);
+    overflow-y: auto;
+  }
+  .admin-search {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: var(--hw-control-height);
+    margin-bottom: 1rem;
+    padding: 0 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--text-ui);
+  }
+  .admin-rail ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .admin-rail a {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    color: inherit;
+    font-size: var(--text-ui);
+    text-decoration: none;
+  }
+  .admin-rail a:hover {
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  }
+  /* Muted text is the foreground at 70 %, as the expert set dims it: there --color-muted is the
+     muted fill. */
+  .admin-count,
+  .admin-provenance {
+    color: color-mix(in srgb, var(--foreground) 70%, transparent);
+    font-family: var(--font-mono);
+    font-size: var(--text-micro);
+  }
+  .admin-count {
+    font-weight: 400;
+  }
+  .admin-main {
+    padding-inline-end: 1rem;
+  }
+  .admin-main h1 {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-page);
+    line-height: 1.25;
+  }
+  .admin-lead {
+    max-width: 48rem;
+    margin: 0.5rem 0 0;
+    font-size: var(--text-subheading);
+    line-height: 1.5;
+  }
+  .admin-provenance {
+    margin: 0.5rem 0 0;
+  }
+  .admin-shell [hidden] {
+    display: none;
+  }
+  @media (max-width: 48rem) {
+    .admin-shell {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .admin-rail {
+      position: static;
+      max-height: none;
+    }
+    .admin-rail nav {
+      display: none;
+    }
+  }
+}

@@ -18,8 +18,8 @@ options:
   - key: ben-sample
     label: Ben Sample
     detail: Example Ltd · de · last mail 2026-09-12
-  - key: cleo-test
-    label: Cleo Test
+  - key: cora-test
+    label: Cora Test
     detail: Example Ltd · de · last mail 2026-06-19
   - key: dan-muster
     label: Dan Muster

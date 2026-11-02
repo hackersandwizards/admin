@@ -3,4 +3,4 @@ import { page } from "../../story";
 
 export default { component: Page };
 
-export const Default = { args: { page: page("design-system") } };
+export const Default = { args: { page: page("catalog") } };

@@ -291,6 +291,19 @@ describe("hub", () => {
     );
     expect(book.designSystem).toBe("http://127.0.0.1:4999/design-system/");
     expect(book.designSystemDev).toEqual({ port: 4999, start: "design-system" });
+    // scaffolding's catalog preset is Astrobook at /catalog, started by the `catalog` script.
+    const shell = readRepo(
+      bare(
+        "shell",
+        { name: "shell", scripts: { dev: "wrangler dev", catalog: "cd catalog && astro dev" } },
+        {
+          "catalog/astro.config.ts":
+            'import { catalog } from "@hackersandwizards/scaffolding/catalog";\nserver: { host: "127.0.0.1", port: 4998 }',
+        },
+      ),
+    );
+    expect(shell.designSystem).toBe("http://127.0.0.1:4998/catalog/");
+    expect(shell.designSystemDev).toEqual({ port: 4998, start: "catalog" });
     const owned = readRepo(
       bare("owned", {
         name: "owned",

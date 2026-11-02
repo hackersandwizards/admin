@@ -141,9 +141,7 @@ export function readGoal(text: string, isGoal: boolean) {
       skip = /goal|ziel|done means|waiting/i.test(line);
       preamble = false;
     }
-    let point = "",
-      owner = "",
-      evidence = "";
+    let point: string, owner: string, evidence: string;
     if (!skip && line.startsWith("|")) {
       [point = "", owner = "", evidence = ""] = line
         .split(/(?<!\\)\|/)

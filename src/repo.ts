@@ -145,7 +145,7 @@ export type RepoData = {
 
 const ASTRO_CONFIG = /^([^/]+\/)?astro\.config\.(ts|mjs|js)$/;
 const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
-const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
+export const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
 
 // Rendered Markdown wears brand's shared elements.
 export const withElements = (html: string) =>
@@ -175,23 +175,32 @@ function firstComment(text: string) {
   return "";
 }
 
-// Where a repository's Astrobook runs in development: the astro config at the root or one folder
-// down that loads astrobook, read for its server port, base and subpath, and the package script
-// that starts it.
+// Where a repository's catalog runs in development: the astro config at the root or one folder
+// down that loads astrobook or scaffolding's catalog preset (Astrobook at /catalog), read for its
+// server port, base and subpath, and the package script that starts it: `catalog` where the
+// preset's repository has one.
 function astrobookDev(src: Source, scripts: Record<string, string>) {
   for (const p of src.paths.filter((q) => ASTRO_CONFIG.test(q))) {
     const text = src.read(p) ?? "";
-    const port = text.includes("astrobook") ? text.match(/\bport:\s*(\d+)/)?.[1] : undefined;
+    const preset = text.includes("@hackersandwizards/scaffolding/catalog");
+    const port =
+      preset || text.includes("astrobook") ? text.match(/\bport:\s*(\d+)/)?.[1] : undefined;
     if (!port) continue;
     const at = (key: string) => text.match(new RegExp(`\\b${key}:\\s*["']([^"']+)["']`))?.[1];
-    const path = `${at("base") ?? ""}${at("subpath") ?? ""}`.replace(/\/*$/, "/");
+    const path = `${at("base") ?? ""}${at("subpath") ?? (preset ? "/catalog" : "")}`.replace(
+      /\/*$/,
+      "/",
+    );
     const dir = p.includes("/") ? p.slice(0, p.indexOf("/")) : "";
     const runs = Object.keys(scripts).filter((k) => {
       const v = scripts[k]!;
       return v.includes("astro dev") && (dir ? v.includes(dir) : !/--root|\bcd /.test(v));
     });
     const start =
-      runs.find((k) => k.includes("design")) ?? runs.find((k) => k === "dev") ?? runs[0];
+      (preset && scripts.catalog ? "catalog" : undefined) ??
+      runs.find((k) => k.includes("design")) ??
+      runs.find((k) => k === "dev") ??
+      runs[0];
     return { url: `http://127.0.0.1:${port}${path}`, port: Number(port), start };
   }
 }
@@ -216,7 +225,7 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
     const [path, hash] = h.split("#");
     return fileHref(join(repo, path!)) + (hash ? `#${hash}` : "");
   };
-  // admin.designSystem wins; otherwise the repository's own Astrobook, else no entry.
+  // admin.designSystem wins; otherwise the repository's own catalog, else no entry.
   const dev = astrobookDev(src, scriptsMap);
   const designSystem = admin.designSystem ? href(admin.designSystem) : dev?.url;
   const designSystemDev =

@@ -1,12 +1,9 @@
 ---
-// The design system's home in brand's catalogue shape (AstrobookHome, decision catalogue-shape):
-// the header, the rail with the groups, a tile per page and component drawing its first state. The
-// default slot holds the foundations: a tile per brand element the admin pages use, as they use
+// The catalog's home: the shell's rail, title and a tile per page and component drawing its first
+// state. The default slot holds the foundations: a tile per brand element the admin pages use, as they use
 // it, and each element the engine keeps as its own with its reason, which brand-elements measures
 // in `bun run check`. Its utilities are ones site/src uses: the stylesheet scans site/src only.
-import modules from "virtual:astrobook/story-modules.mjs";
-import config from "virtual:astrobook/global-config.mjs";
-import AstrobookHome from "@hackersandwizards/brand/expert/components/AstrobookHome.astro";
+import Home from "@hackersandwizards/scaffolding/catalog/Home.astro";
 import pkg from "../package.json";
 import ItemGroups from "../site/src/components/ItemGroups.astro";
 import elements from "../brand-elements.json";
@@ -14,7 +11,7 @@ import { items } from "./story";
 
 // The brand version the tiles name, from the pin: brand-elements fails on any other.
 const version = pkg.dependencies["@hackersandwizards/brand"].split("#v")[1];
-const CATALOGUE = "https://hackersandwizards.github.io/brand/catalogue.html";
+const BRAND = "https://hackersandwizards.github.io/brand/";
 const notes: Record<string, string> = {
   label: "The rail's group names.",
   pill: "The recommended option among an item's options.",
@@ -27,15 +24,7 @@ const notes: Record<string, string> = {
 };
 ---
 
-<AstrobookHome
-  modules={modules}
-  config={config}
-  product="Admin"
-  title="Design system"
-  lead="Every page and component of the admin engine, rendered by the engine's own site on an invented repository. Every value comes from brand."
-  source="admin design-system/stories"
-  groupOrder={["Pages", "Shell", "Items"]}
->
+<Home>
   <details class="hw-disclosure mt-6">
     <summary class="py-2 font-mono font-semibold text-ui">
       Foundations: {elements.uses.length} elements from brand,{" "}
@@ -46,8 +35,8 @@ const notes: Record<string, string> = {
         <div class="flex flex-col gap-2" data-hw-tile={name} data-hw-version={version}>
           <p class="text-ui">
             aus brand v{version} · <code class="hw-code">hw-{name}</code> ·{" "}
-            <a class="hw-link" href={`${CATALOGUE}#hw-${name}`}>
-              catalogue
+            <a class="hw-link" href={`${BRAND}#hw-${name}`}>
+              catalog
             </a>
           </p>
           <p class="text-ui text-foreground/70">{notes[name]}</p>
@@ -132,4 +121,4 @@ const notes: Record<string, string> = {
       ))}
     </div>
   </details>
-</AstrobookHome>
+</Home>

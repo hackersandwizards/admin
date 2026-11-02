@@ -1,8 +1,8 @@
 ---
-// The admin shell: brand's internal header over brand's catalogue shape (catalogue.css), the shell
-// every repository's Astrobook home wears: the rail with search, the repository's menu with counts
-// and, in the hub, the other repositories; then title, lead and provenance. Every value comes from
-// brand: tokens, the expert set, the elements at the dense scale with its compact tier.
+// The admin shell: brand's internal header over the shell's own layout (layout.css): the rail with
+// search, the repository's menu with counts and, in the hub, the other repositories; then title,
+// lead and provenance. Every colour, font and size role comes from brand: tokens, the expert set,
+// the elements at the dense scale with its compact tier.
 import "admin:styles";
 import AppHeader from "@hackersandwizards/brand/expert/components/AppHeader.astro";
 import { navLinkClass } from "@hackersandwizards/brand/expert/components/space-nav.ts";
@@ -20,7 +20,7 @@ const { page, lead, provenance, answersAll = false } = Astro.props;
 const d = data();
 const repo = repoOf(page.repo);
 const home = d.hub ? "index" : (repo?.dashboard ?? "index");
-const link = (to: string) => href(page.path, to);
+const at = (to: string) => href(page.path, to);
 const menu = repo
   ? [
       { to: "", label: "Dashboard" },
@@ -32,7 +32,7 @@ const menu = repo
       { to: "work", label: "Work", count: repo.items.filter((i) => i.kind === "work").length },
       { to: "reviews", label: "Reviews", count: repo.reviews.length },
       { to: "docs", label: "Docs", count: repo.reports.length + repo.docs.length },
-      ...(repo.designSystem ? [{ to: "design-system", label: "Design system" }] : []),
+      ...(repo.designSystem ? [{ to: "catalog", label: "Catalog" }] : []),
       ...repo.products.map((p, n) => ({ to: `products-${n + 1}`, label: p.label })),
       { to: "architecture", label: "Architecture", count: repo.scripts.length || undefined },
       { to: "checks", label: "Checks", count: repo.checkSteps.length || undefined },
@@ -70,32 +70,29 @@ const current = (to: string) =>
     data-hw-scale="dense"
     data-answers={answersAll ? "all" : undefined}
   >
-    <AppHeader product="Admin" href={link(home)}>
+    <AppHeader product="Admin" href={at(home)}>
       <nav class="ml-auto flex items-center gap-1 text-ui" aria-label="Where">
         {d.hub && (
           <a
-            href={link("index")}
-            class:list={navLinkClass(
-              link("index"),
-              page.type.startsWith("hub") ? link("index") : "",
-            )}
+            href={at("index")}
+            class:list={navLinkClass(at("index"), page.type.startsWith("hub") ? at("index") : "")}
           >
             Hub
           </a>
         )}
         {repo && (
-          <a href={link(repo.dashboard)} class:list={navLinkClass("x", "x")}>
+          <a href={at(repo.dashboard)} class:list={navLinkClass("x", "x")}>
             {repo.key}
           </a>
         )}
       </nav>
     </AppHeader>
-    <div class="hw-catalogue hw-container">
-      <aside class="hw-catalogue-rail">
+    <div class="admin-shell hw-container">
+      <aside class="admin-rail">
         <input
           id="admin-search"
           type="search"
-          class="hw-catalogue-search"
+          class="admin-search"
           placeholder="Search /"
           aria-label="Search this page"
         />
@@ -105,12 +102,12 @@ const current = (to: string) =>
             {menu.map((m) => (
               <li>
                 <a
-                  href={link(m.to)}
+                  href={at(m.to)}
                   aria-current={current(m.to) ? "page" : undefined}
                   class:list={current(m.to) && active}
                 >
                   <span>{m.label}</span>
-                  {m.count !== undefined && <span class="hw-catalogue-count">{m.count}</span>}
+                  {m.count !== undefined && <span class="admin-count">{m.count}</span>}
                 </a>
               </li>
             ))}
@@ -129,12 +126,12 @@ const current = (to: string) =>
                 {d.repos.map((r) => (
                   <li>
                     <a
-                      href={link(r.dashboard)}
+                      href={at(r.dashboard)}
                       aria-current={r.key === repo?.key ? "true" : undefined}
                       class:list={r.key === repo?.key && active}
                     >
                       <span>{r.key}</span>
-                      <span class="hw-catalogue-count">
+                      <span class="admin-count">
                         {openQuestions(r.items).length + forPerson(r.items).length || ""}
                       </span>
                     </a>
@@ -145,15 +142,15 @@ const current = (to: string) =>
           )}
         </nav>
       </aside>
-      <main class="hw-catalogue-main pb-16">
+      <main class="admin-main pb-16">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h1>{page.title}</h1>
           <div class="flex items-center gap-3">
             <slot name="action" />
           </div>
         </div>
-        {lead && <p class="hw-catalogue-lead">{lead}</p>}
-        {provenance && <p class="hw-catalogue-provenance">{provenance}</p>}
+        {lead && <p class="admin-lead">{lead}</p>}
+        {provenance && <p class="admin-provenance">{provenance}</p>}
         <div class="mt-6 flex flex-col gap-8">
           <slot />
         </div>

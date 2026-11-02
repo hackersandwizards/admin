@@ -20,14 +20,15 @@ bun add -d "git+https://github.com/hackersandwizards/admin.git#v0.4.1"
 | `admin-check`   | Checks the item files in the working tree. Exit 1 on a defect. Belongs in every repository's gate.                      |
 | `admin-migrate` | Converts `GOAL.md`, `docs/tracking/decisions/items.js` and review folders' images into item files, once per repository. |
 
-`bun run start` in this checkout runs `admin-serve`, the one hub: open `http://admin.localhost:4329`.
+`bun run dev` in this checkout runs `admin-serve`, the one hub: open `http://admin.localhost:4329`.
 A repository shows in the hub when its HEAD has `docs/tracking/items/` or its `package.json` names an
 `@hackersandwizards` package, so this engine shows itself.
 
-A repository gets a Design system entry when an `astro.config.*` at its root or one folder down loads
-Astrobook: the link is `http://127.0.0.1:<port><base><subpath>` from that config, and the page names
-the package script that starts it and says whether it is running now. `admin.designSystem` overrides
-it.
+A repository gets a Catalog entry when an `astro.config.*` at its root or one folder down loads
+Astrobook or scaffolding's catalog preset: the link is `http://127.0.0.1:<port><base><subpath>` from
+that config (the preset's subpath is `/catalog`), and the page names the package script that starts
+it (`catalog` where the preset's repository has one) and says whether it is running now.
+`admin.designSystem` overrides it.
 
 Answers to decisions stay in the browser until "Copy answers" puts
 them on the clipboard as one `repo:id: choice, note` line each.
@@ -92,7 +93,7 @@ The question's context, in Markdown.
 ## The admin area
 
 Dashboard, Decisions, Work, Reviews (every item with images, then each older
-`docs/tracking/<date>-<topic>/` folder with its images and report), Docs (reports and the rest of `docs/`), Design system, the repository's products,
+`docs/tracking/<date>-<topic>/` folder with its images and report), Docs (reports and the rest of `docs/`), Catalog, the repository's products,
 Architecture (package, pins, scripts with their first comment line), Checks (the steps of
 `check:all` or `check`) and Log.
 
@@ -101,7 +102,7 @@ A repository configures what convention cannot find under `admin` in its `packag
 ```json
 {
   "admin": {
-    "designSystem": "catalogue.html",
+    "designSystem": "catalog/index.html",
     "products": [{ "label": "Slide types", "href": "specimen/index.html" }],
     "links": [{ "label": "Validation", "href": "http://127.0.0.1:4321/validation" }],
     "name": "os"
@@ -115,8 +116,10 @@ links under `node_modules/` from the installed package.
 ## Design values
 
 The pages take every colour, size and font from `@hackersandwizards/brand`: tokens, the expert
-set, the shared elements at the dense scale and the internal header. `bun test/no-values.ts`
-fails on a value defined here.
+set, the shared elements at the dense scale and the internal header. The one exception is the
+shell's layout, `site/src/layout.css`: the rail's and the page's lengths are the admin's own, its
+colours and type roles brand's. `bun run check:values` fails on a colour, a custom property or a
+Tailwind arbitrary value defined here.
 
 ## Development
 

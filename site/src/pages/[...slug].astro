@@ -5,7 +5,17 @@ import Layout from "../components/Layout.astro";
 import ItemGroups from "../components/ItemGroups.astro";
 import ItemRow from "../components/ItemRow.astro";
 import { compareItems, imagesOf } from "../../../src/items.ts";
-import { age, data, day, forPerson, href, openQuestions, repoOf, type Page } from "../data";
+import {
+  age,
+  data,
+  day,
+  fileHref,
+  forPerson,
+  href,
+  openQuestions,
+  repoOf,
+  type Page,
+} from "../data";
 
 export function getStaticPaths() {
   return data().pages.map((page) => ({
@@ -18,7 +28,6 @@ const { page } = Astro.props as { page: Page };
 const d = data();
 const repo = repoOf(page.repo);
 const link = (to: string) => href(page.path, to);
-const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
 const items = repo?.items ?? [];
 const questions = openQuestions(items);
 const assumed = items.filter((i) => i.status === "assumed");
@@ -53,14 +62,14 @@ const leads: Partial<Record<Page["type"], string>> = {
   hub: "What waits on a person across every repository, read from each one's last commit: questions to answer and work to move, by priority and due date. Images and reports open where they sit.",
   "hub-architecture": "Which version of each h&w package every repository pins.",
   dashboard:
-    "What waits on a person in this repository, what the agents produced, and where its docs, design system and checks are.",
+    "What waits on a person in this repository, what the agents produced, and where its docs, catalog and checks are.",
   decisions:
     "Questions only a person can answer, review requests, and the assumptions agents made. Rows are closed; open one for its context and options.",
   work: "Open work, by priority, and the goal it serves.",
   reviews:
     "Every item carrying images, open for its options side by side, then each older review folder in docs/tracking with its images, its report and the items that name it.",
   docs: "Reports in docs/tracking, newest first, and the repository's other documents.",
-  "design-system": "The building blocks: the repository's component catalogue in Astrobook.",
+  catalog: "The building blocks: the repository's component catalog in Astrobook.",
   architecture:
     "The package, what it pins, its commands and every script with its first comment line.",
   checks: "The steps of the repository's gate, in order.",
@@ -446,7 +455,7 @@ const leads: Partial<Record<Page["type"], string>> = {
     </>
   )}
 
-  {page.type === "design-system" && repo?.designSystem && (
+  {page.type === "catalog" && repo?.designSystem && (
     <div class="hw-card flex max-w-prose flex-col gap-2 text-ui">
       <p>
         <a class="chip-link" href={repo.designSystem}>
@@ -455,7 +464,7 @@ const leads: Partial<Record<Page["type"], string>> = {
       </p>
       {repo.designSystemDev && (
         <p class="text-foreground/70" data-dev={repo.designSystem}>
-          {"This repository's Astrobook serves it on port "}
+          {"This repository's catalog serves it on port "}
           {repo.designSystemDev.port}
           {", so it opens while "}
           {repo.designSystemDev.start ? (

@@ -202,7 +202,7 @@
   });
   apply();
   state();
-  // A design-system link opens only while its dev server runs: an opaque no-cors request answers
+  // A catalog link opens only while its dev server runs: an opaque no-cors request answers
   // when the server listens and fails when nothing does.
   for (const p of document.querySelectorAll("[data-dev]")) {
     const out = p.querySelector("[data-dev-state]");

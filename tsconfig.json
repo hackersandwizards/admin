@@ -11,11 +11,5 @@
     "erasableSyntaxOnly": true,
     "types": ["bun"]
   },
-  "include": [
-    "bin/**/*.ts",
-    "src/**/*.ts",
-    "test/**/*.ts",
-    "site/src/**/*.ts",
-    "design-system/**/*.ts"
-  ]
+  "include": ["bin/**/*.ts", "src/**/*.ts", "test/**/*.ts", "site/src/**/*.ts", "catalog/**/*.ts"]
 }

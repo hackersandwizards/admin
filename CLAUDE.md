@@ -17,13 +17,19 @@ exported file is a release whose commit names the change.
 - `bin/`: the four commands. `src/`: item format and check (`items.ts`), reading a repository at
   HEAD or from the working tree (`repo.ts`), the hub's repository search (`hub.ts`), page data and
   the Astro build (`build.ts`), the migrator (`migrate.ts`).
-- `site/`: the Astro site the build renders, brand's components and elements only.
-- `design-system/`: the Astrobook catalogue of the site's pages and components on the invented
-  fixture, `bun run design-system` at http://127.0.0.1:4332/design-system/; not installed by
-  consumers. `brand-elements.json` lists the brand elements the site uses and the ones it keeps.
+- `site/`: the Astro site the build renders, brand's components and elements, and the shell's own
+  layout (`site/src/layout.css`).
+- `catalog/`: the catalog of the site's pages and components on the invented fixture, in
+  scaffolding's catalog shell (`catalog()` preset), `bun run catalog` at
+  http://127.0.0.1:4332/catalog/, `bun run build` to `dist/`; not installed by consumers.
+  `bun run dev` runs the hub (`admin-serve`) on 4329; `start` is its old name, kept while os's
+  parallel-session skill names it. `brand-elements.json` lists the brand elements the site uses and the ones it keeps.
 - `test/`: `admin.test.ts` and its invented fixtures; `no-values.ts`, the check that no design value
   lives here.
 
 ## Checks
 
-`bun run check` is the gate; the pre-commit hook runs it after a staged gitleaks scan.
+`bun run check` is the gate, `scaffolding check` from `@hackersandwizards/scaffolding`: the shared
+steps, then `check:values` (no design value here), `check:fixture` (admin-check on the fixture) and
+`check:elements` (brand-elements over the built catalog). The pre-commit hook runs scaffolding's
+`check-staged`.

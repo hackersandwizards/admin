@@ -2,7 +2,7 @@
 // design-system-hub-spoke, strict). Fails on a colour literal, a custom property the engine
 // defines (other than setting a brand element's --hw-* to a brand token), a Tailwind arbitrary
 // value and a length in a style attribute.
-// Usage: bun test/no-values.ts [<file> ...]   default: every file under site/src and design-system, and src/build.ts
+// Usage: bun test/no-values.ts [<file> ...]   default: every file under site/src and catalog, and src/build.ts
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -17,11 +17,7 @@ const walk = (dir: string): string[] =>
   );
 const files = process.argv.slice(2).length
   ? process.argv.slice(2)
-  : [
-      ...walk(join(root, "site/src")),
-      ...walk(join(root, "design-system")),
-      join(root, "src/build.ts"),
-    ];
+  : [...walk(join(root, "site/src")), ...walk(join(root, "catalog")), join(root, "src/build.ts")];
 const RULES: [RegExp, string][] = [
   [/#[0-9a-f]{3,8}\b(?![\w-])/gi, "colour literal"],
   [/\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\(/gi, "colour function"],

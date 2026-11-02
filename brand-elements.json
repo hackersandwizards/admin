@@ -1,17 +1,17 @@
 {
   "pages": [
-    "node_modules/.cache/design-system/design-system/index.html",
-    "node_modules/.cache/design-system/design-system/stories/Pages/dashboard/default/index.html",
-    "node_modules/.cache/design-system/design-system/stories/Pages/decisions/default/index.html",
-    "node_modules/.cache/design-system/design-system/stories/Pages/work/default/index.html",
-    "node_modules/.cache/design-system/design-system/stories/Pages/reviews/default/index.html",
-    "node_modules/.cache/design-system/design-system/stories/Pages/doc/default/index.html",
-    "node_modules/.cache/design-system/design-system/stories/Pages/design-system/default/index.html",
-    "node_modules/.cache/design-system/design-system/stories/Pages/architecture/default/index.html",
-    "node_modules/.cache/design-system/design-system/stories/Pages/checks/default/index.html",
-    "node_modules/.cache/design-system/design-system/stories/Pages/log/default/index.html",
-    "node_modules/.cache/design-system/design-system/stories/Pages/hub/default/index.html",
-    "node_modules/.cache/design-system/design-system/stories/Pages/docs/default/index.html"
+    "dist/catalog/index.html",
+    "dist/catalog/stories/Pages/dashboard/default/index.html",
+    "dist/catalog/stories/Pages/decisions/default/index.html",
+    "dist/catalog/stories/Pages/work/default/index.html",
+    "dist/catalog/stories/Pages/reviews/default/index.html",
+    "dist/catalog/stories/Pages/doc/default/index.html",
+    "dist/catalog/stories/Pages/catalog/default/index.html",
+    "dist/catalog/stories/Pages/architecture/default/index.html",
+    "dist/catalog/stories/Pages/checks/default/index.html",
+    "dist/catalog/stories/Pages/log/default/index.html",
+    "dist/catalog/stories/Pages/hub/default/index.html",
+    "dist/catalog/stories/Pages/docs/default/index.html"
   ],
   "uses": ["label", "pill", "card", "callout", "quote", "table", "link", "code"],
   "exceptions": {
