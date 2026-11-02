@@ -1,0 +1,9 @@
+---
+// Astrobook's <head> on every page of the design system: brand's dense scale and focus ring, as
+// the admin pages set them (site/src/components/Layout.astro).
+---
+
+<script is:inline>
+  document.documentElement.dataset.hwScale = "dense";
+  document.documentElement.classList.add("hw-focus-ring");
+</script>

@@ -26,20 +26,25 @@
   ],
   "scripts": {
     "prepare": "[ \"$(git rev-parse --show-toplevel 2>/dev/null)\" = \"$(pwd -P)\" ] && git config core.hooksPath .githooks || true",
-    "check": "bun --bun prettier --check . && bun --bun tsc --noEmit && bun test/no-values.ts && bun test && bun bin/admin-check.ts test/fixtures/spoke",
+    "check": "bun --bun prettier --check . && bun --bun tsc --noEmit && bun test/no-values.ts && bun test && bun bin/admin-check.ts test/fixtures/spoke && bun --bun astro build --root design-system && brand-elements",
     "check:staged": "gitleaks git --pre-commit --staged --redact --no-banner && bun run check",
-    "format": "bun --bun prettier --write ."
+    "format": "bun --bun prettier --write .",
+    "design-system": "cd design-system && bun --bun astro dev"
   },
   "dependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v0.28.4",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v0.29.1",
     "@tailwindcss/vite": "4.3.3",
     "astro": "7.4.4",
     "tailwindcss": "4.3.3"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "astrobook": "0.13.3",
     "prettier": "3.9.10",
     "prettier-plugin-astro": "1.1.2",
     "typescript": "6.0.3"
+  },
+  "admin": {
+    "designSystem": "http://127.0.0.1:4332/design-system/"
   }
 }

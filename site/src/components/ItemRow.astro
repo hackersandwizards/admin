@@ -34,7 +34,12 @@ const meta = [
   open={open}
 >
   <summary class="flex items-start gap-3 px-3 py-2">
-    <span class="hw-pill shrink-0 font-mono" data-tone={hue ? undefined : "neutral"} style={hue}>
+    <span
+      class="hw-pill shrink-0 font-mono"
+      data-tone={hue ? undefined : "neutral"}
+      data-hw-exception="priority-pill"
+      style={hue}
+    >
       {i.priority ? `P${i.priority}` : "Goal"}
     </span>
     <span class="min-w-0 flex-1">

@@ -239,7 +239,7 @@ const leads: Partial<Record<Page["type"], string>> = {
       {needs(items).length > 0 && (
         <section>
           <h2 class="mb-2 font-mono font-semibold text-heading">Most urgent</h2>
-          <div class="hw-card p-0!">
+          <div class="hw-card p-0!" data-hw-exception="item-list">
             {needs(items)
               .slice(0, 5)
               .map((i) => (
@@ -364,6 +364,7 @@ const leads: Partial<Record<Page["type"], string>> = {
               {r.images.map((f) => (
                 <a
                   class="hw-card flex flex-col gap-1 p-2!"
+                  data-hw-exception="image-tile"
                   href={fileHref(`${repo.path}/${r.dir}/${f}`)}
                   target="_blank"
                 >

@@ -31,7 +31,7 @@ const groups = title
           {g.rows.length}
         </span>
       </summary>
-      <div class="hw-card p-0!">
+      <div class="hw-card p-0!" data-hw-exception="item-list">
         {g.rows.map((i) => (
           <ItemRow item={i} showRepo={showRepo} />
         ))}

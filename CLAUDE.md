@@ -18,6 +18,9 @@ exported file is a release whose commit names the change.
   HEAD or from the working tree (`repo.ts`), the hub's repository search (`hub.ts`), page data and
   the Astro build (`build.ts`), the migrator (`migrate.ts`).
 - `site/`: the Astro site the build renders, brand's components and elements only.
+- `design-system/`: the Astrobook catalogue of the site's pages and components on the invented
+  fixture, `bun run design-system` at http://127.0.0.1:4332/design-system/; not installed by
+  consumers. `brand-elements.json` lists the brand elements the site uses and the ones it keeps.
 - `test/`: `admin.test.ts` and its invented fixtures; `no-values.ts`, the check that no design value
   lives here.
 

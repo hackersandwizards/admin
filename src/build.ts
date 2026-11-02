@@ -14,7 +14,7 @@ import { dirname, join, relative } from "node:path";
 import { compareItems, type Item } from "./items.ts";
 import { withElements, type RepoData } from "./repo.ts";
 
-const PKG = join(import.meta.dir, "..");
+const PKG = join(import.meta.dirname, "..");
 export const VERSION = JSON.parse(readFileSync(join(PKG, "package.json"), "utf8"))
   .version as string;
 
@@ -133,6 +133,34 @@ export function siteData(repos: RepoData[], hub: boolean): SiteData {
   return { version: VERSION, hub, built: new Date().toISOString(), people, repos: out, pages };
 }
 
+// The stylesheet entry the site imports as admin:styles, with every path resolved: the package
+// may sit hoisted or nested. The design system (design-system/) imports the same entry.
+export function stylesheet() {
+  const at = (spec: string) => Bun.resolveSync(spec, PKG);
+  const brand = dirname(at("@hackersandwizards/brand/tokens.css"));
+  const brandRoot = join(brand, "..");
+  return [
+    `@import "${at("tailwindcss/index.css")}";`,
+    `@import "${at("@hackersandwizards/brand/tokens.css")}";`,
+    `@import "${at("@hackersandwizards/brand/expert.css")}";`,
+    `@import "${at("@hackersandwizards/brand/header.css")}";`,
+    `@import "${at("@hackersandwizards/brand/elements.css")}";`,
+    `@import "${at("@hackersandwizards/brand/catalogue.css")}";`,
+    `@source "${join(PKG, "site/src")}";`,
+    `@source "${join(brandRoot, "expert")}";`,
+    `@source "${join(brandRoot, "elements")}";`,
+    // brand exports the screen fonts as files only; the faces name tokens.css's families.
+    ...[
+      ["Inter Variable", "inter-latin-wght-normal.woff2", "100 900"],
+      ["JetBrains Mono Variable", "jetbrains-mono-latin-wght-normal.woff2", "100 800"],
+    ].map(
+      ([family, file, weight]) =>
+        `@font-face { font-family: "${family}"; font-style: normal; font-display: swap; font-weight: ${weight}; src: url("${join(brand, "fonts", file!)}") format("woff2-variations"); }`,
+    ),
+    `@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));`,
+  ].join("\n");
+}
+
 // Builds the pages into `outDir`. Astro writes absolute /_astro/ URLs; each page gets them
 // relative, so the folder opens from disk and can move.
 export async function buildSite(data: SiteData, outDir: string) {
@@ -148,34 +176,8 @@ export async function buildSite(data: SiteData, outDir: string) {
   const cwd = process.cwd();
   process.chdir(work);
   try {
-    const at = (spec: string) => Bun.resolveSync(spec, PKG);
-    const brand = dirname(at("@hackersandwizards/brand/tokens.css"));
-    const brandRoot = join(brand, "..");
     writeFileSync(join(work, "data.json"), JSON.stringify(data));
-    // The stylesheet entry, with every path resolved: the package may sit hoisted or nested.
-    writeFileSync(
-      join(work, "admin.css"),
-      [
-        `@import "${at("tailwindcss/index.css")}";`,
-        `@import "${at("@hackersandwizards/brand/tokens.css")}";`,
-        `@import "${at("@hackersandwizards/brand/expert.css")}";`,
-        `@import "${at("@hackersandwizards/brand/header.css")}";`,
-        `@import "${at("@hackersandwizards/brand/elements.css")}";`,
-        `@import "${at("@hackersandwizards/brand/catalogue.css")}";`,
-        `@source "${join(PKG, "site/src")}";`,
-        `@source "${join(brandRoot, "expert")}";`,
-        `@source "${join(brandRoot, "elements")}";`,
-        // brand exports the screen fonts as files only; the faces name tokens.css's families.
-        ...[
-          ["Inter Variable", "inter-latin-wght-normal.woff2", "100 900"],
-          ["JetBrains Mono Variable", "jetbrains-mono-latin-wght-normal.woff2", "100 800"],
-        ].map(
-          ([family, file, weight]) =>
-            `@font-face { font-family: "${family}"; font-style: normal; font-display: swap; font-weight: ${weight}; src: url("${join(brand, "fonts", file!)}") format("woff2-variations"); }`,
-        ),
-        `@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));`,
-      ].join("\n"),
-    );
+    writeFileSync(join(work, "admin.css"), stylesheet());
     process.env.ADMIN_DATA = join(work, "data.json");
     const { build } = await import("astro");
     const tailwind = (await import("@tailwindcss/vite")).default;

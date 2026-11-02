@@ -1,0 +1,135 @@
+---
+// The design system's home in brand's catalogue shape (AstrobookHome, decision catalogue-shape):
+// the header, the rail with the groups, a tile per page and component drawing its first state. The
+// default slot holds the foundations: a tile per brand element the admin pages use, as they use
+// it, and each element the engine keeps as its own with its reason, which brand-elements measures
+// in `bun run check`. Its utilities are ones site/src uses: the stylesheet scans site/src only.
+import modules from "virtual:astrobook/story-modules.mjs";
+import config from "virtual:astrobook/global-config.mjs";
+import AstrobookHome from "@hackersandwizards/brand/expert/components/AstrobookHome.astro";
+import pkg from "../package.json";
+import ItemGroups from "../site/src/components/ItemGroups.astro";
+import elements from "../brand-elements.json";
+import { items } from "./story";
+
+// The brand version the tiles name, from the pin: brand-elements fails on any other.
+const version = pkg.dependencies["@hackersandwizards/brand"].split("#v")[1];
+const CATALOGUE = "https://hackersandwizards.github.io/brand/catalogue.html";
+const notes: Record<string, string> = {
+  label: "The rail's group names.",
+  pill: "The recommended option among an item's options.",
+  card: "A row group, a dashboard figure, an option, a review image.",
+  callout: "What an agent assumed or a person decided, above the item's text.",
+  quote: "A blockquote in a report or an item's Markdown.",
+  table: "Every list of rows: repositories, reports, scripts, checks, commits.",
+  link: "A link in an item's text or a report.",
+  code: "A config key named in running text.",
+};
+---
+
+<AstrobookHome
+  modules={modules}
+  config={config}
+  product="Admin"
+  title="Design system"
+  lead="Every page and component of the admin engine, rendered by the engine's own site on an invented repository. Every value comes from brand."
+  source="admin design-system/stories"
+  groupOrder={["Pages", "Shell", "Items"]}
+>
+  <details class="hw-disclosure mt-6">
+    <summary class="py-2 font-mono font-semibold text-ui">
+      Foundations: {elements.uses.length} elements from brand,{" "}
+      {Object.keys(elements.exceptions).length} kept as the engine's own
+    </summary>
+    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {elements.uses.map((name) => (
+        <div class="flex flex-col gap-2" data-hw-tile={name} data-hw-version={version}>
+          <p class="text-ui">
+            aus brand v{version} · <code class="hw-code">hw-{name}</code> ·{" "}
+            <a class="hw-link" href={`${CATALOGUE}#hw-${name}`}>
+              catalogue
+            </a>
+          </p>
+          <p class="text-ui text-foreground/70">{notes[name]}</p>
+          {name === "label" && <p class="hw-label">spoke</p>}
+          {name === "pill" && (
+            <p class="flex flex-wrap gap-2">
+              <span class="hw-pill" data-caps>
+                Recommended
+              </span>
+              <span class="hw-pill" data-tone="neutral">
+                optional
+              </span>
+            </p>
+          )}
+          {name === "card" && <div class="hw-card text-ui">Open questions</div>}
+          {name === "callout" && (
+            <p class="hw-callout text-ui">
+              <b>Assumed:</b> the cache stays in node_modules.
+            </p>
+          )}
+          {name === "quote" && <blockquote class="hw-quote">Ship the smaller one.</blockquote>}
+          {name === "table" && (
+            <table class="hw-table w-full">
+              <tbody>
+                <tr>
+                  <td class="font-mono">check</td>
+                  <td class="font-mono">bun run lint && bun test</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+          {name === "link" && (
+            <p class="text-ui">
+              See{" "}
+              <a class="hw-link" href="#">
+                the sample topic
+              </a>{" "}
+              first.
+            </p>
+          )}
+          {name === "code" && (
+            <p class="text-ui">
+              Set <code class="hw-code">admin.designSystem</code> in package.json.
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+    <h2 class="mt-6 mb-2 font-mono font-semibold text-heading">Kept as the engine's own</h2>
+    <div class="grid gap-4 xl:grid-cols-3">
+      {Object.entries(elements.exceptions).map(([name, reason]) => (
+        <section class="flex flex-col gap-2" data-hw-exception={name}>
+          <p class="font-medium text-ui">{name}</p>
+          <p class="text-ui text-foreground/70">{reason}</p>
+          {name === "item-list" && <ItemGroups items={items.slice(0, 2)} title="Priority 1" />}
+          {name === "priority-pill" && (
+            <p class="flex flex-wrap gap-2">
+              <span
+                class="hw-pill font-mono"
+                style="--hw-pill-hue: var(--color-red); --hw-pill-hue-night: var(--color-red-night)"
+              >
+                P1
+              </span>
+              <span
+                class="hw-pill font-mono"
+                style="--hw-pill-hue: var(--color-amber); --hw-pill-hue-night: var(--color-amber)"
+              >
+                P2
+              </span>
+              <span class="hw-pill font-mono" data-tone="neutral">
+                P3
+              </span>
+            </p>
+          )}
+          {name === "image-tile" && (
+            <span class="hw-card flex flex-col gap-1 p-2!">
+              <span class="aspect-video w-full rounded-sm bg-muted" />
+              <span class="truncate font-mono text-micro text-foreground/70">variant-a.svg</span>
+            </span>
+          )}
+        </section>
+      ))}
+    </div>
+  </details>
+</AstrobookHome>
