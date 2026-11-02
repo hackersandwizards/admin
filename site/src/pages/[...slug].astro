@@ -453,8 +453,9 @@ const leads: Partial<Record<Page["type"], string>> = {
       </p>
       {repo.designSystemDev && (
         <p class="text-foreground/70" data-dev={repo.designSystem}>
-          This repository's Astrobook serves it on port {repo.designSystemDev.port}, so it opens
-          while
+          {"This repository's Astrobook serves it on port "}
+          {repo.designSystemDev.port}
+          {", so it opens while "}
           {repo.designSystemDev.start ? (
             <code class="font-mono">bun run {repo.designSystemDev.start}</code>
           ) : (

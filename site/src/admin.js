@@ -189,9 +189,10 @@
   // when the server listens and fails when nothing does.
   for (const p of document.querySelectorAll("[data-dev]")) {
     const out = p.querySelector("[data-dev-state]");
+    const port = new URL(p.dataset.dev).port;
     fetch(p.dataset.dev, { mode: "no-cors", cache: "no-store" }).then(
-      () => (out.textContent = "It is running now."),
-      () => (out.textContent = "It is not running now."),
+      () => (out.textContent = `A server answers on port ${port} now.`),
+      () => (out.textContent = `Nothing answers on port ${port} now.`),
     );
   }
 })();
