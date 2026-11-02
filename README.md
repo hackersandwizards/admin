@@ -5,20 +5,23 @@ only. Every item, report and image stays in the repository it belongs to.
 
 ## Install
 
-A repository adds the package as a dev dependency pinned to a tag, as it does with brand:
+A repository adds the package as a dev dependency pinned to a tag. The repository is public, so
+the install needs no GitHub login:
 
 ```sh
-bun add -d "git+https://github.com/hackersandwizards/admin.git#v0.4.1"
+bun add -d "git+https://github.com/hackersandwizards/admin.git#v0.5.0"
 ```
+
+Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repositories through it.
 
 ## Commands
 
-| Command         | What it does                                                                                                            |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `admin`         | Builds the admin pages of the current repository from its last commit into `node_modules/.cache/admin/`.                |
-| `admin-serve`   | Serves the hub at `http://admin.localhost:4329` from each repository's HEAD, rebuilt when one moves. Writes no file.    |
-| `admin-check`   | Checks the item files in the working tree. Exit 1 on a defect. Belongs in every repository's gate.                      |
-| `admin-migrate` | Converts `GOAL.md`, `docs/tracking/decisions/items.js` and review folders' images into item files, once per repository. |
+| Command                                                                  | What it does                                                                                                                                       |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `admin [<repo>] [--out <dir>]`                                           | Builds the admin pages of `<repo>` (default the current directory) from its last commit into its `node_modules/.cache/admin/`, or into `--out`.    |
+| `admin-serve [--root <dir>] [--port <n>]`                                | Serves the hub at `http://admin.localhost:4329` for the repositories under `~/dev`, each from its HEAD and rebuilt when one moves. Writes no file. |
+| `admin-check [<repo>...]`                                                | Checks the item files in the working tree, default the current directory. Exit 1 on a defect. Belongs in every repository's gate.                  |
+| `admin-migrate --owner <name> [--reviews <dir>] [--dry-run] [<repo>...]` | Converts `GOAL.md`, `docs/tracking/decisions/items.js` and review folders' images into item files, once per repository.                            |
 
 `bun run dev` in this checkout runs `admin-serve`, the one hub: open `http://admin.localhost:4329`.
 A repository shows in the hub when its HEAD has `docs/tracking/items/` or its `package.json` names an
@@ -102,8 +105,10 @@ A repository configures what convention cannot find under `admin` in its `packag
 ```json
 {
   "admin": {
-    "designSystem": "catalog/index.html",
-    "products": [{ "label": "Slide types", "href": "specimen/index.html" }],
+    "designSystem": "https://hackersandwizards.github.io/slides/catalog/",
+    "products": [
+      { "label": "Slide types", "href": "https://hackersandwizards.github.io/slides/catalog/" }
+    ],
     "links": [{ "label": "Validation", "href": "http://127.0.0.1:4321/validation" }],
     "name": "os"
   }
@@ -125,5 +130,13 @@ Tailwind arbitrary value defined here.
 
 ```sh
 bun install
-bun run check
+bun run check     # the gate: scaffolding's shared steps, then check:values, check:fixture, check:elements
+bun run dev       # the hub on http://admin.localhost:4329
+bun run catalog   # the site's pages on the invented fixture, http://127.0.0.1:4332/catalog/
 ```
+
+## License
+
+[PolyForm Strict 1.0.0](LICENSE): free for noncommercial and personal use, no redistribution or
+derived works, plus a permission for trainers hackers&wizards commissions. The name hackers&wizards
+and its logos are not licensed.
