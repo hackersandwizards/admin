@@ -444,26 +444,17 @@ const leads: Partial<Record<Page["type"], string>> = {
     </>
   )}
 
-  {page.type === "design-system" && repo && (
+  {page.type === "design-system" && repo?.designSystem && (
     <div class="hw-card flex max-w-prose flex-col gap-2 text-ui">
-      {repo.designSystem ? (
-        <>
-          <p>
-            The component catalogue runs in this repository's Astrobook. It is served by the
-            repository's dev server, so the link works while that server runs.
-          </p>
-          <p>
-            <a class="chip-link" href={repo.designSystem}>
-              {repo.designSystem}
-            </a>
-          </p>
-        </>
-      ) : (
-        <p>
-          No design system is set for this repository. Name its Astrobook address in package.json
-          under <code class="hw-code">admin.designSystem</code>.
-        </p>
-      )}
+      <p>
+        The component catalogue runs in this repository's Astrobook. It is served by the
+        repository's dev server, so the link works while that server runs.
+      </p>
+      <p>
+        <a class="chip-link" href={repo.designSystem}>
+          {repo.designSystem}
+        </a>
+      </p>
       <p class="text-foreground/70">
         What this repository's engine produces, such as slide types, document types or brand assets,
         has its own menu items, set under <code class="hw-code">admin.products</code>.

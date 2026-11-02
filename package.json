@@ -12,6 +12,7 @@
   "bin": {
     "admin": "bin/admin.ts",
     "admin-hub": "bin/admin-hub.ts",
+    "admin-serve": "bin/admin-serve.ts",
     "admin-check": "bin/admin-check.ts",
     "admin-migrate": "bin/admin-migrate.ts"
   },
@@ -26,6 +27,7 @@
   ],
   "scripts": {
     "prepare": "[ \"$(git rev-parse --show-toplevel 2>/dev/null)\" = \"$(pwd -P)\" ] && git config core.hooksPath .githooks || true",
+    "start": "bun bin/admin-serve.ts",
     "check": "bun --bun prettier --check . && bun --bun tsc --noEmit && bun test/no-values.ts && bun test && bun bin/admin-check.ts test/fixtures/spoke && bun --bun astro build --root design-system && brand-elements",
     "check:staged": "gitleaks git --pre-commit --staged --redact --no-banner && bun run check",
     "format": "bun --bun prettier --write .",

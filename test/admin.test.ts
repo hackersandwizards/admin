@@ -1,5 +1,13 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { buildSite, siteData } from "../src/build.ts";
@@ -7,6 +15,7 @@ import { findRepos } from "../src/hub.ts";
 import { itemDefects, parseItem, serializeItem, type Item } from "../src/items.ts";
 import { decidedBy, migrate, readGoal, titleOf } from "../src/migrate.ts";
 import { gitEnv, readItems, readRepo, treeSource } from "../src/repo.ts";
+import { createHub } from "../src/serve.ts";
 
 const FIX = join(import.meta.dir, "fixtures");
 const made: string[] = [];
@@ -197,6 +206,37 @@ describe("hub", () => {
     expect(findRepos(root)).toEqual([repo]);
   });
 
+  test("finds a repo naming an @hackersandwizards package with no items, and none other", () => {
+    const repo = repoFrom("spoke");
+    const root = dirname(repo);
+    const bare = (name: string, pkg: object) => {
+      const dir = join(root, name);
+      Bun.spawnSync(["mkdir", dir]);
+      writeFileSync(join(dir, "package.json"), JSON.stringify(pkg));
+      sh(dir, "git", "init", "-q", "-b", "main");
+      sh(dir, "git", "add", "package.json");
+      sh(
+        dir,
+        "git",
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.invalid",
+        "commit",
+        "-qm",
+        "c",
+      );
+      return dir;
+    };
+    const tool = bare("tool", { name: "@hackersandwizards/tool" });
+    bare("other", { name: "other" });
+    expect(findRepos(root)).toEqual([repo, tool]);
+    expect(readRepo(tool).designSystem).toBeUndefined();
+    expect(readRepo(bare("ui", { name: "ui", devDependencies: { astro: "1" } })).designSystem).toBe(
+      "http://ui.localhost/design-system/",
+    );
+  });
+
   test("reads at HEAD, not the working tree", () => {
     const repo = repoFrom("spoke");
     Bun.write(
@@ -235,5 +275,64 @@ describe("pages", () => {
     );
     expect(doc).toContain('class="hw-table"');
     expect(doc).toContain(`file://${repo}/docs/tracking/2026-01-15-sample-topic/variant-a.svg`);
+  }, 60_000);
+});
+
+describe("serve", () => {
+  test("serves committed pages and files, rebuilding only after a commit", async () => {
+    const repo = repoFrom("spoke");
+    const hub = createHub({ root: dirname(repo) });
+    const get = (path: string) => hub.fetch(new Request(`http://admin.localhost${path}`));
+    const first = await (await get("/")).text();
+    expect(first).toContain("Which variant ships?");
+    expect(first).not.toContain("file://");
+    expect(first).toContain("/_file/spoke/docs/tracking/");
+    expect((await get("/spoke/decisions")).status).toBe(200);
+    const svg = await get("/_file/spoke/docs/tracking/2026-01-15-sample-topic/variant-a.svg");
+    expect(svg.headers.get("content-type")).toContain("image/svg");
+    expect((await get("/_file/spoke/../../etc/passwd")).status).toBe(404);
+    expect((await hub.fetch(new Request("http://evil.example/"))).status).toBe(403);
+    // A Git LFS pointer is answered with the object from the local LFS store.
+    const oid = "ab".repeat(32);
+    const store = join(repo, ".git/lfs/objects/ab/ab");
+    Bun.spawnSync(["mkdir", "-p", store]);
+    writeFileSync(join(store, oid), "<svg>stored</svg>");
+    writeFileSync(
+      join(repo, "docs/tracking/lfs.svg"),
+      `version https://git-lfs.github.com/spec/v1\noid sha256:${oid}\nsize 17\n`,
+    );
+    sh(repo, "git", "add", "docs/tracking/lfs.svg");
+    sh(
+      repo,
+      "git",
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.invalid",
+      "commit",
+      "-qm",
+      "l",
+    );
+    expect(await (await get("/_file/spoke/docs/tracking/lfs.svg")).text()).toBe(
+      "<svg>stored</svg>",
+    );
+    // Uncommitted work changes nothing; a commit does.
+    const item = join(repo, "docs/tracking/items/check-the-copy.md");
+    writeFileSync(item, readFileSync(item, "utf8").replace("# ", "# Renamed "));
+    const cached = await hub.pages();
+    expect(await hub.pages()).toBe(cached);
+    sh(
+      repo,
+      "git",
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.invalid",
+      "commit",
+      "-qam",
+      "r",
+    );
+    expect(await hub.pages()).not.toBe(cached);
+    expect(await (await get("/")).text()).toContain("Renamed ");
   }, 60_000);
 });

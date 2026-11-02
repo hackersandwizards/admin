@@ -110,7 +110,8 @@ export function siteData(repos: RepoData[], hub: boolean): SiteData {
     add({ path: "work", type: "work", title: "Work" });
     add({ path: "reviews", type: "reviews", title: "Reviews" });
     add({ path: "docs", type: "docs", title: "Docs" });
-    add({ path: "design-system", type: "design-system", title: "Design system" });
+    if (r.designSystem)
+      add({ path: "design-system", type: "design-system", title: "Design system" });
     r.products.forEach((p, n) =>
       add({ path: `products-${n + 1}`, type: "product", product: n, title: p.label }),
     );

@@ -13,12 +13,19 @@ bun add -d "git+https://github.com/hackersandwizards/admin.git#v0.2.0"
 
 ## Commands
 
-| Command         | What it does                                                                                                      |
-| --------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `admin`         | Builds the admin pages of the current repository from its last commit into `node_modules/.cache/admin/`.          |
-| `admin-hub`     | Finds every git repository under `~/dev` with `docs/tracking/items/`, reads each at HEAD, writes `~/dev/.admin/`. |
-| `admin-check`   | Checks the item files in the working tree. Exit 1 on a defect. Belongs in every repository's gate.                |
-| `admin-migrate` | Converts `GOAL.md`, `docs/tracking/decisions/items.js` and review folders into item files, once per repository.   |
+| Command         | What it does                                                                                                         |
+| --------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `admin`         | Builds the admin pages of the current repository from its last commit into `node_modules/.cache/admin/`.             |
+| `admin-hub`     | Finds every git repository under `~/dev` with `docs/tracking/items/`, reads each at HEAD, writes `~/dev/.admin/`.    |
+| `admin-serve`   | Serves the hub at `http://admin.localhost:4329` from each repository's HEAD, rebuilt when one moves. Writes no file. |
+| `admin-check`   | Checks the item files in the working tree. Exit 1 on a defect. Belongs in every repository's gate.                   |
+| `admin-migrate` | Converts `GOAL.md`, `docs/tracking/decisions/items.js` and review folders into item files, once per repository.      |
+
+`bun run start` in this checkout runs `admin-serve`. A repository shows in the hub when its HEAD has
+`docs/tracking/items/` or its `package.json` names an `@hackersandwizards` package, so this engine shows
+itself. A repository with a frontend (astro, astrobook, next, react or vite) gets a Design system entry
+at `http://<name>.localhost/design-system/` unless `admin.designSystem` names another; one without has
+none.
 
 Each page opens from disk. Answers to decisions stay in the browser until "Copy answers" puts
 them on the clipboard as one `repo:id: choice, note` line each.
