@@ -1,9 +1,10 @@
 ---
 // Every admin page, by its type: the hub, and per repository the dashboard, decisions, work,
-// reviews, docs, design system, products, architecture, validation and log.
+// reviews, docs, design system, products, architecture, checks and log.
 import Layout from "../components/Layout.astro";
 import ItemGroups from "../components/ItemGroups.astro";
 import ItemRow from "../components/ItemRow.astro";
+import { compareItems } from "../../../src/items.ts";
 import { age, data, day, forPerson, href, openQuestions, repoOf, type Page } from "../data";
 
 export function getStaticPaths() {
@@ -25,13 +26,21 @@ const decided = items.filter((i) => i.status === "decided");
 const work = items.filter((i) => i.kind === "work");
 const goals = items.filter((i) => i.kind === "goal");
 const provenance = repo
-  ? `@hackersandwizards/admin v${d.version} · ${repo.key} HEAD ${repo.head} · ${items.length} items · ${
-      repo.behind ? `${repo.behind} commits behind origin` : "up to date with origin"
-    } · fetched ${age(repo.fetched)}`
+  ? `@hackersandwizards/admin v${d.version} · ${repo.key} HEAD ${repo.head} · ${items.length} item files · ${
+      !repo.fetched
+        ? "origin never fetched in this checkout, commits behind unknown"
+        : `${repo.behind ? `${repo.behind} commits behind origin` : "up to date with origin"}, fetched ${age(repo.fetched)}`
+    }`
   : `@hackersandwizards/admin v${d.version} · ${d.repos.length} checkouts · ${
       d.repos.filter((r) => r.behind).length
-    } behind origin · ${d.repos.reduce((n, r) => n + r.items.length, 0)} items`;
-const allQuestions = d.repos.flatMap((r) => openQuestions(r.items));
+    } behind origin, ${d.repos.filter((r) => !r.fetched).length} never fetched · ${d.repos.reduce(
+      (n, r) => n + r.items.length,
+      0,
+    )} item files`;
+// What waits on a person: open questions and work a person owns, in one order (priority, due).
+const needs = (list: typeof items) =>
+  [...openQuestions(list), ...forPerson(list)].sort(compareItems);
+const allNeeds = d.repos.flatMap((r) => needs(r.items)).sort(compareItems);
 const byPriority = (list: typeof items, p: number) => list.filter((i) => i.priority === p).length;
 const doc = repo && [...repo.reports, ...repo.docs].find((x) => x.path === page.doc);
 const product = repo && page.product !== undefined ? repo.products[page.product] : undefined;
@@ -41,7 +50,7 @@ const pin = (spec: string) => spec.match(/#(v[\w.-]+)$/)?.[1] ?? spec;
 const packages = [...new Set(d.repos.flatMap((r) => pins(r).map(([n]) => n)))].sort();
 const answersAll = page.type === "decisions" || page.type === "hub";
 const leads: Partial<Record<Page["type"], string>> = {
-  hub: "Every repository's open questions and work, read from its last commit. Nothing is copied; images and reports open where they sit.",
+  hub: "What waits on a person across every repository, read from each one's last commit: questions to answer and work to move, by priority and due date. Images and reports open where they sit.",
   "hub-architecture": "Which version of each h&w package every repository pins.",
   dashboard:
     "What waits on a person in this repository, what the agents produced, and where its docs, design system and checks are.",
@@ -54,7 +63,7 @@ const leads: Partial<Record<Page["type"], string>> = {
   "design-system": "The building blocks: the repository's component catalogue in Astrobook.",
   architecture:
     "The package, what it pins, its commands and every script with its first comment line.",
-  validation: "The steps of the repository's gate, in order.",
+  checks: "The steps of the repository's gate, in order.",
   log: "Commits to the tracking files, then the full history.",
 };
 ---
@@ -76,6 +85,27 @@ const leads: Partial<Record<Page["type"], string>> = {
 
   {page.type === "hub" && (
     <>
+      <section class="flex flex-col gap-2">
+        <h2 class="font-mono font-semibold text-heading">Needs you</h2>
+        <div class="flex flex-wrap gap-2" role="group" aria-label="For whom">
+          {[...d.people, "all"].map((p) => (
+            <button
+              type="button"
+              class="btn-secondary aria-pressed:bg-accent aria-pressed:text-on-accent"
+              data-who-button={p}
+              aria-pressed="false"
+            >
+              {p === "all" ? "All" : p}
+            </button>
+          ))}
+        </div>
+        <ItemGroups items={allNeeds} showRepo openUpTo={1} />
+        <ItemGroups
+          items={d.repos.flatMap((r) => r.items.filter((i) => i.status !== "open"))}
+          showRepo
+          title="Assumptions and decided items"
+        />
+      </section>
       <section>
         <h2 class="mb-2 font-mono font-semibold text-heading">Repositories</h2>
         <table class="hw-table w-full">
@@ -95,9 +125,7 @@ const leads: Partial<Record<Page["type"], string>> = {
             {d.repos.map((r) => {
               const q = openQuestions(r.items);
               const decide = q.filter((i) => i.kind === "decision");
-              const top = [...q, ...forPerson(r.items)].sort(
-                (a, b) => (a.priority ?? 9) - (b.priority ?? 9),
-              )[0];
+              const top = needs(r.items)[0];
               return (
                 <tr data-row>
                   <td>
@@ -119,40 +147,12 @@ const leads: Partial<Record<Page["type"], string>> = {
                   <td class="text-right tabular-nums">
                     {r.items.filter((i) => i.status === "assumed").length || ""}
                   </td>
-                  <td class="max-w-md truncate">{top ? top.title : "nothing open"}</td>
+                  <td class="max-w-md">{top ? top.title : ""}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-      </section>
-      <section class="flex flex-col gap-2">
-        <h2 class="font-mono font-semibold text-heading">Needs you</h2>
-        <div class="flex flex-wrap gap-2" role="group" aria-label="For whom">
-          {[...d.people, "all"].map((p) => (
-            <button
-              type="button"
-              class="btn-secondary aria-pressed:bg-accent aria-pressed:text-on-accent"
-              data-who-button={p}
-              aria-pressed="false"
-            >
-              {p === "all" ? "All" : p}
-            </button>
-          ))}
-        </div>
-        <ItemGroups items={allQuestions} showRepo openUpTo={1} />
-        {d.repos.some((r) => forPerson(r.items).length) && (
-          <ItemGroups
-            items={d.repos.flatMap((r) => forPerson(r.items))}
-            showRepo
-            title="Work for a person"
-          />
-        )}
-        <ItemGroups
-          items={d.repos.flatMap((r) => r.items.filter((i) => i.status !== "open"))}
-          showRepo
-          title="Assumptions and decided items"
-        />
       </section>
       {d.repos.some((r) => r.defects.length) && (
         <section>
@@ -207,23 +207,11 @@ const leads: Partial<Record<Page["type"], string>> = {
         <div class="grid grid-cols-2 gap-4 xl:grid-cols-4">
           {[
             {
-              n: questions.filter((i) => i.kind === "decision").length,
-              label: "To decide",
-              sub: [1, 2, 3]
-                .map(
-                  (p) =>
-                    `P${p} ${byPriority(
-                      questions.filter((i) => i.kind === "decision"),
-                      p,
-                    )}`,
-                )
-                .join(" · "),
-              to: "decisions",
-            },
-            {
-              n: questions.filter((i) => i.kind === "review").length,
-              label: "To review",
-              sub: "look and answer “fine” or what to change",
+              n: questions.length,
+              label: "Open questions",
+              sub: `${questions.filter((i) => i.kind === "decision").length} to decide · ${
+                questions.filter((i) => i.kind === "review").length
+              } to review`,
               to: "decisions",
             },
             {
@@ -233,6 +221,12 @@ const leads: Partial<Record<Page["type"], string>> = {
               to: "work",
             },
             { n: assumed.length, label: "Agent assumptions", sub: "you may veto", to: "decisions" },
+            {
+              n: repo.reviews.length,
+              label: "Review folders",
+              sub: "images and reports in docs/tracking",
+              to: "reviews",
+            },
           ].map((c) => (
             <a class="hw-card flex flex-col gap-1 no-underline" href={link(repo.prefix + c.to)}>
               <span class="font-mono font-bold text-page tabular-nums">{c.n}</span>
@@ -242,13 +236,15 @@ const leads: Partial<Record<Page["type"], string>> = {
           ))}
         </div>
       </section>
-      {questions.length > 0 && (
+      {needs(items).length > 0 && (
         <section>
           <h2 class="mb-2 font-mono font-semibold text-heading">Most urgent</h2>
           <div class="hw-card p-0!">
-            {questions.slice(0, 5).map((i) => (
-              <ItemRow item={i} />
-            ))}
+            {needs(items)
+              .slice(0, 5)
+              .map((i) => (
+                <ItemRow item={i} />
+              ))}
           </div>
         </section>
       )}
@@ -543,7 +539,7 @@ const leads: Partial<Record<Page["type"], string>> = {
     </>
   )}
 
-  {page.type === "validation" && repo && (
+  {page.type === "checks" && repo && (
     <>
       {repo.checkSteps.length ? (
         <table class="hw-table w-full">

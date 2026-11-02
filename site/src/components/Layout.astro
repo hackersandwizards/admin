@@ -1,10 +1,10 @@
 ---
-// The admin shell: brand's internal header, the left rail (search, the repository's menu with
-// counts, the other repositories in the hub), and the page title row. Every value comes from
-// brand: tokens, the expert set, the elements at the dense scale.
+// The admin shell: brand's internal header over brand's catalogue shape (catalogue.css), the shell
+// every repository's Astrobook home wears: the rail with search, the repository's menu with counts
+// and, in the hub, the other repositories; then title, lead and provenance. Every value comes from
+// brand: tokens, the expert set, the elements at the dense scale with its compact tier.
 import "admin:styles";
 import AppHeader from "@hackersandwizards/brand/expert/components/AppHeader.astro";
-import PageHeader from "@hackersandwizards/brand/expert/components/PageHeader.astro";
 import { navLinkClass } from "@hackersandwizards/brand/expert/components/space-nav.ts";
 import script from "../admin.js?raw";
 import { data, forPerson, href, openQuestions, repoOf, type Page } from "../data";
@@ -35,17 +35,22 @@ const menu = repo
       { to: "design-system", label: "Design system" },
       ...repo.products.map((p, n) => ({ to: `products-${n + 1}`, label: p.label })),
       { to: "architecture", label: "Architecture", count: repo.scripts.length || undefined },
-      { to: "validation", label: "Validation", count: repo.checkSteps.length || undefined },
+      { to: "checks", label: "Checks", count: repo.checkSteps.length || undefined },
       { to: "log", label: "Log" },
     ].map((m) => ({ ...m, to: m.to ? repo.prefix + m.to : repo.dashboard }))
   : [
       {
         to: "index",
-        label: "Everything open",
-        count: d.repos.reduce((n, r) => n + openQuestions(r.items).length, 0),
+        label: "Needs a person",
+        count: d.repos.reduce(
+          (n, r) => n + openQuestions(r.items).length + forPerson(r.items).length,
+          0,
+        ),
       },
       { to: "architecture", label: "Packages" },
     ];
+// The current entry wears space-nav's active link, the rail link of every expert app.
+const active = navLinkClass("x", "x")[1];
 const current = (to: string) =>
   to === page.path || (page.type === "doc" && to === `${repo?.prefix}docs`);
 ---
@@ -85,67 +90,70 @@ const current = (to: string) =>
         )}
       </nav>
     </AppHeader>
-    <div class="hw-container flex flex-col gap-6 lg:flex-row">
-      <aside class="lg:w-64 lg:shrink-0 lg:py-6">
+    <div class="hw-catalogue hw-container">
+      <aside class="hw-catalogue-rail">
         <input
           id="admin-search"
           type="search"
-          class="form-input mt-4 w-full lg:mt-0"
+          class="hw-catalogue-search"
           placeholder="Search /"
           aria-label="Search this page"
         />
-        <nav aria-label="Menu" class="mt-4">
+        <nav aria-label="Menu">
           <p class="hw-label mb-1 px-2">{repo ? repo.key : "hub"}</p>
-          {menu.map((m) => (
-            <a
-              href={link(m.to)}
-              aria-current={current(m.to) ? "page" : undefined}
-              class:list={[
-                ...navLinkClass("a", current(m.to) ? "a" : "b"),
-                "flex justify-between gap-2",
-              ]}
-            >
-              <span class="truncate">{m.label}</span>
-              {m.count !== undefined && <span class="tabular-nums">{m.count}</span>}
-            </a>
-          ))}
+          <ul>
+            {menu.map((m) => (
+              <li>
+                <a
+                  href={link(m.to)}
+                  aria-current={current(m.to) ? "page" : undefined}
+                  class:list={current(m.to) && active}
+                >
+                  <span>{m.label}</span>
+                  {m.count !== undefined && <span class="hw-catalogue-count">{m.count}</span>}
+                </a>
+              </li>
+            ))}
+            {repo?.links.map((l) => (
+              <li>
+                <a href={l.href}>
+                  <span>{l.label}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
           {d.hub && (
             <>
               <p class="hw-label mt-6 mb-1 px-2">Repos</p>
-              {d.repos.map((r) => (
-                <a
-                  href={link(r.dashboard)}
-                  aria-current={r.key === repo?.key ? "true" : undefined}
-                  class:list={[
-                    ...navLinkClass("a", r.key === repo?.key ? "a" : "b"),
-                    "flex justify-between gap-2",
-                  ]}
-                >
-                  <span class="truncate">{r.key}</span>
-                  <span class="tabular-nums">
-                    {openQuestions(r.items).length + forPerson(r.items).length || ""}
-                  </span>
-                </a>
-              ))}
+              <ul>
+                {d.repos.map((r) => (
+                  <li>
+                    <a
+                      href={link(r.dashboard)}
+                      aria-current={r.key === repo?.key ? "true" : undefined}
+                      class:list={r.key === repo?.key && active}
+                    >
+                      <span>{r.key}</span>
+                      <span class="hw-catalogue-count">
+                        {openQuestions(r.items).length + forPerson(r.items).length || ""}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
             </>
           )}
-          {repo &&
-            repo.links.length > 0 &&
-            repo.links.map((l) => (
-              <a href={l.href} class:list={[...navLinkClass("a", "b"), "mt-2"]}>
-                {l.label}
-              </a>
-            ))}
         </nav>
       </aside>
-      <main class="min-w-0 flex-1 pb-16 lg:py-6">
-        <PageHeader title={page.title}>
-          <div slot="action">
+      <main class="hw-catalogue-main pb-16">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h1>{page.title}</h1>
+          <div class="flex items-center gap-3">
             <slot name="action" />
           </div>
-        </PageHeader>
-        {lead && <p class="max-w-prose text-subheading">{lead}</p>}
-        {provenance && <p class="mt-1 font-mono text-micro text-foreground/70">{provenance}</p>}
+        </div>
+        {lead && <p class="hw-catalogue-lead">{lead}</p>}
+        {provenance && <p class="hw-catalogue-provenance">{provenance}</p>}
         <div class="mt-6 flex flex-col gap-8">
           <slot />
         </div>

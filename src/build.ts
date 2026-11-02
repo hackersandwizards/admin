@@ -41,7 +41,7 @@ export type Page = {
     | "design-system"
     | "product"
     | "architecture"
-    | "validation"
+    | "checks"
     | "log";
   repo?: string;
   doc?: string;
@@ -77,16 +77,15 @@ function itemHtml(repo: RepoData, text: string) {
 export const firstWord = (owner = "") => owner.match(/^[\p{L}\p{N}-]+/u)?.[0] ?? owner;
 
 export function siteData(repos: RepoData[], hub: boolean): SiteData {
-  // A person is whoever answers an open question somewhere; work they own counts as theirs.
-  const people = [
-    ...new Set(
-      repos.flatMap((r) =>
-        r.items
-          .filter((i) => i.status === "open" && (i.kind === "decision" || i.kind === "review"))
-          .map((i) => firstWord(i.owner)),
-      ),
-    ),
-  ].sort();
+  // A person is whoever answers an open question somewhere; work they own counts as theirs. The
+  // person with the most open questions comes first, and the hub's filter starts on them.
+  const asked = repos.flatMap((r) =>
+    r.items
+      .filter((i) => i.status === "open" && (i.kind === "decision" || i.kind === "review"))
+      .map((i) => firstWord(i.owner)),
+  );
+  const count = (p: string) => asked.filter((a) => a === p).length;
+  const people = [...new Set(asked)].sort((a, b) => count(b) - count(a) || a.localeCompare(b));
   const pages: Page[] = [];
   const out = repos.map((r) => {
     const prefix = hub ? `${r.key}/` : "";
@@ -116,7 +115,7 @@ export function siteData(repos: RepoData[], hub: boolean): SiteData {
       add({ path: `products-${n + 1}`, type: "product", product: n, title: p.label }),
     );
     add({ path: "architecture", type: "architecture", title: "Architecture" });
-    add({ path: "validation", type: "validation", title: "Validation" });
+    add({ path: "checks", type: "checks", title: "Checks" });
     add({ path: "log", type: "log", title: "Log" });
     for (const d of [...r.reports, ...r.docs])
       add({
@@ -162,6 +161,7 @@ export async function buildSite(data: SiteData, outDir: string) {
         `@import "${at("@hackersandwizards/brand/expert.css")}";`,
         `@import "${at("@hackersandwizards/brand/header.css")}";`,
         `@import "${at("@hackersandwizards/brand/elements.css")}";`,
+        `@import "${at("@hackersandwizards/brand/catalogue.css")}";`,
         `@source "${join(PKG, "site/src")}";`,
         `@source "${join(brandRoot, "expert")}";`,
         `@source "${join(brandRoot, "elements")}";`,

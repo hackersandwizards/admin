@@ -138,6 +138,14 @@ describe("migration", () => {
     expect(rest).toContain("Nothing here becomes work.");
   });
 
+  test("readGoal takes a prioritised row before the first section, never a permissions table", () => {
+    const text =
+      "# Goal\n\n| Work | Owner | Evidence |\n| --- | --- | --- |\n| Tidy the logos | P3, a session | file |\n\n| Repo | Push |\n| --- | --- |\n| tools | allowed |\n";
+    const { work, rest } = readGoal(text, true);
+    expect(work).toEqual([{ point: "Tidy the logos", owner: "P3, a session", evidence: "file" }]);
+    expect(rest).toContain("| tools | allowed |");
+  });
+
   test("converts items.js, GOAL.md and a review folder into checked item files", () => {
     const dir = join(scratch(), "legacy");
     cpSync(join(FIX, "legacy"), dir, { recursive: true });

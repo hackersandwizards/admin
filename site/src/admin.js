@@ -139,7 +139,11 @@
 
   // Filters: search over every row and card, and who answers.
   const search = document.getElementById("admin-search");
-  let who = localStorage.getItem(STORE + "who") || "all";
+  // The filter starts on the first person, the one with the most open questions.
+  let who =
+    localStorage.getItem(STORE + "who") ||
+    document.querySelector("[data-who-button]")?.dataset.whoButton ||
+    "all";
   const rows = () => [...document.querySelectorAll("[data-row]")];
   function apply() {
     const term = (search?.value || "").trim().toLowerCase();

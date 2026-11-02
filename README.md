@@ -8,7 +8,7 @@ only. Every item, report and image stays in the repository it belongs to.
 A repository adds the package as a dev dependency pinned to a tag, as it does with brand:
 
 ```sh
-bun add -d "git+https://github.com/hackersandwizards/admin.git#v0.1.0"
+bun add -d "git+https://github.com/hackersandwizards/admin.git#v0.2.0"
 ```
 
 ## Commands
@@ -67,7 +67,7 @@ The question's context, in Markdown.
 
 Dashboard, Decisions, Work, Reviews (each `docs/tracking/<date>-<topic>/` folder with its images
 and report), Docs (reports and the rest of `docs/`), Design system, the repository's products,
-Architecture (package, pins, scripts with their first comment line), Validation (the steps of
+Architecture (package, pins, scripts with their first comment line), Checks (the steps of
 `check:all` or `check`) and Log.
 
 A repository configures what convention cannot find under `admin` in its `package.json`:

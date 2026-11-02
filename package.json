@@ -1,6 +1,6 @@
 {
   "name": "@hackersandwizards/admin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -31,7 +31,7 @@
     "format": "bun --bun prettier --write ."
   },
   "dependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v0.27.14",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v0.28.4",
     "@tailwindcss/vite": "4.3.3",
     "astro": "7.4.4",
     "tailwindcss": "4.3.3"

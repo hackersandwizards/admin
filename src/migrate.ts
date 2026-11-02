@@ -133,9 +133,15 @@ export function titleOf(point: string) {
 export function readGoal(text: string, isGoal: boolean) {
   const work: { point: string; owner: string; evidence: string }[] = [];
   const rest: string[] = [];
+  // In GOAL.md, the text before the first "## " is the goal: a row there is work only where its
+  // owner carries a priority (P1 to P3), unlike a table of standing permissions.
   let skip = isGoal;
+  let preamble = isGoal;
   for (const line of text.split("\n")) {
-    if (line.startsWith("## ")) skip = /goal|ziel|done means|waiting/i.test(line);
+    if (line.startsWith("## ")) {
+      skip = /goal|ziel|done means|waiting/i.test(line);
+      preamble = false;
+    }
     let point = "",
       owner = "",
       evidence = "";
@@ -153,6 +159,15 @@ export function readGoal(text: string, isGoal: boolean) {
       point = t.split(/ Owner: | Beleg: | Evidence: /)[0]!;
       owner = t.match(/Owner: ([^.]*)\./)?.[1] ?? "";
       evidence = t.match(/(?:Evidence|Beleg): (.*)$/)?.[1] ?? "";
+    } else if (preamble && line.startsWith("|")) {
+      [point = "", owner = "", evidence = ""] = line
+        .split(/(?<!\\)\|/)
+        .slice(1, -1)
+        .map((c) => c.trim());
+      if (!/^P[1-3]\b/.test(owner)) {
+        rest.push(line);
+        continue;
+      }
     } else {
       rest.push(line);
       continue;
