@@ -57,7 +57,7 @@ const meta = [
     <span class="mark shrink-0 text-micro text-accent"></span>
     {i.area && <span class="shrink-0 text-ui text-foreground/70">{i.area}</span>}
   </summary>
-  <div class="flex flex-col gap-3 px-3 pb-4 text-ui lg:pl-16">
+  <div class="flex flex-col gap-4 px-3 pb-4 text-ui lg:pl-16">
     {i.assumption && (
       <p class="hw-callout max-w-prose">
         <b>Assumed:</b> {i.assumption}
@@ -68,7 +68,10 @@ const meta = [
         <b>Decided by {i.by}:</b> {i.decision}
       </p>
     )}
-    <div class="max-w-prose [&_p]:mb-2" set:html={i.html} />
+    <div
+      class="flex flex-col gap-3 [&_li]:max-w-prose [&_p]:max-w-prose [&_ul]:list-disc [&_ul]:pl-5"
+      set:html={i.html}
+    />
     {i.evidence && <p class="text-foreground/70">Evidence: {i.evidence}</p>}
     {shots("").length > 0 && (
       <div class="grid grid-cols-2 gap-3 xl:grid-cols-3">
@@ -78,13 +81,17 @@ const meta = [
       </div>
     )}
     {carded && (
-      <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+      <div
+        class={`grid gap-2 ${options.length > 1 ? "md:grid-cols-2" : ""} ${options.length > 2 ? "xl:grid-cols-3" : ""}`}
+      >
         {options.map((o) => (
           <label class="hw-card flex cursor-pointer flex-col gap-2 has-checked:border-accent">
             {shots(o.key).length > 0 && (
-              <span class={`grid gap-1 ${shots(o.key).length > 1 ? "grid-cols-2" : ""}`}>
+              <span
+                class={`grid gap-1 ${["", "", "grid-cols-2"][shots(o.key).length] ?? (options.length > 2 ? "grid-cols-2" : "grid-cols-3")}`}
+              >
                 {shots(o.key).map((m) => (
-                  <Shot {...m} alt={m.caption ?? o.label} small />
+                  <Shot {...m} alt={m.caption ?? o.label} small={options.length > 1} />
                 ))}
               </span>
             )}

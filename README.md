@@ -8,7 +8,7 @@ only. Every item, report and image stays in the repository it belongs to.
 A repository adds the package as a dev dependency pinned to a tag, as it does with brand:
 
 ```sh
-bun add -d "git+https://github.com/hackersandwizards/admin.git#v0.4.0"
+bun add -d "git+https://github.com/hackersandwizards/admin.git#v0.4.1"
 ```
 
 ## Commands
