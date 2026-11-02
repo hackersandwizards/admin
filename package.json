@@ -50,7 +50,7 @@
     "tailwindcss": "4.3.3"
   },
   "devDependencies": {
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v0.3.3",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v0.4.0",
     "@types/bun": "latest",
     "astrobook": "0.13.3",
     "eslint": "10.14.0",
@@ -68,6 +68,9 @@
       "check:values",
       "check:fixture",
       "check:elements"
-    ]
+    ],
+    "skip": {
+      "admin": "this is admin: check:fixture runs admin-check on the invented fixture, and the repository keeps no items of its own"
+    }
   }
 }
