@@ -1,0 +1,37 @@
+---
+// An option's input, label, score and detail: a radio, or a checkbox where the item takes several.
+import type { ViewItem } from "../data";
+
+interface Props {
+  item: ViewItem;
+  option: NonNullable<ViewItem["options"]>[number];
+  name: string;
+  score: string;
+}
+const { item, option: o, name, score } = Astro.props;
+---
+
+<span class="flex w-full items-start gap-2">
+  <input
+    type={item.multiple ? "checkbox" : "radio"}
+    name={name}
+    value={o.key}
+    data-label={o.label}
+    data-option
+    class="mt-1"
+  />
+  <span class="min-w-0 flex-1">
+    {item.recommendedKeys.includes(o.key) && (
+      <span class="hw-pill mr-1" data-caps>
+        Recommended
+      </span>
+    )}
+    <b>{o.label}</b>
+    {o.detail && <span class="block text-foreground/70">{o.detail}</span>}
+  </span>
+  {score && (
+    <span class="shrink-0 font-mono font-semibold" title="blind-review score">
+      {score}
+    </span>
+  )}
+</span>

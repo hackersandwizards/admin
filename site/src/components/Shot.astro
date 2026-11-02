@@ -1,0 +1,22 @@
+---
+// One image, linked to itself at full size, with its caption under it.
+interface Props {
+  src: string;
+  caption?: string;
+  alt: string;
+  small?: boolean;
+}
+const { src, caption, alt, small = false } = Astro.props;
+---
+
+<span class="flex flex-col gap-1">
+  <a href={src} target="_blank">
+    <img
+      loading="lazy"
+      src={src}
+      alt={alt}
+      class={`w-full rounded-sm bg-muted object-contain ${small ? "max-h-48" : "max-h-96"}`}
+    />
+  </a>
+  {caption && <span class="text-micro text-foreground/70">{caption}</span>}
+</span>

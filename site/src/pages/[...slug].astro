@@ -4,7 +4,7 @@
 import Layout from "../components/Layout.astro";
 import ItemGroups from "../components/ItemGroups.astro";
 import ItemRow from "../components/ItemRow.astro";
-import { compareItems } from "../../../src/items.ts";
+import { compareItems, imagesOf } from "../../../src/items.ts";
 import { age, data, day, forPerson, href, openQuestions, repoOf, type Page } from "../data";
 
 export function getStaticPaths() {
@@ -58,7 +58,7 @@ const leads: Partial<Record<Page["type"], string>> = {
     "Questions only a person can answer, review requests, and the assumptions agents made. Rows are closed; open one for its context and options.",
   work: "Open work, by priority, and the goal it serves.",
   reviews:
-    "Each review folder in docs/tracking: its images side by side, its report and the items that name it.",
+    "Every item carrying images, open for its options side by side, then each older review folder in docs/tracking with its images, its report and the items that name it.",
   docs: "Reports in docs/tracking, newest first, and the repository's other documents.",
   "design-system": "The building blocks: the repository's component catalogue in Astrobook.",
   architecture:
@@ -327,13 +327,19 @@ const leads: Partial<Record<Page["type"], string>> = {
 
   {page.type === "reviews" && repo && (
     <>
+      {items.some((i) => i.images) && (
+        <ItemGroups items={items.filter((i) => i.images)} title="Items with images" />
+      )}
       {!repo.reviews.length && <p class="text-ui">No review folders in docs/tracking.</p>}
       {repo.reviews.map((r, n) => {
-        const named = items.filter(
-          (i) =>
-            i.page?.startsWith(`${r.dir}/`) ||
-            Object.values(i.images ?? {}).some((f) => f.startsWith(`${r.dir}/`)),
+        const shots = items.flatMap((i) =>
+          Object.values(imagesOf(i))
+            .flat()
+            .filter((m) => m.src.startsWith(`${r.dir}/`))
+            .map((m) => ({ ...m, id: i.id })),
         );
+        const named = [...new Set(shots.map((m) => m.id))];
+        const caption = (f: string) => shots.find((m) => m.src === `${r.dir}/${f}`)?.caption;
         return (
           <details class="hw-disclosure flex flex-col gap-2" data-row open={n < 3}>
             <summary class="font-mono font-semibold text-heading">
@@ -349,14 +355,9 @@ const leads: Partial<Record<Page["type"], string>> = {
                   Report
                 </a>
               )}
-              {r.page && (
-                <a class="chip-link" href={fileHref(`${repo.path}/${r.page}`)}>
-                  Review page
-                </a>
-              )}
-              {named.map((i) => (
+              {named.map((id) => (
                 <a class="chip-link" href={link(`${repo.prefix}decisions`)}>
-                  {i.id}
+                  {id}
                 </a>
               ))}
             </p>
@@ -375,6 +376,7 @@ const leads: Partial<Record<Page["type"], string>> = {
                     class="aspect-video w-full rounded-sm bg-muted object-contain"
                   />
                   <span class="truncate font-mono text-micro text-foreground/70">{f}</span>
+                  {caption(f) && <span class="text-micro">{caption(f)}</span>}
                 </a>
               ))}
             </div>

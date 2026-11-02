@@ -82,8 +82,14 @@ export function readItems(src: Source): ReadItems {
   for (const p of src.paths) {
     if (!p.startsWith(`${ITEMS_DIR}/`)) continue;
     const name = p.slice(ITEMS_DIR.length + 1);
+    // An item's images sit in a folder named for it; the folder goes with the item.
+    const [folder, file, deeper] = name.split("/");
+    if (file && !deeper && IMAGE.test(file)) {
+      if (!has.has(`${ITEMS_DIR}/${folder}.md`)) defects.push(`${p}: no item ${folder}.md`);
+      continue;
+    }
     if (name.includes("/") || !name.endsWith(".md")) {
-      defects.push(`${p}: only <id>.md files belong in ${ITEMS_DIR}`);
+      defects.push(`${p}: only <id>.md files and <id>/<image> belong in ${ITEMS_DIR}`);
       continue;
     }
     try {
@@ -101,7 +107,7 @@ export function readItems(src: Source): ReadItems {
 }
 
 export type Report = { path: string; date: string; title: string; html: string };
-export type Review = { dir: string; images: string[]; report?: string; page?: string };
+export type Review = { dir: string; images: string[]; report?: string };
 export type Doc = { path: string; title: string; html: string };
 export type ScriptFile = { path: string; comment: string };
 export type Commit = { hash: string; time: number; subject: string };
@@ -255,7 +261,6 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
       dir,
       images: files.filter((f) => IMAGE.test(f)).sort(),
       report: reports.some((r) => r.path === `${dir}.md`) ? `${dir}.md` : undefined,
-      page: files.includes("index.html") ? `${dir}/index.html` : undefined,
     }))
     .sort((a, b) => b.dir.localeCompare(a.dir));
   const docs = src.paths

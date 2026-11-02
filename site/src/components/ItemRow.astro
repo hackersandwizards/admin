@@ -1,7 +1,11 @@
 ---
 // One item as a closed list row: priority pill, title, a meta line, the area. Open, it shows the
-// assumption, the question's text, the options with their images, and the answer fields.
+// assumption, the question's text, the item's own images, the options with their images and
+// scores, and the answer fields. Options with images are cards; options without are one dense
+// list, so a long list of candidates stays scannable.
 import { day, type ViewItem } from "../data";
+import Choice from "./Choice.astro";
+import Shot from "./Shot.astro";
 
 interface Props {
   item: ViewItem;
@@ -11,6 +15,10 @@ interface Props {
 const { item: i, showRepo = false, open = false } = Astro.props;
 const k = `${i.repo}:${i.id}`;
 const options = i.options ?? [];
+const shots = (key: string) => i.optionImages[key] ?? [];
+const carded = options.some((o) => shots(o.key).length);
+const score = (o: (typeof options)[number]) =>
+  o.score === undefined ? "" : `${o.score}${o.noise === undefined ? "" : ` ± ${o.noise}`}`;
 // P1 red, P2 amber, P3 the neutral pill: brand hues on brand's pill settings.
 const hue = {
   1: "--hw-pill-hue: var(--color-red); --hw-pill-hue-night: var(--color-red-night)",
@@ -19,7 +27,7 @@ const hue = {
 const meta = [
   showRepo ? i.repo : "",
   i.status === "open" ? i.kind : i.status,
-  options.length ? `${options.length} options` : "",
+  options.length ? `${options.length} options${i.multiple ? ", pick several" : ""}` : "",
   i.owner ? `for ${i.owner}` : "",
   i.recommendedLabel ? `recommended: ${i.recommendedLabel}` : "",
   i.due ? `due ${day(Date.parse(i.due) / 1000)}` : "",
@@ -61,42 +69,38 @@ const meta = [
       </p>
     )}
     <div class="max-w-prose [&_p]:mb-2" set:html={i.html} />
-    {(i.pageHref || i.evidence) && (
-      <p class="flex flex-wrap gap-4">
-        {i.pageHref && (
-          <a class="chip-link" href={i.pageHref}>
-            Review page
-          </a>
-        )}
-        {i.evidence && <span class="text-foreground/70">Evidence: {i.evidence}</span>}
-      </p>
+    {i.evidence && <p class="text-foreground/70">Evidence: {i.evidence}</p>}
+    {shots("").length > 0 && (
+      <div class="grid grid-cols-2 gap-3 xl:grid-cols-3">
+        {shots("").map((m) => (
+          <Shot {...m} alt={m.caption ?? i.title} />
+        ))}
+      </div>
     )}
-    {options.length > 0 && (
-      <div class="grid gap-2 md:grid-cols-2">
+    {carded && (
+      <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         {options.map((o) => (
           <label class="hw-card flex cursor-pointer flex-col gap-2 has-checked:border-accent">
-            {i.optionImages[o.key] && (
-              <a href={i.optionImages[o.key]} target="_blank">
-                <img
-                  loading="lazy"
-                  src={i.optionImages[o.key]}
-                  alt={o.label}
-                  class="max-h-48 w-full rounded-sm bg-muted object-contain"
-                />
-              </a>
-            )}
-            <span class="flex items-start gap-2">
-              <input type="radio" name={k} value={o.key} data-label={o.label} class="mt-1" />
-              <span>
-                {o.key === i.recommended && (
-                  <span class="hw-pill mr-1" data-caps>
-                    Recommended
-                  </span>
-                )}
-                <b>{o.label}</b>
-                {o.detail && <span class="block text-foreground/70">{o.detail}</span>}
+            {shots(o.key).length > 0 && (
+              <span class={`grid gap-1 ${shots(o.key).length > 1 ? "grid-cols-2" : ""}`}>
+                {shots(o.key).map((m) => (
+                  <Shot {...m} alt={m.caption ?? o.label} small />
+                ))}
               </span>
-            </span>
+            )}
+            <Choice item={i} option={o} name={k} score={score(o)} />
+          </label>
+        ))}
+      </div>
+    )}
+    {options.length > 0 && !carded && (
+      <div class="hw-card p-0!" data-hw-exception="option-list">
+        {options.map((o) => (
+          <label
+            class="flex cursor-pointer border-b border-border px-3 py-1.5 last:border-b-0 has-checked:bg-muted"
+            data-option-row
+          >
+            <Choice item={i} option={o} name={k} score={score(o)} />
           </label>
         ))}
       </div>
@@ -111,8 +115,8 @@ const meta = [
     </label>
     <textarea id={`n-${k}`} class="form-input w-full"></textarea>
     <p class="flex flex-wrap items-center gap-2">
-      {i.recommended && (
-        <button type="button" class="pick btn-secondary" data-v={i.recommended}>
+      {i.recommendedKeys.length > 0 && (
+        <button type="button" class="pick btn-secondary" data-v={i.recommendedKeys.join(" ")}>
           Pick recommended
         </button>
       )}

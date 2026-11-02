@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-// Checks a repository's item files in docs/tracking/items (fields, status, options, image and page
-// paths) from the working tree, and fails while a legacy GOAL.md or items.js remains.
+// Checks a repository's item files in docs/tracking/items (fields, status, options, images and
+// image folders) from the working tree, and fails while a legacy GOAL.md or items.js remains.
 // Usage: admin-check [<repo> ...]   default: the current directory. Exit 1 on a defect.
 import { resolve } from "node:path";
 import { readItems, treeSource } from "../src/repo.ts";

@@ -1,8 +1,8 @@
 // Runs on every admin page, inline, so a page opened from disk needs no module loading.
 // Search filters the page's rows; the person buttons filter rows by who answers; answers stay in
 // this browser (localStorage) until "Copy answers" puts them on the clipboard as one block for the
-// chat, one "repo:id: choice, note" line each. An answer whose row left a rebuilt page is dropped
-// once it was copied.
+// chat, one "repo:id: choice, note" line each; an item taking several options answers with their
+// keys, comma-separated. An answer whose row left a rebuilt page is dropped once it was copied.
 (() => {
   const STORE = "admin-answers:";
   const read = (k) => {
@@ -36,9 +36,20 @@
   const hhmm = (iso) =>
     new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const label = (d, key) => d.querySelector(`input[value="${CSS.escape(key)}"]`)?.dataset.label;
+  const picked = (a) => (a?.option ? a.option.split(",") : []);
   function mark(d, a) {
+    const n = picked(a).length;
     const text =
-      a && (a.option ? label(d, a.option) || a.option : a.done ? "done" : a.note ? "note" : "");
+      a &&
+      (n > 1
+        ? `${n} picked`
+        : a.option
+          ? label(d, a.option) || a.option
+          : a.done
+            ? "done"
+            : a.note
+              ? "note"
+              : "");
     const m = d.querySelector(".mark");
     if (m) m.textContent = text ? `✓ ${text}` : "";
     const s = d.querySelector(".saved");
@@ -47,19 +58,19 @@
   function load(d) {
     const a = read(d.dataset.k);
     for (const i of d.querySelectorAll("input"))
-      i.checked = !!a && (i.type === "radio" ? a.option === i.value : !!a.done);
+      i.checked = !!a && ("option" in i.dataset ? picked(a).includes(i.value) : !!a.done);
     const t = d.querySelector("textarea");
     if (t) t.value = a ? a.note || "" : "";
     mark(d, a);
   }
   function save(d) {
-    const opt = d.querySelector("input[type=radio]:checked");
-    const done = d.querySelector("input[type=checkbox]:checked");
+    const option = [...d.querySelectorAll("input[data-option]:checked")]
+      .map((i) => i.value)
+      .join(",");
+    const done = d.querySelector("input[value=done]:checked");
     const note = (d.querySelector("textarea")?.value || "").trim();
     const a =
-      opt || done || note
-        ? { option: opt ? opt.value : "", done: !!done, note, at: new Date().toISOString() }
-        : null;
+      option || done || note ? { option, done: !!done, note, at: new Date().toISOString() } : null;
     if (write(d.dataset.k, a)) mark(d, a);
     state();
   }
@@ -72,8 +83,9 @@
     const lines = answered().map((k) => {
       const a = read(k);
       const d = items.find((x) => x.dataset.k === k);
+      const one = picked(a).length === 1;
       const choice = a.option
-        ? `${a.option}${d && label(d, a.option) ? ` (${label(d, a.option)})` : ""}`
+        ? `${a.option}${one && d && label(d, a.option) ? ` (${label(d, a.option)})` : ""}`
         : a.done
           ? "done"
           : "";
@@ -102,8 +114,10 @@
     d.querySelector("textarea")?.addEventListener("input", () => save(d));
     const pick = d.querySelector(".pick");
     pick?.addEventListener("click", () => {
-      const r = d.querySelector(`input[value="${CSS.escape(pick.dataset.v)}"]`);
-      if (r) r.checked = true;
+      for (const v of pick.dataset.v.split(" ")) {
+        const r = d.querySelector(`input[data-option][value="${CSS.escape(v)}"]`);
+        if (r) r.checked = true;
+      }
       save(d);
     });
     d.querySelector(".clear")?.addEventListener("click", () => {
@@ -151,6 +165,9 @@
       const byWho = who !== "all" && r.dataset.who && r.dataset.who !== who;
       r.hidden = byWho || (!!term && !r.textContent.toLowerCase().includes(term));
     }
+    // Inside a long option list, the search narrows the options too.
+    for (const o of document.querySelectorAll("[data-option-row]"))
+      o.hidden = !!term && !o.textContent.toLowerCase().includes(term);
     for (const g of document.querySelectorAll("[data-group]")) {
       const shown = g.querySelectorAll("[data-row]:not([hidden])").length;
       g.hidden = !shown;

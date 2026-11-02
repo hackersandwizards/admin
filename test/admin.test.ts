@@ -81,17 +81,50 @@ describe("item files", () => {
     [{ id: "Bad_Id" }, "not lower-case kebab"],
     [{ kind: "work", status: "assumed" }, "work is assumed"],
     [{ images: { z: "x.jpg" } }, "image key z is not an option"],
+    [{ recommended: ["a", "b"] }, "several recommended without multiple"],
+    [{ multiple: "yes" }, "multiple yes is not true or false"],
+    [
+      {
+        options: [
+          { key: "a", label: "A", score: "8" },
+          { key: "b", label: "B" },
+        ],
+      },
+      "score 8",
+    ],
+    [
+      {
+        options: [
+          { key: "a", label: "A", noise: 1 },
+          { key: "b", label: "B" },
+        ],
+      },
+      "noise without",
+    ],
+    [{ images: [{ src: "x.jpg", alt: "x" }] }, "is not a path or {src, caption}"],
+    [{ images: { a: [{ caption: "no src" }] } }, "is not a path or {src, caption}"],
   ] as [Partial<Item>, string][])("defect %#: %p", (change, message) => {
     const defects = itemDefects({ ...valid, ...change } as Item, exists);
     expect(defects.join("\n")).toContain(message);
   });
 
-  test("a missing image or page is a defect", () => {
-    const item = { ...valid, images: { a: "docs/x.jpg" }, page: "docs/p/index.html" };
+  test("a missing image is a defect; a bare name lies in the item's own folder", () => {
+    const item = { ...valid, images: { a: "docs/x.jpg", b: [{ src: "y.jpg", caption: "dark" }] } };
     expect(itemDefects(item, () => false)).toEqual([
       "image docs/x.jpg not found",
-      "page docs/p/index.html not found",
+      "image docs/tracking/items/a-question/y.jpg not found",
     ]);
+  });
+
+  test("several recommended options and item images pass on a multiple item", () => {
+    const item = { ...valid, multiple: true, recommended: ["a", "b"], images: ["one.jpg"] };
+    expect(itemDefects(item, exists)).toEqual([]);
+  });
+
+  test("an item without page: the field is gone", () => {
+    expect(() =>
+      parseItem("x", "---\nkind: review\npage: docs/p/index.html\n---\n\n# T\n"),
+    ).toThrow("unknown field page");
   });
 
   test("parse rejects an unknown field and a missing title", () => {
@@ -110,7 +143,9 @@ describe("admin-check", () => {
       "cache-folder",
       "check-the-copy",
       "goal",
+      "pick-a-logo",
       "pick-a-variant",
+      "pick-recipients",
       "work-wire-the-gate",
     ]);
   });
@@ -123,6 +158,10 @@ describe("admin-check", () => {
     const { defects } = readItems(treeSource(dir));
     expect(defects).toContain("GOAL.md: legacy file, items live in docs/tracking/items");
     expect(defects).toContain("docs/tracking/items/broken.md: no frontmatter between --- lines");
+    Bun.write(join(dir, "docs/tracking/items/gone/shot.jpg"), "x");
+    expect(readItems(treeSource(dir)).defects).toContain(
+      "docs/tracking/items/gone/shot.jpg: no item gone.md",
+    );
     const cli = Bun.spawnSync(["bun", join(import.meta.dir, "../bin/admin-check.ts"), dir]);
     expect(cli.exitCode).toBe(1);
   });
@@ -168,9 +207,9 @@ describe("migration", () => {
       order: 3,
       recommended: "a",
     });
-    expect(read("pick-a-name").page).toMatch(
-      /^docs\/tracking\/\d{4}-\d{2}-\d{2}-sample-topic\/index\.html$/,
-    );
+    expect(read("pick-a-name").images).toEqual(["shot.svg"]);
+    expect(existsSync(join(dir, "docs/tracking/items/pick-a-name/shot.svg"))).toBe(true);
+    expect(existsSync(join(dir, "docs/tracking/items/pick-a-name/index.html"))).toBe(false);
     expect(read("look-at-logo")).toMatchObject({ kind: "review", owner: "Sam", priority: 1 });
     expect(read("colour-default").body).toContain("Measured on two screens.");
     expect(read("colour-default").body).toContain("source: a stray field");

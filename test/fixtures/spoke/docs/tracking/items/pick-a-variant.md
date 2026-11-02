@@ -9,11 +9,18 @@ options:
   - key: a
     label: Variant A
     detail: The calmer one.
+    score: 8.4
+    noise: 0.5
   - key: b
     label: Variant B
+    score: 6.1
 images:
   a: docs/tracking/2026-01-15-sample-topic/variant-a.svg
-  b: docs/tracking/2026-01-15-sample-topic/variant-b.svg
+  b:
+    - src: variant-b.svg
+      caption: light, 600 px
+    - src: variant-b-dark.svg
+      caption: dark, 600 px
 ---
 
 # Which variant ships?

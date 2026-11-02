@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import { compareItems, type Item } from "./items.ts";
+import { compareItems, imagesOf, type Item } from "./items.ts";
 import { withElements, type RepoData } from "./repo.ts";
 
 const PKG = join(import.meta.dirname, "..");
@@ -22,8 +22,9 @@ export type ViewItem = Item & {
   repo: string;
   who: string;
   html: string;
-  optionImages: Record<string, string>;
-  pageHref?: string;
+  // Option key to its images, "" for the item's own, each with its file URL.
+  optionImages: Record<string, { src: string; caption?: string }[]>;
+  recommendedKeys: string[];
   recommendedLabel?: string;
 };
 
@@ -95,10 +96,20 @@ export function siteData(repos: RepoData[], hub: boolean): SiteData {
       who: firstWord(i.owner),
       html: itemHtml(r, i.body),
       optionImages: Object.fromEntries(
-        Object.entries(i.images ?? {}).map(([k, f]) => [k, fileHref(join(r.path, f))]),
+        Object.entries(imagesOf(i)).map(([k, list]) => [
+          k,
+          list.map((m) => ({ ...m, src: fileHref(join(r.path, m.src)) })),
+        ]),
       ),
-      pageHref: i.page ? fileHref(join(r.path, i.page)) : undefined,
-      recommendedLabel: i.options?.find((o) => o.key === i.recommended)?.label,
+      recommendedKeys: [i.recommended ?? []].flat(),
+      // More than three recommended options read as a count in the row's meta line.
+      recommendedLabel:
+        [i.recommended ?? []].flat().length > 3
+          ? `${[i.recommended].flat().length} options`
+          : i.options
+              ?.filter((o) => [i.recommended].flat().includes(o.key))
+              .map((o) => o.label)
+              .join(", "),
     }));
     const add = (p: Omit<Page, "repo" | "path"> & { path: string }) =>
       pages.push({ ...p, path: prefix + p.path, repo: r.key });

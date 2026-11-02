@@ -6,7 +6,6 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -195,6 +194,8 @@ export function workToItem(
   };
 }
 
+const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
+
 export type Migration = {
   repo: string;
   key?: string;
@@ -244,8 +245,9 @@ export function migrate(
     }
   }
 
-  // Review folders (review.json names repo and row, or an "id*" prefix): the folder moves into the
-  // spoke beside its report, and each item it names links it as `page`.
+  // Review folders (review.json names repo and row, or an "id*" prefix): each item it names gets
+  // the folder's images in its own folder, docs/tracking/items/<id>/. Its HTML page stays behind:
+  // the admin renders a review from the item.
   if (opts.reviews && existsSync(opts.reviews))
     for (const topic of readdirSync(opts.reviews)) {
       const dir = join(opts.reviews, topic);
@@ -257,7 +259,6 @@ export function migrate(
         id?: string;
         ids?: string[];
         rows?: Record<string, unknown>;
-        images?: string;
       };
       try {
         review = JSON.parse(readFileSync(meta, "utf8"));
@@ -279,23 +280,18 @@ export function migrate(
         out.notes.push(`${topic}: rows ${names.join(", ")} not found, folder left in place`);
         continue;
       }
-      const inRepo =
-        review.images?.startsWith(`${repo}/docs/tracking/`) &&
-        review.images.slice(repo.length + 1).replace(/\/$/, "");
-      const date = new Date(statSync(meta).mtimeMs).toISOString().slice(0, 10);
-      const target = inRepo || `docs/tracking/${date}-${topic}`;
-      if (!existsSync(join(dir, "index.html"))) continue;
-      const page = `${target}/${existsSync(join(repo, target, "index.html")) ? `${topic}.html` : "index.html"}`;
-      if (!opts.dryRun)
-        for (const f of readdirSync(dir))
-          if (f !== "review.json") {
-            const to = join(repo, f === "index.html" ? page : `${target}/${f}`);
+      const images = readdirSync(dir).filter((f) => IMAGE.test(f));
+      for (const i of named) {
+        if (!opts.dryRun)
+          for (const f of images) {
+            const to = join(repo, ITEMS_DIR, i.id, f);
             if (existsSync(to)) continue;
             mkdirSync(dirname(to), { recursive: true });
-            cpSync(join(dir, f), to, { recursive: true });
+            cpSync(join(dir, f), to);
           }
-      for (const i of named) i.page = page;
-      out.pages.push(`${topic} -> ${page}`);
+        if (images.length) i.images = images;
+      }
+      out.pages.push(`${topic} -> ${named.map((i) => `${ITEMS_DIR}/${i.id}/`).join(", ")}`);
     }
 
   if (!opts.dryRun) {

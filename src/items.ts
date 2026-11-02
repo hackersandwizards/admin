@@ -6,7 +6,17 @@ export const ITEMS_DIR = "docs/tracking/items";
 export const KINDS = ["decision", "review", "work", "goal"] as const;
 export const STATUSES = ["open", "assumed", "decided"] as const;
 
-export type Option = { key: string; label: string; detail?: string };
+// An option may carry its blind-review score and the noise measured around it.
+export type Option = {
+  key: string;
+  label: string;
+  detail?: string;
+  score?: number;
+  noise?: number;
+};
+// An image is a file name in the item's own folder, docs/tracking/items/<id>/, or a path with a
+// slash, read from the repository root as before that folder existed; either with a caption.
+export type Image = string | { src: string; caption?: string };
 export type Item = {
   id: string;
   kind: (typeof KINDS)[number];
@@ -16,15 +26,16 @@ export type Item = {
   area?: string;
   owner?: string;
   due?: string;
-  recommended?: string;
+  recommended?: string | string[];
+  multiple?: boolean;
   options?: Option[];
-  images?: Record<string, string>;
+  // Option key to one image or several (light, dark, phone), or a list for the item as a whole.
+  images?: Record<string, Image | Image[]> | Image[];
   assumption?: string;
   decision?: string;
   by?: string;
   quote?: string;
   evidence?: string;
-  page?: string;
   title: string;
   body: string;
 };
@@ -38,6 +49,7 @@ const FIELDS = [
   "owner",
   "due",
   "recommended",
+  "multiple",
   "options",
   "images",
   "assumption",
@@ -45,7 +57,6 @@ const FIELDS = [
   "by",
   "quote",
   "evidence",
-  "page",
 ];
 
 export class ItemError extends Error {}
@@ -110,17 +121,44 @@ export function itemDefects(item: Item, exists: (path: string) => boolean): stri
   if (new Set(keys).size !== keys.length) d.push("duplicate option key");
   if (kind === "decision" && status === "open" && keys.length < 2)
     d.push("open decision with fewer than two options (a review request is kind: review)");
-  if (item.recommended !== undefined && !keys.includes(item.recommended))
-    d.push(`recommended ${item.recommended} is not an option`);
-  if (status === "assumed" && !item.assumption && !item.recommended)
+  if (item.multiple !== undefined && typeof item.multiple !== "boolean")
+    d.push(`multiple ${item.multiple} is not true or false`);
+  const recommended = [item.recommended ?? []].flat();
+  if (recommended.length > 1 && !item.multiple) d.push("several recommended without multiple");
+  for (const r of recommended) if (!keys.includes(r)) d.push(`recommended ${r} is not an option`);
+  if (Array.isArray(options))
+    for (const o of options) {
+      if (o?.score !== undefined && typeof o.score !== "number")
+        d.push(`option ${o.key} score ${o.score} is not a number`);
+      if (o?.noise !== undefined && (typeof o.noise !== "number" || o.score === undefined))
+        d.push(`option ${o.key} noise without a numeric score`);
+    }
+  if (status === "assumed" && !item.assumption && !recommended.length)
     d.push("assumed without assumption or recommended");
   if (status === "decided" && (!item.decision || !item.by))
     d.push("decided without decision or by");
-  for (const [k, file] of Object.entries(item.images ?? {})) {
-    if (!keys.includes(k)) d.push(`image key ${k} is not an option`);
-    if (!exists(file)) d.push(`image ${file} not found`);
+  const images = item.images ?? [];
+  const groups: [string | undefined, unknown][] = Array.isArray(images)
+    ? [[undefined, images]]
+    : typeof images === "object"
+      ? Object.entries(images)
+      : [];
+  if (typeof images !== "object") d.push("images is neither a list nor a mapping");
+  for (const [k, value] of groups) {
+    if (k !== undefined && !keys.includes(k)) d.push(`image key ${k} is not an option`);
+    for (const image of [value].flat()) {
+      const { src, caption, ...rest } =
+        typeof image === "string" ? { src: image } : ((image ?? {}) as Record<string, unknown>);
+      if (
+        typeof src !== "string" ||
+        !["string", "undefined"].includes(typeof caption) ||
+        Object.keys(rest).length
+      )
+        d.push(`image ${JSON.stringify(image)} is not a path or {src, caption}`);
+      else if (!exists(imagePath(item.id, src)))
+        d.push(`image ${imagePath(item.id, src)} not found`);
+    }
   }
-  if (item.page && !exists(item.page)) d.push(`page ${item.page} not found`);
   return d;
 }
 
@@ -133,4 +171,20 @@ export function compareItems(a: Item & { changed?: number }, b: Item & { changed
     (b.changed ?? 0) - (a.changed ?? 0) ||
     a.id.localeCompare(b.id)
   );
+}
+
+export const imagePath = (id: string, src: string) =>
+  src.includes("/") ? src : `${ITEMS_DIR}/${id}/${src}`;
+
+// Every image as {src, caption}, src repo-relative: option images by key, the item's own under "".
+export function imagesOf(item: Item): Record<string, { src: string; caption?: string }[]> {
+  const norm = (v: Image | Image[]) =>
+    [v]
+      .flat()
+      .map((i) => (typeof i === "string" ? { src: i } : i))
+      .map((i) => ({ ...i, src: imagePath(item.id, i.src) }));
+  const images = item.images ?? [];
+  return Array.isArray(images)
+    ? { "": norm(images) }
+    : Object.fromEntries(Object.entries(images).map(([k, v]) => [k, norm(v)]));
 }
