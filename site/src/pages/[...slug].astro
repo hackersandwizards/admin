@@ -1,0 +1,591 @@
+---
+// Every admin page, by its type: the hub, and per repository the dashboard, decisions, work,
+// reviews, docs, design system, products, architecture, validation and log.
+import Layout from "../components/Layout.astro";
+import ItemGroups from "../components/ItemGroups.astro";
+import ItemRow from "../components/ItemRow.astro";
+import { age, data, day, forPerson, href, openQuestions, repoOf, type Page } from "../data";
+
+export function getStaticPaths() {
+  return data().pages.map((page) => ({
+    params: { slug: page.path === "index" ? undefined : page.path },
+    props: { page },
+  }));
+}
+
+const { page } = Astro.props as { page: Page };
+const d = data();
+const repo = repoOf(page.repo);
+const link = (to: string) => href(page.path, to);
+const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
+const items = repo?.items ?? [];
+const questions = openQuestions(items);
+const assumed = items.filter((i) => i.status === "assumed");
+const decided = items.filter((i) => i.status === "decided");
+const work = items.filter((i) => i.kind === "work");
+const goals = items.filter((i) => i.kind === "goal");
+const provenance = repo
+  ? `@hackersandwizards/admin v${d.version} · ${repo.key} HEAD ${repo.head} · ${items.length} items · ${
+      repo.behind ? `${repo.behind} commits behind origin` : "up to date with origin"
+    } · fetched ${age(repo.fetched)}`
+  : `@hackersandwizards/admin v${d.version} · ${d.repos.length} checkouts · ${
+      d.repos.filter((r) => r.behind).length
+    } behind origin · ${d.repos.reduce((n, r) => n + r.items.length, 0)} items`;
+const allQuestions = d.repos.flatMap((r) => openQuestions(r.items));
+const byPriority = (list: typeof items, p: number) => list.filter((i) => i.priority === p).length;
+const doc = repo && [...repo.reports, ...repo.docs].find((x) => x.path === page.doc);
+const product = repo && page.product !== undefined ? repo.products[page.product] : undefined;
+const pins = (r: NonNullable<typeof repo>) =>
+  Object.entries(r.pkg.dependencies).filter(([name]) => name.startsWith("@hackersandwizards/"));
+const pin = (spec: string) => spec.match(/#(v[\w.-]+)$/)?.[1] ?? spec;
+const packages = [...new Set(d.repos.flatMap((r) => pins(r).map(([n]) => n)))].sort();
+const answersAll = page.type === "decisions" || page.type === "hub";
+const leads: Partial<Record<Page["type"], string>> = {
+  hub: "Every repository's open questions and work, read from its last commit. Nothing is copied; images and reports open where they sit.",
+  "hub-architecture": "Which version of each h&w package every repository pins.",
+  dashboard:
+    "What waits on a person in this repository, what the agents produced, and where its docs, design system and checks are.",
+  decisions:
+    "Questions only a person can answer, review requests, and the assumptions agents made. Rows are closed; open one for its context and options.",
+  work: "Open work, by priority, and the goal it serves.",
+  reviews:
+    "Each review folder in docs/tracking: its images side by side, its report and the items that name it.",
+  docs: "Reports in docs/tracking, newest first, and the repository's other documents.",
+  "design-system": "The building blocks: the repository's component catalogue in Astrobook.",
+  architecture:
+    "The package, what it pins, its commands and every script with its first comment line.",
+  validation: "The steps of the repository's gate, in order.",
+  log: "Commits to the tracking files, then the full history.",
+};
+---
+
+<Layout
+  page={page}
+  lead={leads[page.type] ?? product?.description}
+  provenance={page.type === "doc" ? undefined : provenance}
+  answersAll={answersAll}
+>
+  {(page.type === "decisions" || page.type === "hub") && (
+    <Fragment slot="action">
+      <span id="state" class="text-ui text-foreground/70" role="status" />
+      <button id="copy" type="button" class="btn-primary">
+        Copy answers
+      </button>
+    </Fragment>
+  )}
+
+  {page.type === "hub" && (
+    <>
+      <section>
+        <h2 class="mb-2 font-mono font-semibold text-heading">Repositories</h2>
+        <table class="hw-table w-full">
+          <thead>
+            <tr>
+              <th>Repo</th>
+              <th class="text-right">Decide P1</th>
+              <th class="text-right">P2</th>
+              <th class="text-right">P3</th>
+              <th class="text-right">Review</th>
+              <th class="text-right">Work for a person</th>
+              <th class="text-right">Assumed</th>
+              <th>Most urgent</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.repos.map((r) => {
+              const q = openQuestions(r.items);
+              const decide = q.filter((i) => i.kind === "decision");
+              const top = [...q, ...forPerson(r.items)].sort(
+                (a, b) => (a.priority ?? 9) - (b.priority ?? 9),
+              )[0];
+              return (
+                <tr data-row>
+                  <td>
+                    <a class="hw-link" href={link(r.dashboard)}>
+                      {r.key}
+                    </a>
+                    {r.behind > 0 && <span class="ml-1 text-error">{r.behind} behind</span>}
+                    {r.defects.length > 0 && (
+                      <span class="ml-1 text-error">{r.defects.length} defects</span>
+                    )}
+                  </td>
+                  <td class="text-right tabular-nums">{byPriority(decide, 1) || ""}</td>
+                  <td class="text-right tabular-nums">{byPriority(decide, 2) || ""}</td>
+                  <td class="text-right tabular-nums">{byPriority(decide, 3) || ""}</td>
+                  <td class="text-right tabular-nums">
+                    {q.filter((i) => i.kind === "review").length || ""}
+                  </td>
+                  <td class="text-right tabular-nums">{forPerson(r.items).length || ""}</td>
+                  <td class="text-right tabular-nums">
+                    {r.items.filter((i) => i.status === "assumed").length || ""}
+                  </td>
+                  <td class="max-w-md truncate">{top ? top.title : "nothing open"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
+      <section class="flex flex-col gap-2">
+        <h2 class="font-mono font-semibold text-heading">Needs you</h2>
+        <div class="flex flex-wrap gap-2" role="group" aria-label="For whom">
+          {[...d.people, "all"].map((p) => (
+            <button
+              type="button"
+              class="btn-secondary aria-pressed:bg-accent aria-pressed:text-on-accent"
+              data-who-button={p}
+              aria-pressed="false"
+            >
+              {p === "all" ? "All" : p}
+            </button>
+          ))}
+        </div>
+        <ItemGroups items={allQuestions} showRepo openUpTo={1} />
+        {d.repos.some((r) => forPerson(r.items).length) && (
+          <ItemGroups
+            items={d.repos.flatMap((r) => forPerson(r.items))}
+            showRepo
+            title="Work for a person"
+          />
+        )}
+        <ItemGroups
+          items={d.repos.flatMap((r) => r.items.filter((i) => i.status !== "open"))}
+          showRepo
+          title="Assumptions and decided items"
+        />
+      </section>
+      {d.repos.some((r) => r.defects.length) && (
+        <section>
+          <h2 class="mb-2 font-mono font-semibold text-heading">Defects</h2>
+          <ul class="list-disc pl-5 text-ui">
+            {d.repos.flatMap((r) =>
+              r.defects.map((x) => (
+                <li data-row>
+                  {r.key}: {x}
+                </li>
+              )),
+            )}
+          </ul>
+        </section>
+      )}
+    </>
+  )}
+
+  {page.type === "hub-architecture" && (
+    <table class="hw-table w-full">
+      <thead>
+        <tr>
+          <th>Repo</th>
+          <th>Version</th>
+          {packages.map((p) => (
+            <th>{p.replace("@hackersandwizards/", "")}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {d.repos.map((r) => (
+          <tr data-row>
+            <td>
+              <a class="hw-link" href={link(`${r.prefix}architecture`)}>
+                {r.key}
+              </a>
+            </td>
+            <td class="font-mono">{r.pkg.version ?? ""}</td>
+            {packages.map((p) => (
+              <td class="font-mono">{r.pkg.dependencies[p] ? pin(r.pkg.dependencies[p]) : ""}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )}
+
+  {page.type === "dashboard" && repo && (
+    <>
+      <section>
+        <h2 class="mb-2 font-mono font-semibold text-heading">Needs a person</h2>
+        <div class="grid grid-cols-2 gap-4 xl:grid-cols-4">
+          {[
+            {
+              n: questions.filter((i) => i.kind === "decision").length,
+              label: "To decide",
+              sub: [1, 2, 3]
+                .map(
+                  (p) =>
+                    `P${p} ${byPriority(
+                      questions.filter((i) => i.kind === "decision"),
+                      p,
+                    )}`,
+                )
+                .join(" · "),
+              to: "decisions",
+            },
+            {
+              n: questions.filter((i) => i.kind === "review").length,
+              label: "To review",
+              sub: "look and answer “fine” or what to change",
+              to: "decisions",
+            },
+            {
+              n: forPerson(items).length,
+              label: "Work for a person",
+              sub: `of ${work.length} open work items`,
+              to: "work",
+            },
+            { n: assumed.length, label: "Agent assumptions", sub: "you may veto", to: "decisions" },
+          ].map((c) => (
+            <a class="hw-card flex flex-col gap-1 no-underline" href={link(repo.prefix + c.to)}>
+              <span class="font-mono font-bold text-page tabular-nums">{c.n}</span>
+              <span class="font-medium text-ui">{c.label}</span>
+              <span class="text-ui text-foreground/70">{c.sub}</span>
+            </a>
+          ))}
+        </div>
+      </section>
+      {questions.length > 0 && (
+        <section>
+          <h2 class="mb-2 font-mono font-semibold text-heading">Most urgent</h2>
+          <div class="hw-card p-0!">
+            {questions.slice(0, 5).map((i) => (
+              <ItemRow item={i} />
+            ))}
+          </div>
+        </section>
+      )}
+      <div class="grid gap-8 xl:grid-cols-2">
+        <section>
+          <h2 class="mb-2 font-mono font-semibold text-heading">Latest reports</h2>
+          <ul class="flex flex-col gap-1 text-ui">
+            {repo.reports.slice(0, 6).map((r) => (
+              <li data-row>
+                <a class="hw-link" href={link(`${repo.prefix}doc/${r.path.replace(/\.md$/i, "")}`)}>
+                  {r.title}
+                </a>{" "}
+                <span class="text-foreground/70">{r.date}</span>
+              </li>
+            ))}
+            {!repo.reports.length && <li class="text-foreground/70">No reports yet.</li>}
+          </ul>
+        </section>
+        <section>
+          <h2 class="mb-2 font-mono font-semibold text-heading">Tracking changes</h2>
+          <ul class="flex flex-col gap-1 text-ui">
+            {repo.trackingLog.slice(0, 8).map((c) => (
+              <li data-row>
+                <span class="font-mono text-foreground/70">{day(c.time)}</span> {c.subject}
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+      {repo.defects.length > 0 && (
+        <section>
+          <h2 class="mb-2 font-mono font-semibold text-heading">Defects (admin-check)</h2>
+          <ul class="list-disc pl-5 text-ui text-error">
+            {repo.defects.map((x) => (
+              <li>{x}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
+  )}
+
+  {page.type === "decisions" && (
+    <>
+      <div class="flex flex-wrap gap-2" role="group" aria-label="For whom">
+        {[...d.people, "all"].map((p) => (
+          <button
+            type="button"
+            class="btn-secondary aria-pressed:bg-accent aria-pressed:text-on-accent"
+            data-who-button={p}
+            aria-pressed="false"
+          >
+            {p === "all" ? "All" : p}
+          </button>
+        ))}
+      </div>
+      {questions.length ? <ItemGroups items={questions} /> : <p class="text-ui">Nothing open.</p>}
+      {decided.length > 0 && (
+        <ItemGroups items={decided} title="Decided, the file leaves with the work" />
+      )}
+      {assumed.length > 0 && <ItemGroups items={assumed} title="Assumptions" />}
+    </>
+  )}
+
+  {page.type === "work" && (
+    <>
+      {goals.map((g) => (
+        <details class="hw-disclosure hw-card" data-row>
+          <summary class="font-mono font-semibold text-ui">{g.title}</summary>
+          <div class="mt-3 max-w-prose text-ui [&_p]:mb-2" set:html={g.html} />
+        </details>
+      ))}
+      {work.length ? (
+        <ItemGroups items={work} openUpTo={3} />
+      ) : (
+        <p class="text-ui">No open work.</p>
+      )}
+    </>
+  )}
+
+  {page.type === "reviews" && repo && (
+    <>
+      {!repo.reviews.length && <p class="text-ui">No review folders in docs/tracking.</p>}
+      {repo.reviews.map((r, n) => {
+        const named = items.filter(
+          (i) =>
+            i.page?.startsWith(`${r.dir}/`) ||
+            Object.values(i.images ?? {}).some((f) => f.startsWith(`${r.dir}/`)),
+        );
+        return (
+          <details class="hw-disclosure flex flex-col gap-2" data-row open={n < 3}>
+            <summary class="font-mono font-semibold text-heading">
+              {r.dir.replace("docs/tracking/", "")}{" "}
+              <span class="font-normal text-ui text-foreground/70">{r.images.length} images</span>
+            </summary>
+            <p class="flex flex-wrap gap-4 text-ui">
+              {r.report && (
+                <a
+                  class="chip-link"
+                  href={link(`${repo.prefix}doc/${r.report.replace(/\.md$/i, "")}`)}
+                >
+                  Report
+                </a>
+              )}
+              {r.page && (
+                <a class="chip-link" href={fileHref(`${repo.path}/${r.page}`)}>
+                  Review page
+                </a>
+              )}
+              {named.map((i) => (
+                <a class="chip-link" href={link(`${repo.prefix}decisions`)}>
+                  {i.id}
+                </a>
+              ))}
+            </p>
+            <div class="grid grid-cols-2 gap-3 xl:grid-cols-3">
+              {r.images.map((f) => (
+                <a
+                  class="hw-card flex flex-col gap-1 p-2!"
+                  href={fileHref(`${repo.path}/${r.dir}/${f}`)}
+                  target="_blank"
+                >
+                  <img
+                    loading="lazy"
+                    src={fileHref(`${repo.path}/${r.dir}/${f}`)}
+                    alt={f}
+                    class="aspect-video w-full rounded-sm bg-muted object-contain"
+                  />
+                  <span class="truncate font-mono text-micro text-foreground/70">{f}</span>
+                </a>
+              ))}
+            </div>
+          </details>
+        );
+      })}
+    </>
+  )}
+
+  {page.type === "docs" && repo && (
+    <>
+      <section>
+        <h2 class="mb-2 font-mono font-semibold text-heading">Reports</h2>
+        <table class="hw-table w-full">
+          <tbody>
+            {repo.reports.map((r) => (
+              <tr data-row>
+                <td class="w-28 font-mono">{r.date}</td>
+                <td>
+                  <a
+                    class="hw-link"
+                    href={link(`${repo.prefix}doc/${r.path.replace(/\.md$/i, "")}`)}
+                  >
+                    {r.title}
+                  </a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h2 class="mb-2 font-mono font-semibold text-heading">Documents</h2>
+        <table class="hw-table w-full">
+          <tbody>
+            {repo.docs.map((r) => (
+              <tr data-row>
+                <td class="font-mono">{r.path}</td>
+                <td>
+                  <a
+                    class="hw-link"
+                    href={link(`${repo.prefix}doc/${r.path.replace(/\.md$/i, "")}`)}
+                  >
+                    {r.title}
+                  </a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    </>
+  )}
+
+  {page.type === "doc" && repo && doc && (
+    <>
+      <p class="font-mono text-micro text-foreground/70">
+        <a class="hw-link" href={fileHref(`${repo.path}/${doc.path}`)}>
+          {doc.path}
+        </a>{" "}
+        · {repo.key} HEAD {repo.head}
+      </p>
+      <article
+        class="max-w-3xl text-subheading [&_h1]:hidden [&_h2]:mt-8 [&_h2]:mb-2 [&_h2]:font-mono [&_h2]:font-semibold [&_h2]:text-heading [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:font-semibold [&_img]:my-4 [&_img]:max-w-full [&_img]:rounded-sm [&_li]:mb-1 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-3 [&_pre]:mb-3 [&_pre]:overflow-x-auto [&_table]:mb-4 [&_table]:block [&_table]:overflow-x-auto [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:pl-6"
+        set:html={doc.html}
+      />
+    </>
+  )}
+
+  {page.type === "design-system" && repo && (
+    <div class="hw-card flex max-w-prose flex-col gap-2 text-ui">
+      {repo.designSystem ? (
+        <>
+          <p>
+            The component catalogue runs in this repository's Astrobook. It is served by the
+            repository's dev server, so the link works while that server runs.
+          </p>
+          <p>
+            <a class="chip-link" href={repo.designSystem}>
+              {repo.designSystem}
+            </a>
+          </p>
+        </>
+      ) : (
+        <p>
+          No design system is set for this repository. Name its Astrobook address in package.json
+          under <code class="hw-code">admin.designSystem</code>.
+        </p>
+      )}
+      <p class="text-foreground/70">
+        What this repository's engine produces, such as slide types, document types or brand assets,
+        has its own menu items, set under <code class="hw-code">admin.products</code>.
+      </p>
+    </div>
+  )}
+
+  {page.type === "product" && product && (
+    <div class="hw-card flex max-w-prose flex-col gap-2 text-ui">
+      <p>
+        <a class="chip-link" href={product.href}>
+          Open {product.label}
+        </a>
+      </p>
+    </div>
+  )}
+
+  {page.type === "architecture" && repo && (
+    <>
+      <section>
+        <h2 class="mb-2 font-mono font-semibold text-heading">Package</h2>
+        <p class="font-mono text-ui">
+          {repo.pkg.name ?? repo.key} {repo.pkg.version ?? ""}
+        </p>
+        {Object.keys(repo.pkg.bin).length > 0 && (
+          <p class="mt-1 text-ui">Commands: {Object.keys(repo.pkg.bin).join(", ")}</p>
+        )}
+      </section>
+      <section>
+        <h2 class="mb-2 font-mono font-semibold text-heading">Dependencies</h2>
+        <table class="hw-table w-full">
+          <tbody>
+            {Object.entries(repo.pkg.dependencies)
+              .sort(
+                ([a], [b]) =>
+                  Number(!a.startsWith("@hackersandwizards/")) -
+                    Number(!b.startsWith("@hackersandwizards/")) || a.localeCompare(b),
+              )
+              .map(([n, v]) => (
+                <tr data-row>
+                  <td class="font-mono">{n}</td>
+                  <td class="font-mono">{pin(v)}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h2 class="mb-2 font-mono font-semibold text-heading">package.json scripts</h2>
+        <table class="hw-table w-full">
+          <tbody>
+            {Object.entries(repo.pkg.scripts).map(([n, v]) => (
+              <tr data-row>
+                <td class="font-mono">{n}</td>
+                <td class="font-mono break-all">{v}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h2 class="mb-2 font-mono font-semibold text-heading">Script files</h2>
+        <table class="hw-table w-full">
+          <tbody>
+            {repo.scripts.map((s) => (
+              <tr data-row>
+                <td class="font-mono">{s.path}</td>
+                <td>{s.comment}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    </>
+  )}
+
+  {page.type === "validation" && repo && (
+    <>
+      {repo.checkSteps.length ? (
+        <table class="hw-table w-full">
+          <tbody>
+            {repo.checkSteps.map((s, n) => (
+              <tr data-row>
+                <td class="w-10 tabular-nums">{n + 1}</td>
+                <td class="font-mono break-all">{s}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p class="text-ui">No check script in package.json.</p>
+      )}
+      <p class="text-ui text-foreground/70">
+        The last gate result appears here once the gate stores it; this page lists the steps.
+      </p>
+    </>
+  )}
+
+  {page.type === "log" && repo && (
+    <>
+      {[
+        { title: "Tracking", list: repo.trackingLog },
+        { title: "All commits", list: repo.log },
+      ].map((g) => (
+        <section>
+          <h2 class="mb-2 font-mono font-semibold text-heading">{g.title}</h2>
+          <table class="hw-table w-full">
+            <tbody>
+              {g.list.map((c) => (
+                <tr data-row>
+                  <td class="w-24 font-mono">{c.hash}</td>
+                  <td class="w-24 font-mono">{day(c.time)}</td>
+                  <td>{c.subject}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ))}
+    </>
+  )}
+</Layout>

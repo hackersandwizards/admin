@@ -1,0 +1,45 @@
+{
+  "name": "@hackersandwizards/admin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "packageManager": "bun@1.4.4",
+  "engines": {
+    "bun": ">=1.4.0",
+    "npm": "please-use-bun"
+  },
+  "bin": {
+    "admin": "bin/admin.ts",
+    "admin-hub": "bin/admin-hub.ts",
+    "admin-check": "bin/admin-check.ts",
+    "admin-migrate": "bin/admin-migrate.ts"
+  },
+  "exports": {
+    "./items": "./src/items.ts"
+  },
+  "files": [
+    "bin",
+    "src",
+    "site/astro.config.ts",
+    "site/src"
+  ],
+  "scripts": {
+    "prepare": "[ \"$(git rev-parse --show-toplevel 2>/dev/null)\" = \"$(pwd -P)\" ] && git config core.hooksPath .githooks || true",
+    "check": "bun --bun prettier --check . && bun --bun tsc --noEmit && bun test/no-values.ts && bun test && bun bin/admin-check.ts test/fixtures/spoke",
+    "check:staged": "gitleaks git --pre-commit --staged --redact --no-banner && bun run check",
+    "format": "bun --bun prettier --write ."
+  },
+  "dependencies": {
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v0.27.14",
+    "@tailwindcss/vite": "4.3.3",
+    "astro": "7.4.4",
+    "tailwindcss": "4.3.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "prettier": "3.9.10",
+    "prettier-plugin-astro": "1.1.2",
+    "typescript": "6.0.3"
+  }
+}

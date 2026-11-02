@@ -1,0 +1,120 @@
+---
+// One item as a closed list row: priority pill, title, a meta line, the area. Open, it shows the
+// assumption, the question's text, the options with their images, and the answer fields.
+import { day, type ViewItem } from "../data";
+
+interface Props {
+  item: ViewItem;
+  showRepo?: boolean;
+  open?: boolean;
+}
+const { item: i, showRepo = false, open = false } = Astro.props;
+const k = `${i.repo}:${i.id}`;
+const options = i.options ?? [];
+// P1 red, P2 amber, P3 the neutral pill: brand hues on brand's pill settings.
+const hue = {
+  1: "--hw-pill-hue: var(--color-red); --hw-pill-hue-night: var(--color-red-night)",
+  2: "--hw-pill-hue: var(--color-amber); --hw-pill-hue-night: var(--color-amber)",
+}[i.priority ?? 3];
+const meta = [
+  showRepo ? i.repo : "",
+  i.status === "open" ? i.kind : i.status,
+  options.length ? `${options.length} options` : "",
+  i.owner ? `for ${i.owner}` : "",
+  i.recommendedLabel ? `recommended: ${i.recommendedLabel}` : "",
+  i.due ? `due ${day(Date.parse(i.due) / 1000)}` : "",
+].filter(Boolean);
+---
+
+<details
+  class="item hw-disclosure border-b border-border last:border-b-0"
+  data-k={k}
+  data-who={i.who}
+  data-row
+  open={open}
+>
+  <summary class="flex items-start gap-3 px-3 py-2">
+    <span class="hw-pill shrink-0 font-mono" data-tone={hue ? undefined : "neutral"} style={hue}>
+      {i.priority ? `P${i.priority}` : "Goal"}
+    </span>
+    <span class="min-w-0 flex-1">
+      <span class="block font-medium text-ui">{i.title}</span>
+      <span class="block text-ui text-foreground/70">{meta.join(" · ")}</span>
+    </span>
+    <span class="mark shrink-0 text-micro text-accent"></span>
+    {i.area && <span class="shrink-0 text-ui text-foreground/70">{i.area}</span>}
+  </summary>
+  <div class="flex flex-col gap-3 px-3 pb-4 text-ui lg:pl-16">
+    {i.assumption && (
+      <p class="hw-callout max-w-prose">
+        <b>Assumed:</b> {i.assumption}
+      </p>
+    )}
+    {i.decision && (
+      <p class="hw-callout max-w-prose">
+        <b>Decided by {i.by}:</b> {i.decision}
+      </p>
+    )}
+    <div class="max-w-prose [&_p]:mb-2" set:html={i.html} />
+    {(i.pageHref || i.evidence) && (
+      <p class="flex flex-wrap gap-4">
+        {i.pageHref && (
+          <a class="chip-link" href={i.pageHref}>
+            Review page
+          </a>
+        )}
+        {i.evidence && <span class="text-foreground/70">Evidence: {i.evidence}</span>}
+      </p>
+    )}
+    {options.length > 0 && (
+      <div class="grid gap-2 md:grid-cols-2">
+        {options.map((o) => (
+          <label class="hw-card flex cursor-pointer flex-col gap-2 has-checked:border-accent">
+            {i.optionImages[o.key] && (
+              <a href={i.optionImages[o.key]} target="_blank">
+                <img
+                  loading="lazy"
+                  src={i.optionImages[o.key]}
+                  alt={o.label}
+                  class="max-h-48 w-full rounded-sm bg-muted object-contain"
+                />
+              </a>
+            )}
+            <span class="flex items-start gap-2">
+              <input type="radio" name={k} value={o.key} data-label={o.label} class="mt-1" />
+              <span>
+                {o.key === i.recommended && (
+                  <span class="hw-pill mr-1" data-caps>
+                    Recommended
+                  </span>
+                )}
+                <b>{o.label}</b>
+                {o.detail && <span class="block text-foreground/70">{o.detail}</span>}
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+    )}
+    {i.kind === "work" && (
+      <label class="flex items-center gap-2">
+        <input type="checkbox" value="done" /> done
+      </label>
+    )}
+    <label class="text-micro text-foreground/70" for={`n-${k}`}>
+      {options.length ? "Note or your own answer" : "Answer, such as “fine” or what to change"}
+    </label>
+    <textarea id={`n-${k}`} class="form-input w-full"></textarea>
+    <p class="flex flex-wrap items-center gap-2">
+      {i.recommended && (
+        <button type="button" class="pick btn-secondary" data-v={i.recommended}>
+          Pick recommended
+        </button>
+      )}
+      <button type="button" class="clear btn-secondary">
+        Reset
+      </button>
+      <span class="saved text-micro text-foreground/70" aria-live="polite"></span>
+    </p>
+  </div>
+</details>

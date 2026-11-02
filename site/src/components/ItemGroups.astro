@@ -1,0 +1,40 @@
+---
+// Items in priority groups, each a disclosure with its count, rows inside one card.
+import ItemRow from "./ItemRow.astro";
+import type { ViewItem } from "../data";
+
+interface Props {
+  items: ViewItem[];
+  showRepo?: boolean;
+  /** Priorities whose group starts open. */
+  openUpTo?: number;
+  /** One group under this title instead of groups by priority. */
+  title?: string;
+}
+const { items, showRepo = false, openUpTo = 2, title } = Astro.props;
+const groups = title
+  ? [{ label: title, rows: items, open: false }]
+  : [1, 2, 3, undefined].map((p) => ({
+      label: p ? `Priority ${p}` : "Without priority",
+      rows: items.filter((i) => i.priority === p),
+      open: (p ?? 9) <= openUpTo,
+    }));
+---
+
+{groups
+  .filter((g) => g.rows.length)
+  .map((g) => (
+    <details class="hw-disclosure" data-group open={g.open}>
+      <summary class="py-2 font-mono font-semibold text-ui">
+        {g.label}{" "}
+        <span class="ml-1 font-normal text-foreground/70" data-count>
+          {g.rows.length}
+        </span>
+      </summary>
+      <div class="hw-card p-0!">
+        {g.rows.map((i) => (
+          <ItemRow item={i} showRepo={showRepo} />
+        ))}
+      </div>
+    </details>
+  ))}

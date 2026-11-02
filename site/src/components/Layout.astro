@@ -1,0 +1,156 @@
+---
+// The admin shell: brand's internal header, the left rail (search, the repository's menu with
+// counts, the other repositories in the hub), and the page title row. Every value comes from
+// brand: tokens, the expert set, the elements at the dense scale.
+import "admin:styles";
+import AppHeader from "@hackersandwizards/brand/expert/components/AppHeader.astro";
+import PageHeader from "@hackersandwizards/brand/expert/components/PageHeader.astro";
+import { navLinkClass } from "@hackersandwizards/brand/expert/components/space-nav.ts";
+import script from "../admin.js?raw";
+import { data, forPerson, href, openQuestions, repoOf, type Page } from "../data";
+
+interface Props {
+  page: Page;
+  lead?: string;
+  provenance?: string;
+  /** The page lists every question of its repositories, so an answer whose row is gone was done. */
+  answersAll?: boolean;
+}
+const { page, lead, provenance, answersAll = false } = Astro.props;
+const d = data();
+const repo = repoOf(page.repo);
+const home = d.hub ? "index" : (repo?.dashboard ?? "index");
+const link = (to: string) => href(page.path, to);
+const menu = repo
+  ? [
+      { to: "", label: "Dashboard" },
+      {
+        to: "decisions",
+        label: "Decisions",
+        count: openQuestions(repo.items).length,
+      },
+      { to: "work", label: "Work", count: repo.items.filter((i) => i.kind === "work").length },
+      { to: "reviews", label: "Reviews", count: repo.reviews.length },
+      { to: "docs", label: "Docs", count: repo.reports.length + repo.docs.length },
+      { to: "design-system", label: "Design system" },
+      ...repo.products.map((p, n) => ({ to: `products-${n + 1}`, label: p.label })),
+      { to: "architecture", label: "Architecture", count: repo.scripts.length || undefined },
+      { to: "validation", label: "Validation", count: repo.checkSteps.length || undefined },
+      { to: "log", label: "Log" },
+    ].map((m) => ({ ...m, to: m.to ? repo.prefix + m.to : repo.dashboard }))
+  : [
+      {
+        to: "index",
+        label: "Everything open",
+        count: d.repos.reduce((n, r) => n + openQuestions(r.items).length, 0),
+      },
+      { to: "architecture", label: "Packages" },
+    ];
+const current = (to: string) =>
+  to === page.path || (page.type === "doc" && to === `${repo?.prefix}docs`);
+---
+
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{page.title} · {repo ? repo.key : "hub"} · Admin</title>
+    <script is:inline>
+      if (matchMedia("(prefers-color-scheme: dark)").matches)
+        document.documentElement.dataset.theme = "dark";
+    </script>
+  </head>
+  <body
+    class="bg-background text-foreground"
+    data-hw-scale="dense"
+    data-answers={answersAll ? "all" : undefined}
+  >
+    <AppHeader product="Admin" href={link(home)}>
+      <nav class="ml-auto flex items-center gap-1 text-ui" aria-label="Where">
+        {d.hub && (
+          <a
+            href={link("index")}
+            class:list={navLinkClass(
+              link("index"),
+              page.type.startsWith("hub") ? link("index") : "",
+            )}
+          >
+            Hub
+          </a>
+        )}
+        {repo && (
+          <a href={link(repo.dashboard)} class:list={navLinkClass("x", "x")}>
+            {repo.key}
+          </a>
+        )}
+      </nav>
+    </AppHeader>
+    <div class="hw-container flex flex-col gap-6 lg:flex-row">
+      <aside class="lg:w-64 lg:shrink-0 lg:py-6">
+        <input
+          id="admin-search"
+          type="search"
+          class="form-input mt-4 w-full lg:mt-0"
+          placeholder="Search /"
+          aria-label="Search this page"
+        />
+        <nav aria-label="Menu" class="mt-4">
+          <p class="hw-label mb-1 px-2">{repo ? repo.key : "hub"}</p>
+          {menu.map((m) => (
+            <a
+              href={link(m.to)}
+              aria-current={current(m.to) ? "page" : undefined}
+              class:list={[
+                ...navLinkClass("a", current(m.to) ? "a" : "b"),
+                "flex justify-between gap-2",
+              ]}
+            >
+              <span class="truncate">{m.label}</span>
+              {m.count !== undefined && <span class="tabular-nums">{m.count}</span>}
+            </a>
+          ))}
+          {d.hub && (
+            <>
+              <p class="hw-label mt-6 mb-1 px-2">Repos</p>
+              {d.repos.map((r) => (
+                <a
+                  href={link(r.dashboard)}
+                  aria-current={r.key === repo?.key ? "true" : undefined}
+                  class:list={[
+                    ...navLinkClass("a", r.key === repo?.key ? "a" : "b"),
+                    "flex justify-between gap-2",
+                  ]}
+                >
+                  <span class="truncate">{r.key}</span>
+                  <span class="tabular-nums">
+                    {openQuestions(r.items).length + forPerson(r.items).length || ""}
+                  </span>
+                </a>
+              ))}
+            </>
+          )}
+          {repo &&
+            repo.links.length > 0 &&
+            repo.links.map((l) => (
+              <a href={l.href} class:list={[...navLinkClass("a", "b"), "mt-2"]}>
+                {l.label}
+              </a>
+            ))}
+        </nav>
+      </aside>
+      <main class="min-w-0 flex-1 pb-16 lg:py-6">
+        <PageHeader title={page.title}>
+          <div slot="action">
+            <slot name="action" />
+          </div>
+        </PageHeader>
+        {lead && <p class="max-w-prose text-subheading">{lead}</p>}
+        {provenance && <p class="mt-1 font-mono text-micro text-foreground/70">{provenance}</p>}
+        <div class="mt-6 flex flex-col gap-8">
+          <slot />
+        </div>
+      </main>
+    </div>
+    <script is:inline set:html={script} />
+  </body>
+</html>
