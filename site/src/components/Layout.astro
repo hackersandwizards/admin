@@ -32,7 +32,7 @@ const menu = repo
       { to: "work", label: "Work", count: repo.items.filter((i) => i.kind === "work").length },
       { to: "reviews", label: "Reviews", count: repo.reviews.length },
       { to: "docs", label: "Docs", count: repo.reports.length + repo.docs.length },
-      { to: "design-system", label: "Design system" },
+      ...(repo.designSystem ? [{ to: "design-system", label: "Design system" }] : []),
       ...repo.products.map((p, n) => ({ to: `products-${n + 1}`, label: p.label })),
       { to: "architecture", label: "Architecture", count: repo.scripts.length || undefined },
       { to: "checks", label: "Checks", count: repo.checkSteps.length || undefined },

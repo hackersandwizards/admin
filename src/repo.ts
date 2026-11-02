@@ -134,6 +134,7 @@ export type RepoData = {
   log: Commit[];
 };
 
+const FRONTEND = new Set(["astro", "astrobook", "next", "react", "vite"]);
 const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
 const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
 
@@ -177,6 +178,13 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
     defects.push("package.json: not JSON");
   }
   const admin = (pkg.admin ?? {}) as AdminConfig;
+  const key = admin.name ?? basename(repo);
+  // A repository with a frontend has a design system at /design-system/ on its local name; one
+  // without a frontend has none, and its admin shows no such entry.
+  const deps = Object.keys({ ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) });
+  const frontend = deps.some((d) => FRONTEND.has(d));
+  const designSystem =
+    admin.designSystem ?? (frontend ? `http://${key}.localhost/design-system/` : undefined);
   const scriptsMap = (pkg.scripts ?? {}) as Record<string, string>;
 
   // When each item file last changed, from one log pass over the items folder.
@@ -255,7 +263,7 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
 
   const fetchHead = join(repo, ".git", "FETCH_HEAD");
   return {
-    key: admin.name ?? basename(repo),
+    key,
     path: repo,
     head: git(repo, "rev-parse", "--short", "HEAD").trim(),
     behind: Number(git(repo, "rev-list", "--count", "HEAD..@{u}").trim() || 0),
@@ -277,7 +285,7 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
         ? { [String(pkg.name)]: pkg.bin }
         : (pkg.bin ?? {})) as Record<string, string>,
     },
-    designSystem: admin.designSystem,
+    designSystem,
     products: admin.products ?? [],
     links: admin.links ?? [],
     checkSteps,
