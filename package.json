@@ -33,7 +33,7 @@
     "design-system": "cd design-system && bun --bun astro dev"
   },
   "dependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v0.29.1",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v0.30.0",
     "@tailwindcss/vite": "4.3.3",
     "astro": "7.4.4",
     "tailwindcss": "4.3.3"

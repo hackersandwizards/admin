@@ -9,7 +9,9 @@
     "node_modules/.cache/design-system/design-system/stories/Pages/design-system/default/index.html",
     "node_modules/.cache/design-system/design-system/stories/Pages/architecture/default/index.html",
     "node_modules/.cache/design-system/design-system/stories/Pages/checks/default/index.html",
-    "node_modules/.cache/design-system/design-system/stories/Pages/log/default/index.html"
+    "node_modules/.cache/design-system/design-system/stories/Pages/log/default/index.html",
+    "node_modules/.cache/design-system/design-system/stories/Pages/hub/default/index.html",
+    "node_modules/.cache/design-system/design-system/stories/Pages/docs/default/index.html"
   ],
   "uses": ["label", "pill", "card", "callout", "quote", "table", "link", "code"],
   "exceptions": {
