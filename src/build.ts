@@ -155,18 +155,11 @@ export function stylesheet() {
     `@import "${at("@hackersandwizards/brand/expert.css")}";`,
     `@import "${at("@hackersandwizards/brand/header.css")}";`,
     `@import "${at("@hackersandwizards/brand/elements.css")}";`,
+    `@import "${at("@hackersandwizards/brand/fonts.css")}";`,
     `@import "${join(PKG, "site/src/layout.css")}";`,
     `@source "${join(PKG, "site/src")}";`,
     `@source "${join(brandRoot, "expert")}";`,
     `@source "${join(brandRoot, "elements")}";`,
-    // brand exports the screen fonts as files only; the faces name tokens.css's families.
-    ...[
-      ["Inter Variable", "inter-latin-wght-normal.woff2", "100 900"],
-      ["JetBrains Mono Variable", "jetbrains-mono-latin-wght-normal.woff2", "100 800"],
-    ].map(
-      ([family, file, weight]) =>
-        `@font-face { font-family: "${family}"; font-style: normal; font-display: swap; font-weight: ${weight}; src: url("${join(brand, "fonts", file!)}") format("woff2-variations"); }`,
-    ),
     `@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));`,
   ].join("\n");
 }
