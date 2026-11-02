@@ -50,7 +50,7 @@
     "tailwindcss": "4.3.3"
   },
   "devDependencies": {
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v0.4.0",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v0.5.0",
     "@types/bun": "latest",
     "astrobook": "0.13.3",
     "eslint": "10.14.0",
