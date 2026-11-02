@@ -209,12 +209,16 @@ describe("hub", () => {
   test("finds a repo naming an @hackersandwizards package with no items, and none other", () => {
     const repo = repoFrom("spoke");
     const root = dirname(repo);
-    const bare = (name: string, pkg: object) => {
+    const bare = (name: string, pkg: object, files: Record<string, string> = {}) => {
       const dir = join(root, name);
       Bun.spawnSync(["mkdir", dir]);
       writeFileSync(join(dir, "package.json"), JSON.stringify(pkg));
+      for (const [f, text] of Object.entries(files)) {
+        Bun.spawnSync(["mkdir", "-p", dirname(join(dir, f))]);
+        writeFileSync(join(dir, f), text);
+      }
       sh(dir, "git", "init", "-q", "-b", "main");
-      sh(dir, "git", "add", "package.json");
+      sh(dir, "git", "add", "package.json", ...Object.keys(files));
       sh(
         dir,
         "git",
@@ -232,9 +236,31 @@ describe("hub", () => {
     bare("other", { name: "other" });
     expect(findRepos(root)).toEqual([repo, tool]);
     expect(readRepo(tool).designSystem).toBeUndefined();
+    // A frontend without Astrobook has no design system; Astrobook's own config gives port and path.
     expect(readRepo(bare("ui", { name: "ui", devDependencies: { astro: "1" } })).designSystem).toBe(
-      "http://ui.localhost/design-system/",
+      undefined,
     );
+    const book = readRepo(
+      bare(
+        "book",
+        { name: "book", scripts: { dev: "astro dev", "design-system": "astro dev --root ds" } },
+        {
+          "ds/astro.config.ts":
+            'astrobook({ subpath: "/design-system" });\nserver: { host: "127.0.0.1", port: 4999 }',
+        },
+      ),
+    );
+    expect(book.designSystem).toBe("http://127.0.0.1:4999/design-system/");
+    expect(book.designSystemDev).toEqual({ port: 4999, start: "design-system" });
+    const owned = readRepo(
+      bare("owned", {
+        name: "owned",
+        admin: { designSystem: "catalogue.html", products: [{ label: "A", href: "a.html#x" }] },
+      }),
+    );
+    expect(owned.designSystem).toBe(`file://${owned.path}/catalogue.html`);
+    expect(owned.designSystemDev).toBeUndefined();
+    expect(owned.products[0]!.href).toBe(`file://${owned.path}/a.html#x`);
   });
 
   test("reads at HEAD, not the working tree", () => {
@@ -291,6 +317,10 @@ describe("serve", () => {
     const svg = await get("/_file/spoke/docs/tracking/2026-01-15-sample-topic/variant-a.svg");
     expect(svg.headers.get("content-type")).toContain("image/svg");
     expect((await get("/_file/spoke/../../etc/passwd")).status).toBe(404);
+    // node_modules, which no commit holds, answers from the installed package.
+    Bun.spawnSync(["mkdir", "-p", join(repo, "node_modules/pkg")]);
+    writeFileSync(join(repo, "node_modules/pkg/tokens.css"), ":root{}");
+    expect(await (await get("/_file/spoke/node_modules/pkg/tokens.css")).text()).toBe(":root{}");
     expect((await hub.fetch(new Request("http://evil.example/"))).status).toBe(403);
     // A Git LFS pointer is answered with the object from the local LFS store.
     const oid = "ab".repeat(32);

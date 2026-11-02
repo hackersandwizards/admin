@@ -447,17 +447,25 @@ const leads: Partial<Record<Page["type"], string>> = {
   {page.type === "design-system" && repo?.designSystem && (
     <div class="hw-card flex max-w-prose flex-col gap-2 text-ui">
       <p>
-        The component catalogue runs in this repository's Astrobook. It is served by the
-        repository's dev server, so the link works while that server runs.
-      </p>
-      <p>
         <a class="chip-link" href={repo.designSystem}>
           {repo.designSystem}
         </a>
       </p>
+      {repo.designSystemDev && (
+        <p class="text-foreground/70" data-dev={repo.designSystem}>
+          This repository's Astrobook serves it on port {repo.designSystemDev.port}, so it opens
+          while
+          {repo.designSystemDev.start ? (
+            <code class="font-mono">bun run {repo.designSystemDev.start}</code>
+          ) : (
+            "its dev server"
+          )}{" "}
+          runs in this repository. <span data-dev-state />
+        </p>
+      )}
       <p class="text-foreground/70">
         What this repository's engine produces, such as slide types, document types or brand assets,
-        has its own menu items, set under <code class="hw-code">admin.products</code>.
+        has its own menu items, set under <code class="font-mono">admin.products</code>.
       </p>
     </div>
   )}

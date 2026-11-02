@@ -1,6 +1,6 @@
 {
   "name": "@hackersandwizards/admin",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -11,7 +11,6 @@
   },
   "bin": {
     "admin": "bin/admin.ts",
-    "admin-hub": "bin/admin-hub.ts",
     "admin-serve": "bin/admin-serve.ts",
     "admin-check": "bin/admin-check.ts",
     "admin-migrate": "bin/admin-migrate.ts"

@@ -8,7 +8,7 @@ only. Every item, report and image stays in the repository it belongs to.
 A repository adds the package as a dev dependency pinned to a tag, as it does with brand:
 
 ```sh
-bun add -d "git+https://github.com/hackersandwizards/admin.git#v0.2.0"
+bun add -d "git+https://github.com/hackersandwizards/admin.git#v0.3.0"
 ```
 
 ## Commands
@@ -16,18 +16,20 @@ bun add -d "git+https://github.com/hackersandwizards/admin.git#v0.2.0"
 | Command         | What it does                                                                                                         |
 | --------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `admin`         | Builds the admin pages of the current repository from its last commit into `node_modules/.cache/admin/`.             |
-| `admin-hub`     | Finds every git repository under `~/dev` with `docs/tracking/items/`, reads each at HEAD, writes `~/dev/.admin/`.    |
 | `admin-serve`   | Serves the hub at `http://admin.localhost:4329` from each repository's HEAD, rebuilt when one moves. Writes no file. |
 | `admin-check`   | Checks the item files in the working tree. Exit 1 on a defect. Belongs in every repository's gate.                   |
 | `admin-migrate` | Converts `GOAL.md`, `docs/tracking/decisions/items.js` and review folders into item files, once per repository.      |
 
-`bun run start` in this checkout runs `admin-serve`. A repository shows in the hub when its HEAD has
-`docs/tracking/items/` or its `package.json` names an `@hackersandwizards` package, so this engine shows
-itself. A repository with a frontend (astro, astrobook, next, react or vite) gets a Design system entry
-at `http://<name>.localhost/design-system/` unless `admin.designSystem` names another; one without has
-none.
+`bun run start` in this checkout runs `admin-serve`, the one hub: open `http://admin.localhost:4329`.
+A repository shows in the hub when its HEAD has `docs/tracking/items/` or its `package.json` names an
+`@hackersandwizards` package, so this engine shows itself.
 
-Each page opens from disk. Answers to decisions stay in the browser until "Copy answers" puts
+A repository gets a Design system entry when an `astro.config.*` at its root or one folder down loads
+Astrobook: the link is `http://127.0.0.1:<port><base><subpath>` from that config, and the page names
+the package script that starts it and says whether it is running now. `admin.designSystem` overrides
+it.
+
+Answers to decisions stay in the browser until "Copy answers" puts
 them on the clipboard as one `repo:id: choice, note` line each.
 
 ## Item files
@@ -82,13 +84,16 @@ A repository configures what convention cannot find under `admin` in its `packag
 ```json
 {
   "admin": {
-    "designSystem": "http://localhost:4321/design-system",
-    "products": [{ "label": "Slide types", "href": "http://localhost:4321/slide-types" }],
-    "links": [{ "label": "Validation", "href": "http://localhost:4321/validation" }],
+    "designSystem": "catalogue.html",
+    "products": [{ "label": "Slide types", "href": "specimen/index.html" }],
+    "links": [{ "label": "Validation", "href": "http://127.0.0.1:4321/validation" }],
     "name": "os"
   }
 }
 ```
+
+An `href` without a scheme is a path in the repository: the hub serves it from HEAD, and a file it
+links under `node_modules/` from the installed package.
 
 ## Design values
 

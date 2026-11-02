@@ -101,10 +101,17 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   }
 
   // A committed file of a repository the hub shows, read at HEAD. A Git LFS pointer resolves to
-  // the object in the repository's local LFS store, never fetched.
+  // the object in the repository's local LFS store, never fetched. Under node_modules, which no
+  // commit holds, the installed file answers: specimen pages link the brand's stylesheets there.
   function file(repoKey: string, path: string) {
     const repo = [...read.values()].find((r) => r.data.key === repoKey)?.data.path;
     if (!repo || path.split("/").includes("..")) return undefined;
+    if (path.startsWith("node_modules/")) {
+      const installed = join(repo, path);
+      return existsSync(installed) && statSync(installed).isFile()
+        ? readFileSync(installed)
+        : undefined;
+    }
     const r = Bun.spawnSync(["git", "-C", repo, "cat-file", "blob", `HEAD:${path}`], {
       stderr: "ignore",
     });

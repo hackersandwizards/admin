@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Serves the hub over HTTP, built from every repository's last commit on each request that finds
-// one moved, and writes nothing to ~/dev/.admin. Binds 127.0.0.1 only.
+// one moved, and writes no file. Binds 127.0.0.1 only.
 // Usage: admin-serve [--root <dir>] [--port <n>]
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -17,4 +17,4 @@ const server = Bun.serve({
   port: Number(values.port ?? 4329),
   fetch: hub.fetch,
 });
-console.log(`admin-serve: ${server.url} (root ${root})`);
+console.log(`admin-serve: http://admin.localhost:${server.port} (root ${root})`);

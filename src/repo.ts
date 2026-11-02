@@ -25,6 +25,7 @@ export function headSource(repo: string): Source {
   const wanted = paths.filter(
     (p) =>
       p === "package.json" ||
+      ASTRO_CONFIG.test(p) ||
       (/\.md$/i.test(p) && (p.startsWith("docs/") || !p.includes("/"))) ||
       /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/.test(p),
   );
@@ -126,6 +127,8 @@ export type RepoData = {
     bin: Record<string, string>;
   };
   designSystem?: string;
+  // The dev server the design system runs on, when it is this repository's own Astrobook.
+  designSystemDev?: { port: number; start?: string };
   products: Product[];
   links: Link[];
   checkSteps: string[];
@@ -134,7 +137,7 @@ export type RepoData = {
   log: Commit[];
 };
 
-const FRONTEND = new Set(["astro", "astrobook", "next", "react", "vite"]);
+const ASTRO_CONFIG = /^([^/]+\/)?astro\.config\.(ts|mjs|js)$/;
 const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
 const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
 
@@ -166,6 +169,27 @@ function firstComment(text: string) {
   return "";
 }
 
+// Where a repository's Astrobook runs in development: the astro config at the root or one folder
+// down that loads astrobook, read for its server port, base and subpath, and the package script
+// that starts it.
+function astrobookDev(src: Source, scripts: Record<string, string>) {
+  for (const p of src.paths.filter((q) => ASTRO_CONFIG.test(q))) {
+    const text = src.read(p) ?? "";
+    const port = text.includes("astrobook") ? text.match(/\bport:\s*(\d+)/)?.[1] : undefined;
+    if (!port) continue;
+    const at = (key: string) => text.match(new RegExp(`\\b${key}:\\s*["']([^"']+)["']`))?.[1];
+    const path = `${at("base") ?? ""}${at("subpath") ?? ""}`.replace(/\/*$/, "/");
+    const dir = p.includes("/") ? p.slice(0, p.indexOf("/")) : "";
+    const runs = Object.keys(scripts).filter((k) => {
+      const v = scripts[k]!;
+      return v.includes("astro dev") && (dir ? v.includes(dir) : !/--root|\bcd /.test(v));
+    });
+    const start =
+      runs.find((k) => k.includes("design")) ?? runs.find((k) => k === "dev") ?? runs[0];
+    return { url: `http://127.0.0.1:${port}${path}`, port: Number(port), start };
+  }
+}
+
 type AdminConfig = { name?: string; designSystem?: string; products?: Product[]; links?: Link[] };
 
 export function readRepo(repo: string, src: Source = headSource(repo)): RepoData {
@@ -179,13 +203,18 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
   }
   const admin = (pkg.admin ?? {}) as AdminConfig;
   const key = admin.name ?? basename(repo);
-  // A repository with a frontend has a design system at /design-system/ on its local name; one
-  // without a frontend has none, and its admin shows no such entry.
-  const deps = Object.keys({ ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) });
-  const frontend = deps.some((d) => FRONTEND.has(d));
-  const designSystem =
-    admin.designSystem ?? (frontend ? `http://${key}.localhost/design-system/` : undefined);
   const scriptsMap = (pkg.scripts ?? {}) as Record<string, string>;
+  // A repository-relative href opens the committed file; one with a scheme stays as written.
+  const href = (h: string) => {
+    if (/^[a-z][\w+.-]*:/i.test(h)) return h;
+    const [path, hash] = h.split("#");
+    return fileHref(join(repo, path!)) + (hash ? `#${hash}` : "");
+  };
+  // admin.designSystem wins; otherwise the repository's own Astrobook, else no entry.
+  const dev = astrobookDev(src, scriptsMap);
+  const designSystem = admin.designSystem ? href(admin.designSystem) : dev?.url;
+  const designSystemDev =
+    dev && designSystem === dev.url ? { port: dev.port, start: dev.start } : undefined;
 
   // When each item file last changed, from one log pass over the items folder.
   const changed = new Map<string, number>();
@@ -286,8 +315,9 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
         : (pkg.bin ?? {})) as Record<string, string>,
     },
     designSystem,
-    products: admin.products ?? [],
-    links: admin.links ?? [],
+    designSystemDev,
+    products: (admin.products ?? []).map((p) => ({ ...p, href: href(p.href) })),
+    links: (admin.links ?? []).map((l) => ({ ...l, href: href(l.href) })),
     checkSteps,
     scripts,
     trackingLog: commits("-n", "60", "--", "docs/tracking"),
