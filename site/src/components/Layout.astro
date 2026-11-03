@@ -4,7 +4,8 @@
 import "admin:styles";
 import AppHeader from "@hackersandwizards/brand/expert/components/AppHeader.astro";
 import { navLinkClass } from "@hackersandwizards/brand/expert/components/space-nav.ts";
-import script from "../admin.js?raw";
+import adminScript from "../admin.js?url";
+import themeScript from "../theme.js?url";
 import { data, forPerson, href, openQuestions, repoOf, type Page } from "../data";
 
 interface Props {
@@ -58,10 +59,7 @@ const current = (to: string) =>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{page.title} · {repo ? repo.key : "hub"} · Admin</title>
-    <script is:inline>
-      if (matchMedia("(prefers-color-scheme: dark)").matches)
-        document.documentElement.dataset.theme = "dark";
-    </script>
+    <script is:inline src={themeScript}></script>
   </head>
   <body
     class="hw-focus-ring bg-background text-foreground"
@@ -156,6 +154,6 @@ const current = (to: string) =>
         </div>
       </main>
     </div>
-    <script is:inline set:html={script} />
+    <script is:inline src={adminScript}></script>
   </body>
 </html>

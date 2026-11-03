@@ -1,4 +1,5 @@
-// Runs on every admin page, inline, so a page opened from disk needs no module loading.
+// Runs on every admin page as a classic script, not a module, so a page opened from disk loads it;
+// a file of its own, since admin-serve's Content-Security-Policy runs no inline script.
 // An answer whose row left a rebuilt page is dropped once it was copied.
 (() => {
   const STORE = "admin-answers:";

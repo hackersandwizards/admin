@@ -6,6 +6,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +15,7 @@ import { buildSite, siteData } from "../src/build.ts";
 import { findRepos } from "../src/hub.ts";
 import { itemDefects, parseItem, type Item } from "../src/items.ts";
 import { gitEnv, readItems, readRepo, renderMarkdown, treeSource } from "../src/repo.ts";
-import { createHub } from "../src/serve.ts";
+import { createHub, CSP } from "../src/serve.ts";
 
 const FIX = join(import.meta.dir, "fixtures");
 const made: string[] = [];
@@ -295,7 +296,11 @@ describe("pages", () => {
       "spoke/doc/docs/agent-work/2026-01-15-sample-topic.html",
     ]) {
       const text = readFileSync(join(out, page), "utf8");
-      expect(text).not.toMatch(/<script[^>]+src=/);
+      // Every script is a classic file script: no module, which a page from disk cannot load, and
+      // nothing inline, which admin-serve's script-src 'self' refuses.
+      expect(text).toMatch(/<script src=/);
+      for (const [tag] of text.matchAll(/<script[^>]*>/g))
+        expect(tag).toMatch(/^<script src="[^"]+">$/);
       expect(text).not.toContain('"/_astro/');
       for (const [, ref] of text.matchAll(/(?:href|src)="([^"]*_astro\/[^"]+)"/g))
         expect(existsSync(resolve(dirname(join(out, page)), ref!))).toBe(true);
@@ -318,7 +323,10 @@ describe("serve", () => {
     expect(first).toContain("Which variant ships?");
     expect(first).not.toContain("file://");
     expect(first).toContain("/_file/spoke/docs/agent-work/");
-    expect((await get("/spoke/decisions")).status).toBe(200);
+    const decisions = await get("/spoke/decisions");
+    expect(decisions.status).toBe(200);
+    expect(decisions.headers.get("content-security-policy")).toBe(CSP);
+    expect(CSP).toMatch(/(^|; )script-src 'self'(;|$)/);
     const svg = await get("/_file/spoke/docs/agent-work/2026-01-15-sample-topic/variant-a.svg");
     expect(svg.headers.get("content-type")).toContain("image/svg");
     expect((await get("/_file/spoke/../../etc/passwd")).status).toBe(404);
@@ -326,6 +334,13 @@ describe("serve", () => {
     Bun.spawnSync(["mkdir", "-p", join(repo, "node_modules/pkg")]);
     writeFileSync(join(repo, "node_modules/pkg/tokens.css"), ":root{}");
     expect(await (await get("/_file/spoke/node_modules/pkg/tokens.css")).text()).toBe(":root{}");
+    // A symlink there leaving the repository reads nothing.
+    const outside = scratch();
+    writeFileSync(join(outside, "secret.txt"), "secret");
+    symlinkSync(outside, join(repo, "node_modules/escape"));
+    symlinkSync(join(outside, "secret.txt"), join(repo, "node_modules/pkg/secret.txt"));
+    expect((await get("/_file/spoke/node_modules/escape/secret.txt")).status).toBe(404);
+    expect((await get("/_file/spoke/node_modules/pkg/secret.txt")).status).toBe(404);
     expect((await hub.fetch(new Request("http://evil.example/"))).status).toBe(403);
     // A Git LFS pointer is answered with the object from the local LFS store.
     const oid = "ab".repeat(32);

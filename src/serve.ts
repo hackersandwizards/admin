@@ -3,9 +3,17 @@
 // pages are rebuilt into memory, each build in a child process, since an Astro build leaves
 // about 50 MB behind in the process that ran it. Paths that pages link as file:// are served from HEAD under
 // /_file/<repo>/, since a browser opens no file:// link from an http page.
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { buildSite, filesUnder, siteData } from "./build.ts";
 import { findRepos } from "./hub.ts";
 import { fileHref, git, gitEnv, readRepo, type RepoData } from "./repo.ts";
@@ -21,6 +29,12 @@ export function stateOf(repo: string) {
 }
 
 const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
+
+// Item and doc bodies render their raw HTML, so markup committed to any repository the hub reads
+// lands on its pages. Only the site's own script files run: no inline script or event handler, no
+// foreign script, and no <base> to repoint them, else that markup could read every repository
+// through /_file/. Styles and images stay free, since reports lay themselves out in raw HTML.
+export const CSP = "script-src 'self'; object-src 'none'; base-uri 'none'";
 
 export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   let paths: string[] = [];
@@ -103,13 +117,15 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
 
   // A committed file of a repository the hub shows, read at HEAD. A Git LFS pointer resolves to
   // the object in the repository's local LFS store, never fetched. Under node_modules, which no
-  // commit holds, the installed file answers: specimen pages link the brand's stylesheets there.
+  // commit holds, the installed file answers: specimen pages link the brand's stylesheets there,
+  // and only from inside the repository, since a symlink there may point anywhere on disk.
   function file(repoKey: string, path: string) {
     const repo = [...read.values()].find((r) => r.data.key === repoKey)?.data.path;
     if (!repo || path.split("/").includes("..")) return undefined;
     if (path.startsWith("node_modules/")) {
       const installed = join(repo, path);
-      return existsSync(installed) && statSync(installed).isFile()
+      if (!existsSync(installed) || !statSync(installed).isFile()) return undefined;
+      return realpathSync(installed).startsWith(realpathSync(repo) + sep)
         ? readFileSync(installed)
         : undefined;
     }
@@ -135,7 +151,11 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const path = decodeURIComponent(url.pathname);
     const typed = (body: Buffer, name: string) =>
       new Response(new Uint8Array(body), {
-        headers: { "content-type": Bun.file(name).type, "cache-control": "no-store" },
+        headers: {
+          "content-type": Bun.file(name).type,
+          "cache-control": "no-store",
+          "content-security-policy": CSP,
+        },
       });
     // Hashed asset names never change, so an asset needs no check whether a repository moved.
     if (path.startsWith("/_astro/") && site?.files.has(path.slice(1)))
