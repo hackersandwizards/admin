@@ -96,7 +96,7 @@ const current = (to: string) =>
           placeholder="Search /"
           aria-label="Search this page"
         />
-        <nav aria-label="Menu">
+        <nav aria-label="Menu" data-phone={repo ? "menu" : undefined}>
           <p class="hw-label mb-1 px-2">{repo ? repo.key : "hub"}</p>
           <ul>
             {menu.map((m) => (
@@ -121,8 +121,10 @@ const current = (to: string) =>
           </ul>
           {d.hub && (
             <>
-              <p class="hw-label mt-6 mb-1 px-2">Repos</p>
-              <ul>
+              <p class="hw-label mt-6 mb-1 px-2" data-repos>
+                Repos
+              </p>
+              <ul data-repos>
                 {d.repos.map((r) => (
                   <li>
                     <a
