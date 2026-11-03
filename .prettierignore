@@ -4,3 +4,4 @@ site/.build-*/
 .astro/
 dist/
 .eslintcache
+.claude/
