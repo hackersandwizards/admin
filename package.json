@@ -38,13 +38,13 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v0.34.1",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v0.34.2",
     "@tailwindcss/vite": "4.3.3",
     "astro": "7.4.4",
     "tailwindcss": "4.3.3"
   },
   "devDependencies": {
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v0.8.0",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v0.9.1",
     "@types/bun": "1.4.4",
     "astrobook": "0.13.3",
     "eslint": "10.14.0",
