@@ -87,16 +87,6 @@ export function parseItem(id: string, text: string): Item {
   } as Item;
 }
 
-export function serializeItem(item: Item): string {
-  const front: Record<string, unknown> = {};
-  for (const k of FIELDS) {
-    const v = (item as Record<string, unknown>)[k];
-    if (v !== undefined && v !== "" && !(Array.isArray(v) && !v.length)) front[k] = v;
-  }
-  const yaml = Bun.YAML.stringify(front, null, 2).trimEnd();
-  return `---\n${yaml}\n---\n\n# ${item.title}\n${item.body ? `\n${item.body.trim()}\n` : ""}`;
-}
-
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 

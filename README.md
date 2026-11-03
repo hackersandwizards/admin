@@ -9,19 +9,17 @@ A repository adds the package as a dev dependency pinned to a tag. The repositor
 the install needs no GitHub login:
 
 ```sh
-bun add -d "git+https://github.com/hackersandwizards/admin.git#v0.5.2"
+bun add -d "git+https://github.com/hackersandwizards/admin.git#v0.7.0"
 ```
 
 Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repositories through it.
 
 ## Commands
 
-| Command                                                                  | What it does                                                                                                                                       |
-| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `admin [<repo>] [--out <dir>]`                                           | Builds the admin pages of `<repo>` (default the current directory) from its last commit into its `node_modules/.cache/admin/`, or into `--out`.    |
-| `admin-serve [--root <dir>] [--port <n>]`                                | Serves the hub at `http://admin.localhost:4329` for the repositories under `~/dev`, each from its HEAD and rebuilt when one moves. Writes no file. |
-| `admin-check [<repo>...]`                                                | Checks the item files in the working tree, default the current directory. Exit 1 on a defect. Belongs in every repository's gate.                  |
-| `admin-migrate --owner <name> [--reviews <dir>] [--dry-run] [<repo>...]` | Converts `GOAL.md`, `docs/tracking/decisions/items.js` and review folders' images into item files, once per repository.                            |
+| Command                                   | What it does                                                                                                                                       |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `admin-serve [--root <dir>] [--port <n>]` | Serves the hub at `http://admin.localhost:4329` for the repositories under `~/dev`, each from its HEAD and rebuilt when one moves. Writes no file. |
+| `admin-check [<repo>...]`                 | Checks the item files in the working tree, default the current directory. Exit 1 on a defect. Belongs in every repository's gate.                  |
 
 `bun run dev` in this checkout runs `admin-serve`, the one hub: open `http://admin.localhost:4329`.
 A repository shows in the hub when its HEAD has `docs/agent-work/items/` or its `package.json` names an

@@ -1,6 +1,6 @@
 {
   "name": "@hackersandwizards/admin",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -10,14 +10,10 @@
     "npm": "please-use-bun"
   },
   "bin": {
-    "admin": "bin/admin.ts",
     "admin-serve": "bin/admin-serve.ts",
-    "admin-check": "bin/admin-check.ts",
-    "admin-migrate": "bin/admin-migrate.ts"
+    "admin-check": "bin/admin-check.ts"
   },
-  "exports": {
-    "./items": "./src/items.ts"
-  },
+  "exports": {},
   "files": [
     "bin",
     "src",
@@ -36,10 +32,7 @@
     "check:fixture": "bun bin/admin-check.ts test/fixtures/spoke",
     "check:elements": "brand-elements",
     "check:staged": "check-staged",
-    "lint": "bun --bun eslint --cache --concurrency=auto .",
-    "format:check": "bun --bun prettier --check .",
     "fix": "bun --bun eslint --cache --concurrency=auto . --fix && bun --bun prettier --write .",
-    "typecheck": "bun --bun tsc --noEmit",
     "test": "bun test"
   },
   "dependencies": {

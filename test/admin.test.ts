@@ -12,8 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { buildSite, siteData } from "../src/build.ts";
 import { findRepos } from "../src/hub.ts";
-import { itemDefects, parseItem, serializeItem, type Item } from "../src/items.ts";
-import { decidedBy, migrate, readGoal, titleOf } from "../src/migrate.ts";
+import { itemDefects, parseItem, type Item } from "../src/items.ts";
 import { gitEnv, readItems, readRepo, treeSource } from "../src/repo.ts";
 import { createHub } from "../src/serve.ts";
 
@@ -59,9 +58,10 @@ const valid: Item = {
 const exists = () => true;
 
 describe("item files", () => {
-  test("serialize and parse round-trip", () => {
-    const back = parseItem(valid.id, serializeItem(valid));
-    expect(back).toEqual(valid);
+  test("parse reads front matter, title and body", () => {
+    const text =
+      "---\nkind: decision\nstatus: open\npriority: 2\nowner: Alex\nrecommended: a\noptions:\n  - key: a\n    label: A\n  - key: b\n    label: B\n---\n\n# A question?\n\nContext.\n";
+    expect(parseItem(valid.id, text)).toEqual(valid);
   });
 
   test("a valid item has no defects", () => {
@@ -168,76 +168,6 @@ describe("admin-check", () => {
     );
     const cli = Bun.spawnSync(["bun", join(import.meta.dir, "../bin/admin-check.ts"), dir]);
     expect(cli.exitCode).toBe(1);
-  });
-});
-
-describe("migration", () => {
-  test("decidedBy reads the name before a date", () => {
-    expect(decidedBy("Sam 02.01.: ship on Monday.")).toBe("Sam");
-    expect(decidedBy("A Brief (Sam, 02.11.).")).toBe("Sam");
-    expect(decidedBy("ship on Monday")).toBeUndefined();
-  });
-
-  test("titleOf keeps a short first sentence and cuts a long one", () => {
-    expect(titleOf("Fix it. Then more.")).toBe("Fix it");
-    expect(titleOf("word ".repeat(60)).length).toBeLessThanOrEqual(142);
-  });
-
-  test("readGoal takes open work rows only outside goal, done and waiting sections", () => {
-    const { work, rest } = readGoal(readFileSync(join(FIX, "legacy/GOAL.md"), "utf8"), true);
-    expect(work.map((w) => w.owner)).toEqual(["P1 2026-01-20 Alex", "P3 an agent"]);
-    expect(rest).toContain("| tools | allowed |");
-    expect(rest).toContain("Nothing here becomes work.");
-  });
-
-  test("readGoal takes a prioritised row before the first section, never a permissions table", () => {
-    const text =
-      "# Goal\n\n| Work | Owner | Evidence |\n| --- | --- | --- |\n| Tidy the logos | P3, a session | file |\n\n| Repo | Push |\n| --- | --- |\n| tools | allowed |\n";
-    const { work, rest } = readGoal(text, true);
-    expect(work).toEqual([{ point: "Tidy the logos", owner: "P3, a session", evidence: "file" }]);
-    expect(rest).toContain("| tools | allowed |");
-  });
-
-  test("converts items.js, GOAL.md and a review folder into checked item files", () => {
-    const dir = join(scratch(), "legacy");
-    cpSync(join(FIX, "legacy"), dir, { recursive: true });
-    const m = migrate(dir, { defaultOwner: "Alex", reviews: join(FIX, "reviews") });
-    expect(m.removed.sort()).toEqual(["GOAL.md", "docs/tracking/decisions/items.js"]);
-    const read = (id: string) =>
-      parseItem(id, readFileSync(join(dir, `docs/agent-work/items/${id}.md`), "utf8"));
-    expect(read("pick-a-name")).toMatchObject({
-      kind: "decision",
-      owner: "Alex",
-      order: 3,
-      recommended: "a",
-    });
-    expect(read("pick-a-name").images).toEqual(["shot.svg"]);
-    expect(existsSync(join(dir, "docs/agent-work/items/pick-a-name/shot.svg"))).toBe(true);
-    expect(existsSync(join(dir, "docs/agent-work/items/pick-a-name/index.html"))).toBe(false);
-    expect(read("look-at-logo")).toMatchObject({ kind: "review", owner: "Sam", priority: 1 });
-    expect(read("colour-default").body).toContain("Measured on two screens.");
-    expect(read("colour-default").body).toContain("source: a stray field");
-    expect(read("ship-date")).toMatchObject({ status: "decided", by: "Sam" });
-    expect(read("work-write-the-readme-for-the-tool")).toMatchObject({
-      kind: "work",
-      priority: 1,
-      due: "2026-01-20",
-      owner: "Alex",
-    });
-    expect(read("work-fix-the-flaky-test-in-the-build")).toMatchObject({
-      priority: 3,
-      evidence: "run 42.",
-    });
-    expect(read("goal").body).toContain("| tools | allowed |");
-    expect(readItems(treeSource(dir)).defects).toEqual([]);
-  });
-
-  test("a dry run writes nothing", () => {
-    const dir = join(scratch(), "legacy");
-    cpSync(join(FIX, "legacy"), dir, { recursive: true });
-    migrate(dir, { defaultOwner: "Alex", dryRun: true });
-    expect(existsSync(join(dir, "docs/agent-work/items"))).toBe(false);
-    expect(existsSync(join(dir, "GOAL.md"))).toBe(true);
   });
 });
 
