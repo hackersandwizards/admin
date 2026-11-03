@@ -14,7 +14,7 @@ export function data(): SiteData {
 
 export const fileOf = (path: string) => `${path}.html`;
 
-// A link from one page to another, relative, so the output opens from disk.
+// Relative, so the output opens from disk.
 export function href(from: string, to: string) {
   const r = relative(dirname(fileOf(from)), fileOf(to));
   return r || fileOf(to).split("/").pop()!;

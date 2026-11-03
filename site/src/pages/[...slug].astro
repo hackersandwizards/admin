@@ -1,6 +1,4 @@
 ---
-// Every admin page, by its type: the hub, and per repository the dashboard, decisions, work,
-// reviews, docs, design system, products, architecture, checks and log.
 import Layout from "../components/Layout.astro";
 import ItemGroups from "../components/ItemGroups.astro";
 import ItemRow from "../components/ItemRow.astro";
@@ -46,7 +44,6 @@ const provenance = repo
       (n, r) => n + r.items.length,
       0,
     )} item files`;
-// What waits on a person: open questions and work a person owns, in one order (priority, due).
 const needs = (list: typeof items) =>
   [...openQuestions(list), ...forPerson(list)].sort(compareItems);
 const allNeeds = d.repos.flatMap((r) => needs(r.items)).sort(compareItems);

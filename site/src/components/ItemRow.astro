@@ -1,8 +1,6 @@
 ---
-// One item as a closed list row: priority pill, title, a meta line, the area. Open, it shows the
-// assumption, the question's text, the item's own images, the options with their images and
-// scores, and the answer fields. Options with images are cards; options without are one dense
-// list, so a long list of candidates stays scannable.
+// Options with images are cards; options without are one dense list, so a long list of candidates
+// stays scannable.
 import { day, type ViewItem } from "../data";
 import Choice from "./Choice.astro";
 import Shot from "./Shot.astro";
@@ -19,7 +17,7 @@ const shots = (key: string) => i.optionImages[key] ?? [];
 const carded = options.some((o) => shots(o.key).length);
 const score = (o: (typeof options)[number]) =>
   o.score === undefined ? "" : `${o.score}${o.noise === undefined ? "" : ` ± ${o.noise}`}`;
-// P1 red, P2 amber, P3 the neutral pill: brand hues on brand's pill settings.
+// P3 and no priority keep brand's neutral pill.
 const hue = {
   1: "--hw-pill-hue: var(--color-red); --hw-pill-hue-night: var(--color-red-night)",
   2: "--hw-pill-hue: var(--color-amber); --hw-pill-hue-night: var(--color-amber)",

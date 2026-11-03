@@ -1,4 +1,3 @@
-// What the stories render: the fixture's data as the admin pages see it.
 import { data } from "../site/src/data";
 
 export const site = data();
