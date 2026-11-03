@@ -154,7 +154,32 @@ export function itemDefects(item: Item, exists: (path: string) => boolean): stri
   return d;
 }
 
-// Sort: priority, then due date, then order, then the newest change, then id.
+// The item with each field its pages read in the shape its type states, so a malformed field shows
+// as its defect rather than failing the build of every page.
+export function usable(item: Item): Item {
+  const text = (v: unknown) => (v == null ? undefined : String(v));
+  const shots = (v: unknown) =>
+    [v]
+      .flat()
+      .filter(
+        (i): i is Image =>
+          typeof i === "string" || typeof (i as { src?: unknown })?.src === "string",
+      );
+  const { images } = item;
+  return {
+    ...item,
+    priority: [1, 2, 3].includes(item.priority as number) ? item.priority : undefined,
+    owner: text(item.owner),
+    due: text(item.due),
+    options: Array.isArray(item.options) ? item.options.filter((o) => o?.key) : undefined,
+    images: Array.isArray(images)
+      ? shots(images)
+      : images && typeof images === "object"
+        ? Object.fromEntries(Object.entries(images).map(([k, v]) => [k, shots(v)]))
+        : undefined,
+  };
+}
+
 export function compareItems(a: Item & { changed?: number }, b: Item & { changed?: number }) {
   return (
     (a.priority ?? 9) - (b.priority ?? 9) ||

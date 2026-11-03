@@ -1,8 +1,5 @@
-/* The admin shell's own layout (Layout.astro): a sticky rail with the search and the menu, then
-   the title, lead and provenance line. It reads brand's token roles (the expert set's, which
-   admin.css loads) by name; the lengths are the shell's own. Taken over from brand's catalogue.css,
-   which leaves brand with the catalog shell (repo-uniformity-plan): the style-only tree lets the
-   admin pages take styles only from brand's elements and tokens or from this repository. */
+/* The admin shell's layout (Layout.astro). It reads brand's token roles (the expert set's, which
+   admin.css loads) by name; the lengths are the shell's own. */
 
 @layer components {
   .admin-shell {
@@ -79,9 +76,6 @@
   }
   .admin-provenance {
     margin: 0.5rem 0 0;
-  }
-  .admin-shell [hidden] {
-    display: none;
   }
   @media (max-width: 48rem) {
     .admin-shell {

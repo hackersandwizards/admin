@@ -1,22 +1,14 @@
-// Serves the hub over HTTP instead of writing it to disk. Every request checks each repository's
-// HEAD, upstream and last fetch; when one moved, that repository is read again at HEAD and the
+// Serves the hub over HTTP instead of writing it to disk. Every page request checks each
+// repository's HEAD, upstream and last fetch; when one moved, that repository is read again at HEAD and the
 // pages are rebuilt into memory, each build in a child process, since an Astro build leaves
 // about 50 MB behind in the process that ran it. Paths that pages link as file:// are served from HEAD under
 // /_file/<repo>/, since a browser opens no file:// link from an http page.
-import {
-  existsSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
-import { buildSite, siteData } from "./build.ts";
+import { buildSite, filesUnder, siteData } from "./build.ts";
 import { findRepos } from "./hub.ts";
-import { fileHref, git, readRepo, type RepoData } from "./repo.ts";
+import { fileHref, git, gitEnv, readRepo, type RepoData } from "./repo.ts";
 
 export type ServeOptions = { root: string; rescanMs?: number };
 
@@ -47,19 +39,20 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const json = `${out}.json`;
     try {
       writeFileSync(json, JSON.stringify(siteData(repos, true)));
-      const child = Bun.spawn(["bun", import.meta.path, json, out], { stderr: "inherit" });
+      const child = Bun.spawn([process.execPath, import.meta.path, json, out], {
+        stderr: "inherit",
+      });
       if (await child.exited) throw new Error(`admin-serve: build exited ${child.exitCode}`);
       const files = new Map<string, Buffer>();
-      const walk = (dir: string): string[] =>
-        readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-          e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
-        );
-      for (const f of walk(out)) {
+      // Longest path first: a repository nested in another keeps its own prefix.
+      const links = [...repos]
+        .sort((a, b) => b.path.length - a.path.length)
+        .map((r) => [fileHref(r.path) + "/", `/_file/${encodeURIComponent(r.key)}/`] as const);
+      for (const f of filesUnder(out)) {
         let bytes = readFileSync(f);
         if (f.endsWith(".html")) {
-          let html = Buffer.from(bytes).toString("utf8");
-          for (const r of repos)
-            html = html.replaceAll(fileHref(r.path) + "/", `/_file/${encodeURIComponent(r.key)}/`);
+          let html = bytes.toString("utf8");
+          for (const [from, to] of links) html = html.replaceAll(from, to);
           bytes = Buffer.from(html);
         }
         files.set(relative(out, f), bytes);
@@ -81,15 +74,24 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const key = states.map(([p, s]) => `${p} ${s}`).join("\n");
     if (site?.key === key) return site.files;
     if (building) return building;
-    const repos = states.map(([p, s]) => {
+    // A repository that fails to read keeps its last pages, or is left out, and is read again on
+    // the next request.
+    let failed = false;
+    const repos = states.flatMap(([p, s]) => {
       const had = read.get(p);
-      if (had?.state === s) return had.data;
-      const data = readRepo(p);
-      read.set(p, { state: s, data });
-      return data;
+      if (had?.state === s) return [had.data];
+      try {
+        const data = readRepo(p);
+        read.set(p, { state: s, data });
+        return [data];
+      } catch (e) {
+        console.error(`admin-serve: ${p}:`, e);
+        failed = true;
+        return had ? [had.data] : [];
+      }
     });
     // A failed build keeps the last pages on show and is tried again on the next request.
-    building = rebuild(key, repos)
+    building = rebuild(failed ? "" : key, repos)
       .catch((e) => {
         if (!site) throw e;
         console.error(e);
@@ -113,6 +115,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     }
     const r = Bun.spawnSync(["git", "-C", repo, "cat-file", "blob", `HEAD:${path}`], {
       stderr: "ignore",
+      env: gitEnv,
     });
     if (r.exitCode) return undefined;
     const oid = r.stdout
@@ -134,7 +137,11 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
       new Response(new Uint8Array(body), {
         headers: { "content-type": Bun.file(name).type, "cache-control": "no-store" },
       });
+    // Hashed asset names never change, so an asset needs no check whether a repository moved.
+    if (path.startsWith("/_astro/") && site?.files.has(path.slice(1)))
+      return typed(site.files.get(path.slice(1))!, path);
     if (path.startsWith("/_file/")) {
+      if (!site) await pages().catch(() => undefined);
       const [repoKey, ...rest] = path.slice("/_file/".length).split("/");
       const body = file(repoKey!, rest.join("/"));
       return body ? typed(body, path) : new Response("not committed", { status: 404 });

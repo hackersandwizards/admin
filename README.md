@@ -39,8 +39,8 @@ them on the clipboard as one `repo:id: choice, note` line each.
 One Markdown file per item in `docs/agent-work/items/<id>.md`, its images beside it in
 `docs/agent-work/items/<id>/`. Git history is the log. A decided or finished item is deleted, with
 its image folder, in the commit that carries it out. The admin renders every review from this
-data in its own styles: no repository holds review HTML, and neither `admin` nor `admin-serve`
-copies an image out of the repository.
+data in its own styles: no repository holds review HTML, and `admin-serve` copies no image out of
+the repository.
 
 ```md
 ---

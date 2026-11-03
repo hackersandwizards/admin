@@ -53,7 +53,6 @@ export type Page = {
 export type SiteData = {
   version: string;
   hub: boolean;
-  built: string;
   people: string[];
   repos: (Omit<RepoData, "items"> & { items: ViewItem[]; prefix: string; dashboard: string })[];
   pages: Page[];
@@ -62,7 +61,6 @@ export type SiteData = {
 const escape = (s: string) =>
   s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-// An item's Markdown as HTML, with repo paths in its text linked where they exist in the spoke.
 function itemHtml(repo: RepoData, text: string) {
   const paths = new Set(repo.reports.map((r) => r.path).concat(repo.docs.map((d) => d.path)));
   return withElements(Bun.markdown.html(text)).replace(
@@ -89,27 +87,29 @@ export function siteData(repos: RepoData[], hub: boolean): SiteData {
   const pages: Page[] = [];
   const out = repos.map((r) => {
     const prefix = hub ? `${r.key}/` : "";
-    const items = [...r.items].sort(compareItems).map((i) => ({
-      ...i,
-      repo: r.key,
-      who: firstWord(i.owner),
-      html: itemHtml(r, i.body),
-      optionImages: Object.fromEntries(
-        Object.entries(imagesOf(i)).map(([k, list]) => [
-          k,
-          list.map((m) => ({ ...m, src: fileHref(join(r.path, m.src)) })),
-        ]),
-      ),
-      recommendedKeys: [i.recommended ?? []].flat(),
-      // More than three recommended options read as a count in the row's meta line.
-      recommendedLabel:
-        [i.recommended ?? []].flat().length > 3
-          ? `${[i.recommended].flat().length} options`
-          : i.options
-              ?.filter((o) => [i.recommended].flat().includes(o.key))
-              .map((o) => o.label)
-              .join(", "),
-    }));
+    const items = [...r.items].sort(compareItems).map((i) => {
+      const recommendedKeys = [i.recommended ?? []].flat();
+      return {
+        ...i,
+        repo: r.key,
+        who: firstWord(i.owner),
+        html: itemHtml(r, i.body),
+        optionImages: Object.fromEntries(
+          Object.entries(imagesOf(i)).map(([k, list]) => [
+            k,
+            list.map((m) => ({ ...m, src: fileHref(join(r.path, m.src)) })),
+          ]),
+        ),
+        recommendedKeys,
+        recommendedLabel:
+          recommendedKeys.length > 3
+            ? `${recommendedKeys.length} options`
+            : i.options
+                ?.filter((o) => recommendedKeys.includes(o.key))
+                .map((o) => o.label)
+                .join(", "),
+      };
+    });
     const add = (p: Omit<Page, "repo" | "path"> & { path: string }) =>
       pages.push({ ...p, path: prefix + p.path, repo: r.key });
     // A slug ending in "index" collides with the folder's own route, so a hub repo's dashboard is
@@ -140,7 +140,7 @@ export function siteData(repos: RepoData[], hub: boolean): SiteData {
     pages.unshift({ path: "index", type: "hub", title: "Admin hub" });
     pages.splice(1, 0, { path: "architecture", type: "hub-architecture", title: "Packages" });
   }
-  return { version: VERSION, hub, built: new Date().toISOString(), people, repos: out, pages };
+  return { version: VERSION, hub, people, repos: out, pages };
 }
 
 // The stylesheet entry the site imports as admin:styles, with every path resolved: the package
@@ -209,12 +209,13 @@ export async function buildSite(data: SiteData, outDir: string) {
   }
 }
 
+export const filesUnder = (dir: string) =>
+  readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => join(e.parentPath, e.name));
+
 function relativize(outDir: string) {
-  const walk = (dir: string): string[] =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-      e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
-    );
-  for (const file of walk(outDir)) {
+  for (const file of filesUnder(outDir)) {
     if (file.endsWith(".html")) {
       const up = relative(dirname(file), outDir) || ".";
       const html = readFileSync(file, "utf8").replaceAll('"/_astro/', `"${up}/_astro/`);

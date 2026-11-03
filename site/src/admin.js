@@ -1,8 +1,5 @@
 // Runs on every admin page, inline, so a page opened from disk needs no module loading.
-// Search filters the page's rows; the person buttons filter rows by who answers; answers stay in
-// this browser (localStorage) until "Copy answers" puts them on the clipboard as one block for the
-// chat, one "repo:id: choice, note" line each; an item taking several options answers with their
-// keys, comma-separated. An answer whose row left a rebuilt page is dropped once it was copied.
+// An answer whose row left a rebuilt page is dropped once it was copied.
 (() => {
   const STORE = "admin-answers:";
   const read = (k) => {
@@ -151,23 +148,26 @@
     if (answered().some((k) => read(k).at > since)) e.preventDefault();
   });
 
-  // Filters: search over every row and card, and who answers.
   const search = document.getElementById("admin-search");
-  // The filter starts on the first person, the one with the most open questions.
-  let who =
-    localStorage.getItem(STORE + "who") ||
-    document.querySelector("[data-who-button]")?.dataset.whoButton ||
-    "all";
+  // Only a page with the person buttons filters by person: elsewhere a stored choice would hide
+  // rows unseen. The filter starts on the first person, the one with the most open questions.
+  const buttons = [...document.querySelectorAll("[data-who-button]")];
+  const stored = localStorage.getItem(STORE + "who");
+  let who = buttons.some((b) => b.dataset.whoButton === stored)
+    ? stored
+    : buttons[0]?.dataset.whoButton || "all";
   const rows = () => [...document.querySelectorAll("[data-row]")];
   function apply() {
     const term = (search?.value || "").trim().toLowerCase();
+    const hit = (el) => !!term && el.textContent.toLowerCase().includes(term);
     for (const r of rows()) {
-      const byWho = who !== "all" && r.dataset.who && r.dataset.who !== who;
-      r.hidden = byWho || (!!term && !r.textContent.toLowerCase().includes(term));
+      const byWho = buttons.length > 0 && who !== "all" && r.dataset.who && r.dataset.who !== who;
+      r.hidden = byWho || (!!term && !hit(r));
+      // Options narrow only where one matches: a row found by its title keeps all of them.
+      const options = [...r.querySelectorAll("[data-option-row]")];
+      const hits = options.map(hit);
+      options.forEach((o, n) => (o.hidden = hits.includes(true) && !hits[n]));
     }
-    // Inside a long option list, the search narrows the options too.
-    for (const o of document.querySelectorAll("[data-option-row]"))
-      o.hidden = !!term && !o.textContent.toLowerCase().includes(term);
     for (const g of document.querySelectorAll("[data-group]")) {
       const shown = g.querySelectorAll("[data-row]:not([hidden])").length;
       g.hidden = !shown;
@@ -175,10 +175,9 @@
       if (c) c.textContent = shown;
       if (term && shown && g.tagName === "DETAILS") g.open = true;
     }
-    for (const b of document.querySelectorAll("[data-who-button]"))
-      b.setAttribute("aria-pressed", String(b.dataset.whoButton === who));
+    for (const b of buttons) b.setAttribute("aria-pressed", String(b.dataset.whoButton === who));
   }
-  for (const b of document.querySelectorAll("[data-who-button]"))
+  for (const b of buttons)
     b.addEventListener("click", () => {
       who = b.dataset.whoButton;
       try {

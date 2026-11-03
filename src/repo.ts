@@ -1,10 +1,18 @@
-// Reads one repository for its admin pages: at HEAD (what the hub and `admin` show, committed only)
-// or from the working tree (what `admin-check` validates in a gate).
+// Reads one repository for its admin pages: at HEAD (what the hub shows, committed only) or from
+// the working tree (what `admin-check` validates in a gate).
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
-import { ITEMS_DIR, WORK_DIR, ItemError, itemDefects, parseItem, type Item } from "./items.ts";
+import {
+  ITEMS_DIR,
+  WORK_DIR,
+  ItemError,
+  itemDefects,
+  parseItem,
+  usable,
+  type Item,
+} from "./items.ts";
 
-export const LEGACY = ["docs/tracking/decisions/items.js", "GOAL.md"];
+export const LEGACY = ["GOAL.md"];
 
 export type Source = { paths: string[]; read: (path: string) => string | undefined };
 
@@ -76,7 +84,6 @@ export function readItems(src: Source): ReadItems {
   const items: Item[] = [];
   const defects: string[] = [];
   const has = new Set(src.paths);
-  // A path is present as a file or as the folder of one.
   const exists = (p: string) =>
     has.has(p) || src.paths.some((q) => q.startsWith(p.replace(/\/?$/, "/")));
   for (const p of src.paths) {
@@ -95,7 +102,7 @@ export function readItems(src: Source): ReadItems {
     try {
       const item = parseItem(name.slice(0, -3), src.read(p) ?? "");
       for (const d of itemDefects(item, exists)) defects.push(`${p}: ${d}`);
-      items.push(item);
+      items.push(usable(item));
     } catch (e) {
       if (!(e instanceof ItemError)) throw e;
       defects.push(`${p}: ${e.message}`);
@@ -162,7 +169,13 @@ export function renderMarkdown(repo: string, path: string, text: string) {
   const dir = join(repo, path, "..");
   const html = withElements(Bun.markdown.html(text.replace(/^---\n[\s\S]*?\n---\n/, "")));
   return html.replace(/(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"]+)"/gi, (_, attr, rel) => {
-    return `${attr}="${fileHref(join(dir, decodeURI(rel)))}"`;
+    let path = rel;
+    try {
+      path = decodeURI(rel);
+    } catch {
+      // A stray % in a hand-written link stays as written.
+    }
+    return `${attr}="${fileHref(join(dir, path))}"`;
   });
 }
 
@@ -208,6 +221,10 @@ function astrobookDev(src: Source, scripts: Record<string, string>) {
   }
 }
 
+// Config entries without an href are dropped rather than failing the whole hub.
+const linked = <T extends { href: unknown }>(list: T[] | undefined) =>
+  (Array.isArray(list) ? list : []).filter((e) => typeof e?.href === "string");
+
 type AdminConfig = { name?: string; designSystem?: string; products?: Product[]; links?: Link[] };
 
 export function readRepo(repo: string, src: Source = headSource(repo)): RepoData {
@@ -228,13 +245,11 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
     const [path, hash] = h.split("#");
     return fileHref(join(repo, path!)) + (hash ? `#${hash}` : "");
   };
-  // admin.designSystem wins; otherwise the repository's own catalog, else no entry.
   const dev = astrobookDev(src, scriptsMap);
-  const designSystem = admin.designSystem ? href(admin.designSystem) : dev?.url;
+  const designSystem = typeof admin.designSystem === "string" ? href(admin.designSystem) : dev?.url;
   const designSystemDev =
     dev && designSystem === dev.url ? { port: dev.port, start: dev.start } : undefined;
 
-  // When each item file last changed, from one log pass over the items folder.
   const changed = new Map<string, number>();
   let t = 0;
   for (const line of git(repo, "log", "--format=@%ct", "--name-only", "--", ITEMS_DIR).split(
@@ -333,8 +348,8 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
     },
     designSystem,
     designSystemDev,
-    products: (admin.products ?? []).map((p) => ({ ...p, href: href(p.href) })),
-    links: (admin.links ?? []).map((l) => ({ ...l, href: href(l.href) })),
+    products: linked(admin.products).map((p) => ({ ...p, href: href(p.href) })),
+    links: linked(admin.links).map((l) => ({ ...l, href: href(l.href) })),
     checkSteps,
     scripts,
     trackingLog: commits("-n", "60", "--", WORK_DIR),

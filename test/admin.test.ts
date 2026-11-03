@@ -13,7 +13,7 @@ import { dirname, join, resolve } from "node:path";
 import { buildSite, siteData } from "../src/build.ts";
 import { findRepos } from "../src/hub.ts";
 import { itemDefects, parseItem, type Item } from "../src/items.ts";
-import { gitEnv, readItems, readRepo, treeSource } from "../src/repo.ts";
+import { gitEnv, readItems, readRepo, renderMarkdown, treeSource } from "../src/repo.ts";
 import { createHub } from "../src/serve.ts";
 
 const FIX = join(import.meta.dir, "fixtures");
@@ -168,6 +168,25 @@ describe("admin-check", () => {
     );
     const cli = Bun.spawnSync(["bun", join(import.meta.dir, "../bin/admin-check.ts"), dir]);
     expect(cli.exitCode).toBe(1);
+  });
+
+  test("a malformed item shows as a defect and leaves the pages building", async () => {
+    const dir = join(scratch(), "r");
+    cpSync(join(FIX, "spoke"), dir, { recursive: true });
+    const front = "kind: decision\nstatus: open\npriority: 1\nowner: 5\ndue: 5";
+    writeFileSync(
+      join(dir, "docs/agent-work/items/odd.md"),
+      `---\n${front}\noptions: foo\nimages:\n  - caption: x\n---\n# Odd\n`,
+    );
+    const repo = readRepo(dir, treeSource(dir));
+    expect(repo.defects.join("\n")).toContain("odd.md: options is not a list");
+    const out = join(scratch(), "out");
+    await buildSite(siteData([repo], true), out);
+    expect(readFileSync(join(out, "r/decisions.html"), "utf8")).toContain("Odd");
+  });
+
+  test("a stray % in a Markdown link stays as written", () => {
+    expect(renderMarkdown("/r", "docs/a.md", "[half](50%.md)")).toContain("docs/50%25.md");
   });
 });
 

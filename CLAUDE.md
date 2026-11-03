@@ -15,7 +15,7 @@ exported file is a release whose commit names the change.
 
 - `bin/`: the two commands. `src/`: item format and check (`items.ts`), reading a repository at
   HEAD or from the working tree (`repo.ts`), the hub's repository search (`hub.ts`), page data and
-  the Astro build (`build.ts`).
+  the Astro build (`build.ts`), the hub's server (`serve.ts`).
 - `site/`: the Astro site the build renders, brand's components and elements, and the shell's own
   layout (`site/src/layout.css`).
 - `catalog/`: the catalog of the site's pages and components on the invented fixture, in

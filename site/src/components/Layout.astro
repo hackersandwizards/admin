@@ -1,8 +1,6 @@
 ---
-// The admin shell: brand's internal header over the shell's own layout (layout.css): the rail with
-// search, the repository's menu with counts and, in the hub, the other repositories; then title,
-// lead and provenance. Every colour, font and size role comes from brand: tokens, the expert set,
-// the elements at the dense scale with its compact tier.
+// Every colour, font and size role comes from brand: tokens, the expert set, the elements at the
+// dense scale with its compact tier.
 import "admin:styles";
 import AppHeader from "@hackersandwizards/brand/expert/components/AppHeader.astro";
 import { navLinkClass } from "@hackersandwizards/brand/expert/components/space-nav.ts";
@@ -66,7 +64,7 @@ const current = (to: string) =>
     </script>
   </head>
   <body
-    class="bg-background text-foreground"
+    class="hw-focus-ring bg-background text-foreground"
     data-hw-scale="dense"
     data-answers={answersAll ? "all" : undefined}
   >
