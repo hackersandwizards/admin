@@ -2,7 +2,7 @@
 
 The admin engine, `@hackersandwizards/admin`: builds each repository's admin pages and the hub
 across all repositories, checks item files, and migrates legacy tracking. The concept and its
-decisions are in os `docs/tracking/2026-11-02-admin-engine.md`.
+decisions are in os `docs/agent-work/2026-11-02-admin-engine.md`.
 
 This repo is public on GitHub (`github.com/hackersandwizards/admin`), its history included. It
 holds code only: no real item, report, client, person, deal, price or Company OS screenshot, in

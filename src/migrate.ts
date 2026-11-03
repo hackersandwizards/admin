@@ -244,7 +244,7 @@ export function migrate(
   }
 
   // Review folders (review.json names repo and row, or an "id*" prefix): each item it names gets
-  // the folder's images in its own folder, docs/tracking/items/<id>/. Its HTML page stays behind:
+  // the folder's images in its own folder, docs/agent-work/items/<id>/. Its HTML page stays behind:
   // the admin renders a review from the item.
   if (opts.reviews && existsSync(opts.reviews))
     for (const topic of readdirSync(opts.reviews)) {

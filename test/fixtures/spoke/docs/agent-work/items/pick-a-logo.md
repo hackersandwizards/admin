@@ -79,7 +79,7 @@ options:
     noise: 0.5
 images:
   v01:
-    - src: docs/tracking/2026-01-15-sample-topic/variant-a.svg
+    - src: docs/agent-work/2026-01-15-sample-topic/variant-a.svg
       caption: light
     - src: variant-b-dark.svg
       caption: dark
@@ -89,7 +89,7 @@ images:
     - src: variant-b-dark.svg
       caption: dark
   v03:
-    - src: docs/tracking/2026-01-15-sample-topic/variant-a.svg
+    - src: docs/agent-work/2026-01-15-sample-topic/variant-a.svg
       caption: light
     - src: variant-b-dark.svg
       caption: dark
@@ -99,7 +99,7 @@ images:
     - src: variant-b-dark.svg
       caption: dark
   v05:
-    - src: docs/tracking/2026-01-15-sample-topic/variant-a.svg
+    - src: docs/agent-work/2026-01-15-sample-topic/variant-a.svg
       caption: light
     - src: variant-b-dark.svg
       caption: dark
@@ -109,7 +109,7 @@ images:
     - src: variant-b-dark.svg
       caption: dark
   v07:
-    - src: docs/tracking/2026-01-15-sample-topic/variant-a.svg
+    - src: docs/agent-work/2026-01-15-sample-topic/variant-a.svg
       caption: light
     - src: variant-b-dark.svg
       caption: dark
@@ -119,7 +119,7 @@ images:
     - src: variant-b-dark.svg
       caption: dark
   v09:
-    - src: docs/tracking/2026-01-15-sample-topic/variant-a.svg
+    - src: docs/agent-work/2026-01-15-sample-topic/variant-a.svg
       caption: light
     - src: variant-b-dark.svg
       caption: dark
@@ -129,7 +129,7 @@ images:
     - src: variant-b-dark.svg
       caption: dark
   v11:
-    - src: docs/tracking/2026-01-15-sample-topic/variant-a.svg
+    - src: docs/agent-work/2026-01-15-sample-topic/variant-a.svg
       caption: light
     - src: variant-b-dark.svg
       caption: dark
@@ -139,7 +139,7 @@ images:
     - src: variant-b-dark.svg
       caption: dark
   v13:
-    - src: docs/tracking/2026-01-15-sample-topic/variant-a.svg
+    - src: docs/agent-work/2026-01-15-sample-topic/variant-a.svg
       caption: light
     - src: variant-b-dark.svg
       caption: dark
@@ -149,7 +149,7 @@ images:
     - src: variant-b-dark.svg
       caption: dark
   v15:
-    - src: docs/tracking/2026-01-15-sample-topic/variant-a.svg
+    - src: docs/agent-work/2026-01-15-sample-topic/variant-a.svg
       caption: light
     - src: variant-b-dark.svg
       caption: dark
@@ -159,7 +159,7 @@ images:
     - src: variant-b-dark.svg
       caption: dark
   v17:
-    - src: docs/tracking/2026-01-15-sample-topic/variant-a.svg
+    - src: docs/agent-work/2026-01-15-sample-topic/variant-a.svg
       caption: light
     - src: variant-b-dark.svg
       caption: dark

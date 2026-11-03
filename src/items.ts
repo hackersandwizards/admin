@@ -1,8 +1,10 @@
-// The item file: docs/tracking/items/<id>.md, YAML frontmatter plus a Markdown body whose first
+// The item file: docs/agent-work/items/<id>.md, YAML frontmatter plus a Markdown body whose first
 // line is "# <title>". Decisions, review requests, assumptions, open work and goals share it.
 // A decided or finished item is deleted; git keeps it.
 
-export const ITEMS_DIR = "docs/tracking/items";
+// The folder for a run's documents: dated reports, review folders and the items.
+export const WORK_DIR = "docs/agent-work";
+export const ITEMS_DIR = `${WORK_DIR}/items`;
 export const KINDS = ["decision", "review", "work", "goal"] as const;
 export const STATUSES = ["open", "assumed", "decided"] as const;
 
@@ -14,7 +16,7 @@ export type Option = {
   score?: number;
   noise?: number;
 };
-// An image is a file name in the item's own folder, docs/tracking/items/<id>/, or a path with a
+// An image is a file name in the item's own folder, docs/agent-work/items/<id>/, or a path with a
 // slash, read from the repository root as before that folder existed; either with a caption.
 export type Image = string | { src: string; caption?: string };
 export type Item = {

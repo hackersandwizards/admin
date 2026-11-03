@@ -15,7 +15,7 @@ options:
     label: Variant B
     score: 6.1
 images:
-  a: docs/tracking/2026-01-15-sample-topic/variant-a.svg
+  a: docs/agent-work/2026-01-15-sample-topic/variant-a.svg
   b:
     - src: variant-b.svg
       caption: light, 600 px
@@ -25,4 +25,4 @@ images:
 
 # Which variant ships?
 
-Both variants were scored blind. Report: docs/tracking/2026-01-15-sample-topic.md.
+Both variants were scored blind. Report: docs/agent-work/2026-01-15-sample-topic.md.

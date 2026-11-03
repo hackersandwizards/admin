@@ -112,7 +112,7 @@ describe("item files", () => {
     const item = { ...valid, images: { a: "docs/x.jpg", b: [{ src: "y.jpg", caption: "dark" }] } };
     expect(itemDefects(item, () => false)).toEqual([
       "image docs/x.jpg not found",
-      "image docs/tracking/items/a-question/y.jpg not found",
+      "image docs/agent-work/items/a-question/y.jpg not found",
     ]);
   });
 
@@ -154,13 +154,17 @@ describe("admin-check", () => {
     const dir = join(scratch(), "r");
     cpSync(join(FIX, "spoke"), dir, { recursive: true });
     cpSync(join(FIX, "legacy/GOAL.md"), join(dir, "GOAL.md"));
-    Bun.write(join(dir, "docs/tracking/items/broken.md"), "no frontmatter\n");
+    Bun.write(join(dir, "docs/agent-work/items/broken.md"), "no frontmatter\n");
     const { defects } = readItems(treeSource(dir));
-    expect(defects).toContain("GOAL.md: legacy file, items live in docs/tracking/items");
-    expect(defects).toContain("docs/tracking/items/broken.md: no frontmatter between --- lines");
-    Bun.write(join(dir, "docs/tracking/items/gone/shot.jpg"), "x");
+    expect(defects).toContain("GOAL.md: legacy file, items live in docs/agent-work/items");
+    expect(defects).toContain("docs/agent-work/items/broken.md: no frontmatter between --- lines");
+    Bun.write(join(dir, "docs/agent-work/items/gone/shot.jpg"), "x");
     expect(readItems(treeSource(dir)).defects).toContain(
-      "docs/tracking/items/gone/shot.jpg: no item gone.md",
+      "docs/agent-work/items/gone/shot.jpg: no item gone.md",
+    );
+    Bun.write(join(dir, "docs/tracking/items/old.md"), "x");
+    expect(readItems(treeSource(dir)).defects).toContain(
+      "docs/tracking/items/old.md: legacy folder, move it to docs/agent-work",
     );
     const cli = Bun.spawnSync(["bun", join(import.meta.dir, "../bin/admin-check.ts"), dir]);
     expect(cli.exitCode).toBe(1);
@@ -200,7 +204,7 @@ describe("migration", () => {
     const m = migrate(dir, { defaultOwner: "Alex", reviews: join(FIX, "reviews") });
     expect(m.removed.sort()).toEqual(["GOAL.md", "docs/tracking/decisions/items.js"]);
     const read = (id: string) =>
-      parseItem(id, readFileSync(join(dir, `docs/tracking/items/${id}.md`), "utf8"));
+      parseItem(id, readFileSync(join(dir, `docs/agent-work/items/${id}.md`), "utf8"));
     expect(read("pick-a-name")).toMatchObject({
       kind: "decision",
       owner: "Alex",
@@ -208,8 +212,8 @@ describe("migration", () => {
       recommended: "a",
     });
     expect(read("pick-a-name").images).toEqual(["shot.svg"]);
-    expect(existsSync(join(dir, "docs/tracking/items/pick-a-name/shot.svg"))).toBe(true);
-    expect(existsSync(join(dir, "docs/tracking/items/pick-a-name/index.html"))).toBe(false);
+    expect(existsSync(join(dir, "docs/agent-work/items/pick-a-name/shot.svg"))).toBe(true);
+    expect(existsSync(join(dir, "docs/agent-work/items/pick-a-name/index.html"))).toBe(false);
     expect(read("look-at-logo")).toMatchObject({ kind: "review", owner: "Sam", priority: 1 });
     expect(read("colour-default").body).toContain("Measured on two screens.");
     expect(read("colour-default").body).toContain("source: a stray field");
@@ -232,7 +236,7 @@ describe("migration", () => {
     const dir = join(scratch(), "legacy");
     cpSync(join(FIX, "legacy"), dir, { recursive: true });
     migrate(dir, { defaultOwner: "Alex", dryRun: true });
-    expect(existsSync(join(dir, "docs/tracking/items"))).toBe(false);
+    expect(existsSync(join(dir, "docs/agent-work/items"))).toBe(false);
     expect(existsSync(join(dir, "GOAL.md"))).toBe(true);
   });
 });
@@ -318,8 +322,8 @@ describe("hub", () => {
   test("reads at HEAD, not the working tree", () => {
     const repo = repoFrom("spoke");
     Bun.write(
-      join(repo, "docs/tracking/items/uncommitted.md"),
-      readFileSync(join(FIX, "spoke/docs/tracking/items/check-the-copy.md")),
+      join(repo, "docs/agent-work/items/uncommitted.md"),
+      readFileSync(join(FIX, "spoke/docs/agent-work/items/check-the-copy.md")),
     );
     expect(readRepo(repo).items.map((i) => i.id)).not.toContain("uncommitted");
   });
@@ -335,11 +339,11 @@ describe("pages", () => {
     const pages = readdirSync(join(out, "spoke"), { recursive: true }) as string[];
     expect(pages).toContain("decisions.html");
     expect(pages).toContain("products-1.html");
-    expect(pages).toContain("doc/docs/tracking/2026-01-15-sample-topic.html");
+    expect(pages).toContain("doc/docs/agent-work/2026-01-15-sample-topic.html");
     for (const page of [
       "index.html",
       "spoke/decisions.html",
-      "spoke/doc/docs/tracking/2026-01-15-sample-topic.html",
+      "spoke/doc/docs/agent-work/2026-01-15-sample-topic.html",
     ]) {
       const text = readFileSync(join(out, page), "utf8");
       expect(text).not.toMatch(/<script[^>]+src=/);
@@ -348,11 +352,11 @@ describe("pages", () => {
         expect(existsSync(resolve(dirname(join(out, page)), ref!))).toBe(true);
     }
     const doc = readFileSync(
-      join(out, "spoke/doc/docs/tracking/2026-01-15-sample-topic.html"),
+      join(out, "spoke/doc/docs/agent-work/2026-01-15-sample-topic.html"),
       "utf8",
     );
     expect(doc).toContain('class="hw-table"');
-    expect(doc).toContain(`file://${repo}/docs/tracking/2026-01-15-sample-topic/variant-a.svg`);
+    expect(doc).toContain(`file://${repo}/docs/agent-work/2026-01-15-sample-topic/variant-a.svg`);
   }, 60_000);
 });
 
@@ -364,9 +368,9 @@ describe("serve", () => {
     const first = await (await get("/")).text();
     expect(first).toContain("Which variant ships?");
     expect(first).not.toContain("file://");
-    expect(first).toContain("/_file/spoke/docs/tracking/");
+    expect(first).toContain("/_file/spoke/docs/agent-work/");
     expect((await get("/spoke/decisions")).status).toBe(200);
-    const svg = await get("/_file/spoke/docs/tracking/2026-01-15-sample-topic/variant-a.svg");
+    const svg = await get("/_file/spoke/docs/agent-work/2026-01-15-sample-topic/variant-a.svg");
     expect(svg.headers.get("content-type")).toContain("image/svg");
     expect((await get("/_file/spoke/../../etc/passwd")).status).toBe(404);
     // node_modules, which no commit holds, answers from the installed package.
@@ -380,10 +384,10 @@ describe("serve", () => {
     Bun.spawnSync(["mkdir", "-p", store]);
     writeFileSync(join(store, oid), "<svg>stored</svg>");
     writeFileSync(
-      join(repo, "docs/tracking/lfs.svg"),
+      join(repo, "docs/agent-work/lfs.svg"),
       `version https://git-lfs.github.com/spec/v1\noid sha256:${oid}\nsize 17\n`,
     );
-    sh(repo, "git", "add", "docs/tracking/lfs.svg");
+    sh(repo, "git", "add", "docs/agent-work/lfs.svg");
     sh(
       repo,
       "git",
@@ -395,11 +399,11 @@ describe("serve", () => {
       "-qm",
       "l",
     );
-    expect(await (await get("/_file/spoke/docs/tracking/lfs.svg")).text()).toBe(
+    expect(await (await get("/_file/spoke/docs/agent-work/lfs.svg")).text()).toBe(
       "<svg>stored</svg>",
     );
     // Uncommitted work changes nothing; a commit does.
-    const item = join(repo, "docs/tracking/items/check-the-copy.md");
+    const item = join(repo, "docs/agent-work/items/check-the-copy.md");
     writeFileSync(item, readFileSync(item, "utf8").replace("# ", "# Renamed "));
     const cached = await hub.pages();
     expect(await hub.pages()).toBe(cached);

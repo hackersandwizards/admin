@@ -1,5 +1,5 @@
 // Finds the repositories the hub shows: every git checkout under a root whose HEAD has
-// docs/tracking/items or whose package.json names a @hackersandwizards package, its own name
+// docs/agent-work/items or whose package.json names a @hackersandwizards package, its own name
 // included, without a list of repos. Such a repo shows with zero items.
 import { readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";

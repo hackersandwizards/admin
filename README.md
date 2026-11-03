@@ -24,7 +24,7 @@ Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repos
 | `admin-migrate --owner <name> [--reviews <dir>] [--dry-run] [<repo>...]` | Converts `GOAL.md`, `docs/tracking/decisions/items.js` and review folders' images into item files, once per repository.                            |
 
 `bun run dev` in this checkout runs `admin-serve`, the one hub: open `http://admin.localhost:4329`.
-A repository shows in the hub when its HEAD has `docs/tracking/items/` or its `package.json` names an
+A repository shows in the hub when its HEAD has `docs/agent-work/items/` or its `package.json` names an
 `@hackersandwizards` package, so this engine shows itself.
 
 A repository gets a Catalog entry when an `astro.config.*` at its root or one folder down loads
@@ -38,8 +38,8 @@ them on the clipboard as one `repo:id: choice, note` line each.
 
 ## Item files
 
-One Markdown file per item in `docs/tracking/items/<id>.md`, its images beside it in
-`docs/tracking/items/<id>/`. Git history is the log. A decided or finished item is deleted, with
+One Markdown file per item in `docs/agent-work/items/<id>.md`, its images beside it in
+`docs/agent-work/items/<id>/`. Git history is the log. A decided or finished item is deleted, with
 its image folder, in the commit that carries it out. The admin renders every review from this
 data in its own styles: no repository holds review HTML, and neither `admin` nor `admin-serve`
 copies an image out of the repository.
@@ -62,7 +62,7 @@ options:
   - key: b
     label: Variant B
 images: # optional, option key to one image or a list
-  a: variant-a.jpg # a file name in docs/tracking/items/<id>/
+  a: variant-a.jpg # a file name in docs/agent-work/items/<id>/
   b:
     - src: variant-b-light.jpg
       caption: light, 600 px
@@ -96,7 +96,7 @@ The question's context, in Markdown.
 ## The admin area
 
 Dashboard, Decisions, Work, Reviews (every item with images, then each older
-`docs/tracking/<date>-<topic>/` folder with its images and report), Docs (reports and the rest of `docs/`), Catalog, the repository's products,
+`docs/agent-work/<date>-<topic>/` folder with its images and report), Docs (reports and the rest of `docs/`), Catalog, the repository's products,
 Architecture (package, pins, scripts with their first comment line), Checks (the steps of
 `check:all` or `check`) and Log.
 

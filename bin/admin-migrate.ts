@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Converts a repository's GOAL.md (or TODO.md), docs/tracking/decisions/items.js and the review
-// folders naming its rows into docs/tracking/items/<id>.md, and deletes the legacy files.
+// folders naming its rows into docs/agent-work/items/<id>.md, and deletes the legacy files.
 // Usage: admin-migrate --owner <name> [--reviews <dir>] [--dry-run] [<repo> ...]
 //   --owner    who answers a row that names no owner, and who decided a row whose text names nobody
 //   --reviews  the folder of review topic folders (each with review.json) to move into the spokes

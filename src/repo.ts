@@ -2,7 +2,7 @@
 // or from the working tree (what `admin-check` validates in a gate).
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
-import { ITEMS_DIR, ItemError, itemDefects, parseItem, type Item } from "./items.ts";
+import { ITEMS_DIR, WORK_DIR, ItemError, itemDefects, parseItem, type Item } from "./items.ts";
 
 export const LEGACY = ["docs/tracking/decisions/items.js", "GOAL.md"];
 
@@ -103,6 +103,9 @@ export function readItems(src: Source): ReadItems {
   }
   for (const p of LEGACY)
     if (has.has(p)) defects.push(`${p}: legacy file, items live in ${ITEMS_DIR}`);
+  // The folder was renamed: a file left at the old path would vanish from every page unnoticed.
+  for (const p of src.paths)
+    if (p.startsWith("docs/tracking/")) defects.push(`${p}: legacy folder, move it to ${WORK_DIR}`);
   return { items, defects };
 }
 
@@ -243,10 +246,10 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
   const withChange = items.map((i) => ({ ...i, changed: changed.get(`${ITEMS_DIR}/${i.id}.md`) }));
 
   const tracking = src.paths.filter(
-    (p) => p.startsWith("docs/tracking/") && !p.startsWith(`${ITEMS_DIR}/`),
+    (p) => p.startsWith(`${WORK_DIR}/`) && !p.startsWith(`${ITEMS_DIR}/`),
   );
   const reports = tracking
-    .filter((p) => /^docs\/tracking\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/.test(p))
+    .filter((p) => /^docs\/agent-work\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/.test(p))
     .map((p) => {
       const text = src.read(p) ?? "";
       return {
@@ -259,7 +262,7 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
     .sort((a, b) => b.date.localeCompare(a.date) || a.path.localeCompare(b.path));
   const reviewDirs = new Map<string, string[]>();
   for (const p of tracking) {
-    const m = p.match(/^(docs\/tracking\/\d{4}-\d{2}-\d{2}-[^/]+)\/(.+)$/);
+    const m = p.match(/^(docs\/agent-work\/\d{4}-\d{2}-\d{2}-[^/]+)\/(.+)$/);
     if (!m) continue;
     const list = reviewDirs.get(m[1]!) ?? [];
     list.push(m[2]!);
@@ -334,7 +337,7 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
     links: (admin.links ?? []).map((l) => ({ ...l, href: href(l.href) })),
     checkSteps,
     scripts,
-    trackingLog: commits("-n", "60", "--", "docs/tracking"),
+    trackingLog: commits("-n", "60", "--", WORK_DIR),
     log: commits("-n", "60"),
   };
 }

@@ -66,7 +66,7 @@ const escape = (s: string) =>
 function itemHtml(repo: RepoData, text: string) {
   const paths = new Set(repo.reports.map((r) => r.path).concat(repo.docs.map((d) => d.path)));
   return withElements(Bun.markdown.html(text)).replace(
-    /(?<![\w/"=])(docs\/tracking\/[\w./äöüÄÖÜß-]*\w)/g,
+    /(?<![\w/"=])(docs\/agent-work\/[\w./äöüÄÖÜß-]*\w)/g,
     (p) =>
       paths.has(p) || p.endsWith("/") || /\.\w+$/.test(p)
         ? `<a class="hw-link" href="${escape(fileHref(join(repo.path, p)))}">${p}</a>`
