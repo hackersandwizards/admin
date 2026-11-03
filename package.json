@@ -30,13 +30,15 @@
     "check": "scaffolding check",
     "check:values": "bun test/no-values.ts",
     "check:fixture": "bun bin/admin-check.ts test/fixtures/spoke",
+    "check:colours": "brand-colours",
+    "check:copies": "brand-copies",
     "check:elements": "brand-elements",
     "check:staged": "check-staged",
     "fix": "bun --bun eslint --cache --concurrency=auto . --fix && bun --bun prettier --write .",
     "test": "bun test"
   },
   "dependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v0.33.1",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v0.34.1",
     "@tailwindcss/vite": "4.3.3",
     "astro": "7.4.4",
     "tailwindcss": "4.3.3"
@@ -58,6 +60,10 @@
     "test": "test",
     "check": [
       "check:values",
+      [
+        "check:colours",
+        "check:copies"
+      ],
       "check:fixture",
       "check:elements"
     ],
