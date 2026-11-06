@@ -15,9 +15,8 @@ bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.5.0"
 `@hackersandwizards/brand` and `@hackersandwizards/scaffolding` are peer dependencies: the
 repository pins both itself, and admin uses those copies, so no second copy lands under
 `node_modules/@hackersandwizards/admin/`. They are marked optional, so bun never looks them up on
-the npm registry, where the packages do not exist. `admin-check` loads scaffolding, `admin-serve`
-both; a command whose peer is missing, or too old to have the file it loads, stops and names the
-package to pin. The tags in admin's `devDependencies` are the tested pair.
+the npm registry, where the packages do not exist. `admin-check` needs neither; `admin-serve` stops
+and names what to pin when one is missing. The tags in admin's `devDependencies` are the tested pair.
 
 Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repositories through it.
 

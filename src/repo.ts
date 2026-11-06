@@ -2,7 +2,6 @@
 // the working tree (what `admin-check` validates in a gate).
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
-import { catalogPath } from "@hackersandwizards/scaffolding/catalog/path.ts";
 import {
   ITEMS_DIR,
   WORK_DIR,
@@ -220,6 +219,11 @@ function astrobookDev(src: Source, scripts: Record<string, string>, scaffolding 
       const pages = src.paths
         .filter((q) => q.startsWith(folder))
         .map((q) => q.slice(folder.length).split("/")[0]!);
+      // Required here rather than imported: admin-check, which reads only items, then needs no
+      // scaffolding installed.
+      const { catalogPath } = import.meta.require(
+        "@hackersandwizards/scaffolding/catalog/path.ts",
+      ) as typeof import("@hackersandwizards/scaffolding/catalog/path.ts");
       path = catalogPath({ base, pages, dev: true });
     }
     path = path.replace(/\/*$/, "/");

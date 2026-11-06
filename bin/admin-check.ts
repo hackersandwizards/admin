@@ -3,10 +3,7 @@
 // image folders) from the working tree, and fails while a legacy GOAL.md or items.js remains.
 // Usage: admin-check [<repo> ...]   default: the current directory. Exit 1 on a defect.
 import { resolve } from "node:path";
-import { requirePeers } from "../src/peers.ts";
-
-requirePeers("admin-check", ["@hackersandwizards/scaffolding/catalog/path.ts"]);
-const { readItems, treeSource } = await import("../src/repo.ts");
+import { readItems, treeSource } from "../src/repo.ts";
 
 const repos = process.argv.slice(2).length ? process.argv.slice(2) : ["."];
 let defects = 0;

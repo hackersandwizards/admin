@@ -5,14 +5,20 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { requirePeers } from "../src/peers.ts";
+import { stylesheet } from "../src/build.ts";
+import { createHub } from "../src/serve.ts";
 
-requirePeers("admin-serve", [
-  "@hackersandwizards/scaffolding/catalog/path.ts",
-  "@hackersandwizards/brand/tokens.css",
-  "@hackersandwizards/brand/expert/components/AppHeader.astro",
-]);
-const { createHub } = await import("../src/serve.ts");
+// brand and scaffolding come from the repository that installs admin (peerDependencies): stop
+// with what to pin before the first build fails on a missing one.
+try {
+  stylesheet();
+  Bun.resolveSync("@hackersandwizards/scaffolding/catalog/path.ts", import.meta.dir);
+} catch (e) {
+  console.error(
+    `admin-serve: ${(e as Error).message}. Pin @hackersandwizards/brand and @hackersandwizards/scaffolding in this repository's package.json, then run bun install.`,
+  );
+  process.exit(1);
+}
 
 const { values } = parseArgs({
   options: { root: { type: "string" }, port: { type: "string" } },
