@@ -245,19 +245,36 @@ describe("hub", () => {
     );
     expect(book.designSystem).toBe("http://127.0.0.1:4999/design-system/");
     expect(book.designSystemDev).toEqual({ port: 4999, start: "design-system" });
-    // scaffolding's catalog preset is Astrobook at /catalog, started by the `catalog` script.
-    const shell = readRepo(
-      bare(
-        "shell",
-        { name: "shell", scripts: { dev: "wrangler dev", catalog: "cd catalog && astro dev" } },
-        {
-          "catalog/astro.config.ts":
-            'import { catalog } from "@hackersandwizards/scaffolding/catalog";\nserver: { host: "127.0.0.1", port: 4998 }',
-        },
-      ),
-    );
-    expect(shell.designSystem).toBe("http://127.0.0.1:4998/catalog/");
+    // scaffolding's catalog preset from v2 is the dev server's root, without base, started by the
+    // `catalog` script; at /catalog where the site's pages have a home; before v2 <base>/catalog.
+    const preset = (name: string, pin: string, files: Record<string, string> = {}) =>
+      readRepo(
+        bare(
+          name,
+          {
+            name,
+            scripts: { dev: "wrangler dev", catalog: "cd catalog && astro dev" },
+            devDependencies: {
+              "@hackersandwizards/scaffolding": `git+https://x.invalid/s.git#${pin}`,
+            },
+          },
+          {
+            "catalog/astro.config.ts":
+              'import { catalog } from "@hackersandwizards/scaffolding/catalog";\nbase: "/shell",\nsrcDir: ".",\nserver: { host: "127.0.0.1", port: 4998 }',
+            ...files,
+          },
+        ),
+      );
+    const shell = preset("shell", "v2.1.0", { "catalog/pages/types/a.astro": "" });
+    expect(shell.designSystem).toBe("http://127.0.0.1:4998/");
     expect(shell.designSystemDev).toEqual({ port: 4998, start: "catalog" });
+    expect(preset("homed", "v2.1.0", { "catalog/pages/index.html.ts": "" }).designSystem).toBe(
+      "http://127.0.0.1:4998/catalog/",
+    );
+    expect(preset("caught", "v2.0.1", { "catalog/pages/[...slug].astro": "" }).designSystem).toBe(
+      "http://127.0.0.1:4998/catalog/",
+    );
+    expect(preset("older", "v1.0.0").designSystem).toBe("http://127.0.0.1:4998/shell/catalog/");
     const owned = readRepo(
       bare("owned", {
         name: "owned",

@@ -1,17 +1,17 @@
 {
   "pages": [
-    "dist/catalog/index.html",
-    "dist/catalog/stories/Pages/dashboard/default/index.html",
-    "dist/catalog/stories/Pages/decisions/default/index.html",
-    "dist/catalog/stories/Pages/work/default/index.html",
-    "dist/catalog/stories/Pages/reviews/default/index.html",
-    "dist/catalog/stories/Pages/doc/default/index.html",
-    "dist/catalog/stories/Pages/catalog/default/index.html",
-    "dist/catalog/stories/Pages/architecture/default/index.html",
-    "dist/catalog/stories/Pages/checks/default/index.html",
-    "dist/catalog/stories/Pages/log/default/index.html",
-    "dist/catalog/stories/Pages/hub/default/index.html",
-    "dist/catalog/stories/Pages/docs/default/index.html"
+    "dist/index.html",
+    "dist/stories/Pages/dashboard/default/index.html",
+    "dist/stories/Pages/decisions/default/index.html",
+    "dist/stories/Pages/work/default/index.html",
+    "dist/stories/Pages/reviews/default/index.html",
+    "dist/stories/Pages/doc/default/index.html",
+    "dist/stories/Pages/catalog/default/index.html",
+    "dist/stories/Pages/architecture/default/index.html",
+    "dist/stories/Pages/checks/default/index.html",
+    "dist/stories/Pages/log/default/index.html",
+    "dist/stories/Pages/hub/default/index.html",
+    "dist/stories/Pages/docs/default/index.html"
   ],
   "uses": ["label", "pill", "card", "callout", "quote", "table", "link", "code", "breadcrumb"],
   "exceptions": {

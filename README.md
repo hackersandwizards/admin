@@ -9,7 +9,7 @@ A repository adds the package as a dev dependency pinned to a tag. The repositor
 the install needs no GitHub login:
 
 ```sh
-bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.1.1"
+bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.2.0"
 ```
 
 Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repositories through it.
@@ -27,7 +27,9 @@ A repository shows in the hub when its HEAD has `docs/agent-work/items/` or its 
 
 A repository gets a Catalog entry when an `astro.config.*` at its root or one folder down loads
 Astrobook or scaffolding's catalog preset: the link is `http://127.0.0.1:<port><base><subpath>` from
-that config (the preset's subpath is `/catalog`), and the page names the package script that starts
+that config. The preset from v2 serves at the root without `base`, or at `/catalog` where the
+site's pages have an index or a top-level catch-all of their own; before v2 at `<base>/catalog`.
+The page names the package script that starts
 it (`catalog` where the preset's repository has one) and says whether it is running now.
 `admin.designSystem` overrides it.
 
@@ -130,7 +132,7 @@ Tailwind arbitrary value defined here.
 bun install
 bun run check     # the gate: scaffolding's shared steps, then check:values, check:colours, check:copies, check:fixture, check:elements
 bun run dev       # the hub on http://admin.localhost:4329
-bun run catalog   # the site's pages on the invented fixture, http://127.0.0.1:4332/catalog/
+bun run catalog   # the site's pages on the invented fixture, http://127.0.0.1:4332/
 ```
 
 ## License

@@ -43,7 +43,7 @@
     "tailwindcss": "4.3.3"
   },
   "devDependencies": {
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v1.0.0",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.1.0",
     "@types/bun": "1.4.4",
     "astrobook": "0.13.3",
     "eslint": "10.14.0",
@@ -51,9 +51,6 @@
     "prettier-plugin-astro": "1.1.2",
     "stylelint": "17.16.0",
     "typescript": "6.0.3"
-  },
-  "admin": {
-    "designSystem": "http://127.0.0.1:4332/catalog/"
   },
   "scaffolding": {
     "test": "test",

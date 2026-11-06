@@ -1,5 +1,5 @@
 // The catalog (repo-uniformity-plan, hub-max): Astrobook over catalog/stories in scaffolding's
-// catalog shell, served at http://127.0.0.1:4332/catalog/ by `bun run catalog`. The stories render
+// catalog shell, served at http://127.0.0.1:4332/ by `bun run catalog`. The stories render
 // the site's own components (site/src) on the invented fixture repository test/fixtures/spoke, read
 // as the hub reads it, under the stylesheet the build writes. `bun run build` writes dist/, where
 // brand-elements reads the pages from disk; nothing publishes it.
@@ -28,10 +28,11 @@ export default defineConfig({
   server: { host: "127.0.0.1", port: 4332 },
   // A page opened from disk finds its stylesheets by file URL.
   build: { assetsPrefix: pathToFileURL(join(root, "dist")).href },
-  redirects: { "/design-system": "/catalog" },
+  redirects: { "/design-system": "/" },
   integrations: [
     catalog({
       product: "Admin",
+      admin: true,
       lead: "Every page and component of the admin engine, rendered by the engine's own site on an invented repository. Every value comes from brand.",
       css: [join(cache, "admin.css")],
       head: "./Head.astro",

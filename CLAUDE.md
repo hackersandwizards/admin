@@ -20,7 +20,7 @@ exported file is a release whose commit names the change.
   layout (`site/src/layout.css`).
 - `catalog/`: the catalog of the site's pages and components on the invented fixture, in
   scaffolding's catalog shell (`catalog()` preset), `bun run catalog` at
-  http://127.0.0.1:4332/catalog/, `bun run build` to `dist/`; not installed by consumers.
+  http://127.0.0.1:4332/, `bun run build` to `dist/`; not installed by consumers.
   `bun run dev` runs the hub (`admin-serve`) on 4329; `start` is its old name, kept while os's
   parallel-session skill names it. `brand-elements.json` lists the brand elements the site uses and the ones it keeps.
 - `test/`: `admin.test.ts` and its invented fixtures; `no-values.ts`, the check that no design value
