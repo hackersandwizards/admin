@@ -5,7 +5,14 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { createHub } from "../src/serve.ts";
+import { requirePeers } from "../src/peers.ts";
+
+requirePeers("admin-serve", [
+  "@hackersandwizards/scaffolding/catalog/path.ts",
+  "@hackersandwizards/brand/tokens.css",
+  "@hackersandwizards/brand/expert/components/AppHeader.astro",
+]);
+const { createHub } = await import("../src/serve.ts");
 
 const { values } = parseArgs({
   options: { root: { type: "string" }, port: { type: "string" } },

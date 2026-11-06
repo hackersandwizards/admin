@@ -10,7 +10,7 @@ import elements from "../brand-elements.json";
 import { items } from "./story";
 
 // The brand version the tiles name, from the pin: brand-elements fails on any other.
-const version = pkg.dependencies["@hackersandwizards/brand"].split("#v")[1];
+const version = pkg.devDependencies["@hackersandwizards/brand"].split("#v")[1];
 const BRAND = "https://hackersandwizards.github.io/brand/";
 const notes: Record<string, string> = {
   label: "The rail's group names.",

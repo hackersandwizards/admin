@@ -9,8 +9,14 @@ A repository adds the package as a dev dependency pinned to a tag. The repositor
 the install needs no GitHub login:
 
 ```sh
-bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.3.1"
+bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.5.0"
 ```
+
+`@hackersandwizards/brand` and `@hackersandwizards/scaffolding` are peer dependencies: the
+repository pins both itself, and admin uses those copies, so no second copy lands under
+`node_modules/@hackersandwizards/admin/`. `admin-check` loads scaffolding, `admin-serve` both; a
+command whose peer is missing, or too old to have the file it loads, stops and names the package to
+pin. The tags in admin's `devDependencies` are the tested pair.
 
 Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repositories through it.
 

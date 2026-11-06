@@ -5,14 +5,14 @@
     "": {
       "name": "@hackersandwizards/admin",
       "dependencies": {
-        "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.6.0",
-        "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.7.2",
         "@tailwindcss/typography": "0.5.20",
         "@tailwindcss/vite": "4.3.3",
         "astro": "7.4.4",
         "tailwindcss": "4.3.3",
       },
       "devDependencies": {
+        "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.6.0",
+        "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.7.2",
         "@types/bun": "1.4.4",
         "astrobook": "0.13.3",
         "eslint": "10.14.0",
@@ -20,6 +20,10 @@
         "prettier-plugin-astro": "1.1.2",
         "stylelint": "17.16.0",
         "typescript": "6.0.3",
+      },
+      "peerDependencies": {
+        "@hackersandwizards/brand": "*",
+        "@hackersandwizards/scaffolding": "*",
       },
     },
   },

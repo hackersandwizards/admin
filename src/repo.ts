@@ -202,7 +202,7 @@ function firstComment(text: string) {
 // down that loads astrobook or scaffolding's catalog preset, read for its server port and path,
 // and the package script that starts it: `catalog` where the preset's repository has one.
 // Astrobook's path is <base><subpath>. The preset's, for a spoke pinning scaffolding at major 2 or
-// up, is catalogPath from the scaffolding admin pins (one rule across v2); below major 2, <base>/catalog.
+// up, is catalogPath from the scaffolding installed beside admin (one rule across v2); below major 2, <base>/catalog.
 function astrobookDev(src: Source, scripts: Record<string, string>, scaffolding = "") {
   const major = Number(scaffolding.match(/#v?(\d+)\./)?.[1] ?? 2);
   for (const p of src.paths.filter((q) => ASTRO_CONFIG.test(q))) {
