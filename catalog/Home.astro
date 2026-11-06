@@ -20,7 +20,9 @@ const notes: Record<string, string> = {
   quote: "A blockquote in a report or an item's Markdown.",
   table: "Every list of rows: repositories, reports, scripts, checks, commits.",
   link: "A link in an item's text or a report.",
-  code: "A config key named in running text.",
+  code: "A code block in an item's Markdown or a report.",
+  "inline-code": "A config key or command named in running text.",
+  segmented: "The choice whose questions show: one person or all.",
   breadcrumb: "The top bar's way back to the hub, its last item the repo switcher.",
 };
 ---
@@ -35,7 +37,7 @@ const notes: Record<string, string> = {
       {elements.uses.map((name) => (
         <div class="flex flex-col gap-2" data-hw-tile={name} data-hw-version={version}>
           <p class="text-ui">
-            aus brand v{version} · <code class="hw-code">hw-{name}</code> ·{" "}
+            aus brand v{version} · <code class="hw-inline-code">hw-{name}</code> ·{" "}
             <a class="hw-link" href={`${BRAND}#hw-${name}`}>
               catalog
             </a>
@@ -78,6 +80,16 @@ const notes: Record<string, string> = {
               first.
             </p>
           )}
+          {name === "segmented" && (
+            <div class="hw-segmented" role="group" aria-label="For whom">
+              <button type="button" aria-pressed="true">
+                Alex
+              </button>
+              <button type="button" aria-pressed="false">
+                All
+              </button>
+            </div>
+          )}
           {name === "breadcrumb" && (
             <nav class="hw-breadcrumb" aria-label="Breadcrumb">
               <ol>
@@ -92,9 +104,10 @@ const notes: Record<string, string> = {
               </ol>
             </nav>
           )}
-          {name === "code" && (
+          {name === "code" && <pre class="hw-code">bun run check</pre>}
+          {name === "inline-code" && (
             <p class="text-ui">
-              Set <code class="hw-code">admin.designSystem</code> in package.json.
+              Set <code class="hw-inline-code">admin.designSystem</code> in package.json.
             </p>
           )}
         </div>
@@ -128,7 +141,7 @@ const notes: Record<string, string> = {
           )}
           {name === "image-tile" && (
             <span class="hw-card flex flex-col gap-1 p-2!">
-              <span class="aspect-video w-full rounded-sm bg-muted" />
+              <span class="aspect-video w-full rounded-brand bg-muted" />
               <span class="truncate font-mono text-micro text-foreground/70">variant-a.svg</span>
             </span>
           )}

@@ -153,6 +153,7 @@ export function stylesheet() {
     `@import "${at("@hackersandwizards/brand/expert.css")}";`,
     `@import "${at("@hackersandwizards/brand/header.css")}";`,
     `@import "${at("@hackersandwizards/brand/elements.css")}";`,
+    `@import "${at("@hackersandwizards/brand/marker.css")}";`,
     `@import "${at("@hackersandwizards/brand/fonts.css")}";`,
     `@import "${join(PKG, "site/src/layout.css")}";`,
     `@source "${join(PKG, "site/src")}";`,

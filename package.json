@@ -1,6 +1,6 @@
 {
   "name": "@hackersandwizards/admin",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -32,18 +32,19 @@
     "check:colours": "brand-colours",
     "check:copies": "brand-copies",
     "check:elements": "brand-elements",
+    "check:markers": "brand-markers dist/stories/Pages/doc/default/index.html dist/stories/Pages/decisions/default/index.html",
     "check:staged": "check-staged",
     "fix": "bun --bun eslint --cache --concurrency=auto . --fix && bun --bun prettier --write .",
     "test": "bun test"
   },
   "dependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.0.0",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.2.0",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.4.0",
     "@tailwindcss/vite": "4.3.3",
     "astro": "7.4.4",
     "tailwindcss": "4.3.3"
   },
   "devDependencies": {
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.1.0",
     "@types/bun": "1.4.4",
     "astrobook": "0.13.3",
     "eslint": "10.14.0",
@@ -61,7 +62,8 @@
         "check:copies"
       ],
       "check:fixture",
-      "check:elements"
+      "check:elements",
+      "check:markers"
     ],
     "skip": {
       "admin": "this is admin: check:fixture runs admin-check on the invented fixture, and the repository keeps no items of its own"

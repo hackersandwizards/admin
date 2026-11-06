@@ -26,3 +26,6 @@ images:
 # Which variant ships?
 
 Both variants were scored blind. Report: docs/agent-work/2026-01-15-sample-topic.md.
+
+- Variant A keeps the current layout.
+- Variant B moves the menu to the top.

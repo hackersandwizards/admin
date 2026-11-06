@@ -93,14 +93,13 @@ const leads: Partial<Record<Page["type"], string>> = {
     <>
       <section class="flex flex-col gap-2">
         <h2 class="font-mono font-semibold text-heading">Needs you</h2>
-        <div class="flex flex-wrap gap-2" role="group" aria-label="For whom">
+        <div
+          class="hw-segmented max-w-full self-start overflow-x-auto"
+          role="group"
+          aria-label="For whom"
+        >
           {[...d.people, "all"].map((p) => (
-            <button
-              type="button"
-              class="btn-secondary aria-pressed:bg-accent aria-pressed:text-on-accent"
-              data-who-button={p}
-              aria-pressed="false"
-            >
+            <button type="button" data-who-button={p} aria-pressed="false">
               {p === "all" ? "All" : p}
             </button>
           ))}
@@ -163,7 +162,7 @@ const leads: Partial<Record<Page["type"], string>> = {
       {d.repos.some((r) => r.defects.length) && (
         <section>
           <h2 class="mb-2 font-mono font-semibold text-heading">Defects</h2>
-          <ul class="list-disc pl-5 text-ui">
+          <ul class="hw-marker-list text-ui">
             {d.repos.flatMap((r) =>
               r.defects.map((x) => (
                 <li data-row>
@@ -283,7 +282,7 @@ const leads: Partial<Record<Page["type"], string>> = {
       {repo.defects.length > 0 && (
         <section>
           <h2 class="mb-2 font-mono font-semibold text-heading">Defects (admin-check)</h2>
-          <ul class="list-disc pl-5 text-ui text-error">
+          <ul class="hw-marker-list text-ui text-error">
             {repo.defects.map((x) => (
               <li>{x}</li>
             ))}
@@ -295,14 +294,13 @@ const leads: Partial<Record<Page["type"], string>> = {
 
   {page.type === "decisions" && (
     <>
-      <div class="flex flex-wrap gap-2" role="group" aria-label="For whom">
+      <div
+        class="hw-segmented max-w-full self-start overflow-x-auto"
+        role="group"
+        aria-label="For whom"
+      >
         {[...d.people, "all"].map((p) => (
-          <button
-            type="button"
-            class="btn-secondary aria-pressed:bg-accent aria-pressed:text-on-accent"
-            data-who-button={p}
-            aria-pressed="false"
-          >
+          <button type="button" data-who-button={p} aria-pressed="false">
             {p === "all" ? "All" : p}
           </button>
         ))}
@@ -379,7 +377,7 @@ const leads: Partial<Record<Page["type"], string>> = {
                     loading="lazy"
                     src={fileHref(`${repo.path}/${r.dir}/${f}`)}
                     alt={f}
-                    class="aspect-video w-full rounded-sm bg-muted object-contain"
+                    class="aspect-video w-full rounded-brand bg-muted object-contain"
                   />
                   <span class="truncate font-mono text-micro text-foreground/70">{f}</span>
                   {caption(f) && <span class="text-micro">{caption(f)}</span>}
@@ -446,7 +444,7 @@ const leads: Partial<Record<Page["type"], string>> = {
         · {repo.key} HEAD {repo.head}
       </p>
       <article
-        class="max-w-3xl text-subheading [&_h1]:hidden [&_h2]:mt-8 [&_h2]:mb-2 [&_h2]:font-mono [&_h2]:font-semibold [&_h2]:text-heading [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:font-semibold [&_img]:my-4 [&_img]:max-w-full [&_img]:rounded-sm [&_li]:mb-1 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-3 [&_pre]:mb-3 [&_pre]:overflow-x-auto [&_table]:mb-4 [&_table]:block [&_table]:overflow-x-auto [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:pl-6"
+        class="max-w-3xl text-subheading [&_h1]:hidden [&_h2]:mt-8 [&_h2]:mb-2 [&_h2]:font-mono [&_h2]:font-semibold [&_h2]:text-heading [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:font-semibold [&_img]:my-4 [&_img]:max-w-full [&_img]:rounded-brand [&_li]:mb-1 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:mb-3 [&_pre]:mb-3 [&_table]:mb-4 [&_table]:block [&_table]:overflow-x-auto [&_ul]:mb-3"
         set:html={doc.html}
       />
     </>
@@ -465,7 +463,7 @@ const leads: Partial<Record<Page["type"], string>> = {
           {repo.designSystemDev.port}
           {", so it opens while "}
           {repo.designSystemDev.start ? (
-            <code class="font-mono">bun run {repo.designSystemDev.start}</code>
+            <code class="hw-inline-code">bun run {repo.designSystemDev.start}</code>
           ) : (
             "its dev server"
           )}{" "}
@@ -474,7 +472,7 @@ const leads: Partial<Record<Page["type"], string>> = {
       )}
       <p class="text-foreground/70">
         What this repository's engine produces, such as slide types, document types or brand assets,
-        has its own menu items, set under <code class="font-mono">admin.products</code>.
+        has its own menu items, set under <code class="hw-inline-code">admin.products</code>.
       </p>
     </div>
   )}

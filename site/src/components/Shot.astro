@@ -14,7 +14,7 @@ const { src, caption, alt, small = false } = Astro.props;
       loading="lazy"
       src={src}
       alt={alt}
-      class={`w-full rounded-sm bg-muted object-contain ${small ? "max-h-48" : "max-h-96"}`}
+      class={`w-full rounded-brand bg-muted object-contain ${small ? "max-h-48" : "max-h-96"}`}
     />
   </a>
   {caption && <span class="text-micro text-foreground/70">{caption}</span>}

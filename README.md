@@ -9,7 +9,7 @@ A repository adds the package as a dev dependency pinned to a tag. The repositor
 the install needs no GitHub login:
 
 ```sh
-bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.2.0"
+bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.3.0"
 ```
 
 Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repositories through it.

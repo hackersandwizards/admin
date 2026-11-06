@@ -67,7 +67,7 @@ const meta = [
       </p>
     )}
     <div
-      class="flex flex-col gap-3 [&_li]:max-w-prose [&_p]:max-w-prose [&_ul]:list-disc [&_ul]:pl-5"
+      class="flex flex-col gap-3 [&_li]:max-w-prose [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:max-w-prose"
       set:html={i.html}
     />
     {i.evidence && <p class="text-foreground/70">Evidence: {i.evidence}</p>}

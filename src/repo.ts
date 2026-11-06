@@ -2,6 +2,7 @@
 // the working tree (what `admin-check` validates in a gate).
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
+import { catalogPath } from "@hackersandwizards/scaffolding/catalog/path.ts";
 import {
   ITEMS_DIR,
   WORK_DIR,
@@ -162,7 +163,10 @@ export const withElements = (html: string) =>
   html
     .replace(/<table>/g, '<table class="hw-table">')
     .replace(/<blockquote>/g, '<blockquote class="hw-quote">')
-    .replace(/<a href=/g, '<a class="hw-link" href=');
+    .replace(/<a href=/g, '<a class="hw-link" href=')
+    .replace(/<ul>/g, '<ul class="hw-marker-list">')
+    .replace(/<pre>/g, '<pre class="hw-code">')
+    .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');
 
 // A Markdown file as HTML; relative src and href resolve to the file in the spoke.
 export function renderMarkdown(repo: string, path: string, text: string) {
@@ -194,8 +198,8 @@ function firstComment(text: string) {
 // Where a repository's catalog runs in development: the astro config at the root or one folder
 // down that loads astrobook or scaffolding's catalog preset, read for its server port and path,
 // and the package script that starts it: `catalog` where the preset's repository has one.
-// Astrobook's path is <base><subpath>. The preset's restates scaffolding's rule (catalog/index.ts,
-// which exports no function for it), as the README states it, by the major of the pinned tag.
+// Astrobook's path is <base><subpath>. The preset's, for a spoke pinning scaffolding at major 2 or
+// up, is catalogPath from the scaffolding admin pins (one rule across v2); below major 2, <base>/catalog.
 function astrobookDev(src: Source, scripts: Record<string, string>, scaffolding = "") {
   const major = Number(scaffolding.match(/#v?(\d+)\./)?.[1] ?? 2);
   for (const p of src.paths.filter((q) => ASTRO_CONFIG.test(q))) {
@@ -206,17 +210,15 @@ function astrobookDev(src: Source, scripts: Record<string, string>, scaffolding 
     if (!port) continue;
     const at = (key: string) => text.match(new RegExp(`\\b${key}:\\s*["']([^"']+)["']`))?.[1];
     const base = at("base") ?? "";
-    // The site's own home: an index file or folder, or a top-level catch-all, in its pages.
-    const home = () => {
-      const pages = `${join(p, "..", at("srcDir") ?? "src", "pages")}/`;
-      return src.paths.some(
-        (q) =>
-          q.startsWith(pages) &&
-          /^(index(\.|$)|\[\.\.\.)/.test(q.slice(pages.length).split("/")[0]!),
-      );
-    };
     let path = `${base}${at("subpath") ?? ""}`;
-    if (preset) path = major < 2 ? `${base}/catalog` : home() ? "/catalog" : "";
+    if (preset && major < 2) path = `${base}/catalog`;
+    else if (preset) {
+      const folder = `${join(p, "..", at("srcDir") ?? "src", "pages")}/`;
+      const pages = src.paths
+        .filter((q) => q.startsWith(folder))
+        .map((q) => q.slice(folder.length).split("/")[0]!);
+      path = catalogPath({ base, pages, dev: true });
+    }
     path = path.replace(/\/*$/, "/");
     const dir = p.includes("/") ? p.slice(0, p.indexOf("/")) : "";
     const runs = Object.keys(scripts).filter((k) => {
