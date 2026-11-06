@@ -1,6 +1,6 @@
 {
   "name": "@hackersandwizards/admin",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -38,8 +38,8 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.13.1",
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.8.0",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.16.0",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.9.0",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.3",
     "@types/bun": "1.4.4",
@@ -69,7 +69,7 @@
     }
   },
   "peerDependencies": {
-    "@hackersandwizards/brand": ">=1.13.0",
+    "@hackersandwizards/brand": ">=1.15.0",
     "@hackersandwizards/scaffolding": "*",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",

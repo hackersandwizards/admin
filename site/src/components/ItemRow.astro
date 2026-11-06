@@ -35,14 +35,18 @@ const meta = [
   open={open}
 >
   <summary class="flex items-start gap-3 px-3 py-2">
-    <span
-      class="hw-pill shrink-0 font-mono"
-      data-priority={i.priority}
-      data-tone={i.priority ? undefined : "neutral"}
-      data-hw-exception="priority-pill"
-    >
-      {i.priority ? `P${i.priority}` : "Goal"}
-    </span>
+    {i.kind === "goal" ? (
+      <span class="hw-label shrink-0">Goal</span>
+    ) : (
+      <span
+        class="hw-pill shrink-0 font-mono"
+        data-priority={i.priority}
+        data-variant={i.priority ? undefined : "outline"}
+        data-hw-exception="priority-pill"
+      >
+        P{i.priority ?? "–"}
+      </span>
+    )}
     <span class="min-w-0 flex-1">
       <span class="block font-medium text-ui">{i.title}</span>
       <span class="block text-ui text-foreground/70">{meta.join(" · ")}</span>
