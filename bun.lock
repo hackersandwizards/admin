@@ -25,6 +25,10 @@
         "@hackersandwizards/brand": "*",
         "@hackersandwizards/scaffolding": "*",
       },
+      "optionalPeers": [
+        "@hackersandwizards/brand",
+        "@hackersandwizards/scaffolding",
+      ],
     },
   },
   "packages": {

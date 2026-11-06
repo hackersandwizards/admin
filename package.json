@@ -73,5 +73,13 @@
   "peerDependencies": {
     "@hackersandwizards/brand": "*",
     "@hackersandwizards/scaffolding": "*"
+  },
+  "peerDependenciesMeta": {
+    "@hackersandwizards/brand": {
+      "optional": true
+    },
+    "@hackersandwizards/scaffolding": {
+      "optional": true
+    }
   }
 }
