@@ -1,6 +1,6 @@
 {
   "name": "@hackersandwizards/admin",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -69,7 +69,7 @@
     }
   },
   "peerDependencies": {
-    "@hackersandwizards/brand": "*",
+    "@hackersandwizards/brand": ">=1.13.0",
     "@hackersandwizards/scaffolding": "*",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
