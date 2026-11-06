@@ -64,6 +64,14 @@
       "check:elements",
       "check:markers"
     ],
+    "allow": [
+      {
+        "check": "history",
+        "path": "src/items.ts",
+        "text": "blind-review score",
+        "reason": "names what the data field holds, as the README and the score's tooltip do, not a review that took place"
+      }
+    ],
     "skip": {
       "admin": "this is admin: check:fixture runs admin-check on the invented fixture, and the repository keeps no items of its own"
     }

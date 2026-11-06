@@ -8,7 +8,7 @@ export const ITEMS_DIR = `${WORK_DIR}/items`;
 export const KINDS = ["decision", "review", "work", "goal"] as const;
 export const STATUSES = ["open", "assumed", "decided"] as const;
 
-// An option may carry its score from a review and the noise measured around it.
+// An option may carry its blind-review score and the noise measured around it.
 export type Option = {
   key: string;
   label: string;

@@ -160,7 +160,8 @@
       max-height: none;
     }
     /* The phone keeps the current place's menu as one row of chips under the search, the current
-       page filled. The hub's row holds its own pages; the top bar's switcher holds the repos. */
+       page filled: a menu reads better than none, and a second row of every repo reads worse than
+       the top bar's switcher. */
     .admin-rail .admin-back,
     .admin-rail nav > .hw-label,
     .admin-rail [data-repos] {
