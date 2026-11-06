@@ -83,7 +83,10 @@ export function siteData(repos: RepoData[]): SiteData {
   );
   const count = (p: string) => asked.filter((a) => a === p).length;
   const people = [...new Set(asked)].sort((a, b) => count(b) - count(a) || a.localeCompare(b));
-  const pages: Page[] = [];
+  const pages: Page[] = [
+    { path: "index", type: "hub", title: "Admin hub" },
+    { path: "architecture", type: "hub-architecture", title: "Packages" },
+  ];
   const out = repos.map((r) => {
     const prefix = `${r.key}/`;
     const items = [...r.items].sort(compareItems).map((i) => {
@@ -135,8 +138,6 @@ export function siteData(repos: RepoData[]): SiteData {
       });
     return { ...r, items, prefix, dashboard };
   });
-  pages.unshift({ path: "index", type: "hub", title: "Admin hub" });
-  pages.splice(1, 0, { path: "architecture", type: "hub-architecture", title: "Packages" });
   return { version: VERSION, people, repos: out, pages };
 }
 

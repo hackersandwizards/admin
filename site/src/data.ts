@@ -22,6 +22,10 @@ export function href(from: string, to: string) {
 
 export const repoOf = (key?: string) => data().repos.find((r) => r.key === key);
 
+let paths: Set<string> | undefined;
+export const hasPage = (path: string) =>
+  (paths ??= new Set(data().pages.map((p) => p.path))).has(path);
+
 export const isQuestion = (i: ViewItem) => i.kind === "decision" || i.kind === "review";
 export const openQuestions = (items: ViewItem[]) =>
   items.filter((i) => i.status === "open" && isQuestion(i));

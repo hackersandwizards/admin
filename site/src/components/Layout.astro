@@ -10,7 +10,7 @@ import AppHeader from "@hackersandwizards/brand/expert/components/AppHeader.astr
 import { navLinkClass } from "@hackersandwizards/brand/expert/components/space-nav.ts";
 import adminScript from "../admin.js?url";
 import themeScript from "../theme.js?url";
-import { data, forPerson, href, openQuestions, repoOf, type Page } from "../data";
+import { data, forPerson, hasPage, href, openQuestions, repoOf, type Page } from "../data";
 
 interface Props {
   page: Page;
@@ -46,12 +46,13 @@ const menu = repo
       { to: "index", label: "Needs a person", count: d.repos.reduce((n, r) => n + waiting(r), 0) },
       { to: "architecture", label: "Packages" },
     ];
-// The page another repo opens on from the switcher: the same page where that repo has it, a doc's
-// list for a doc, else its dashboard.
-const SHARED = ["decisions", "work", "reviews", "docs", "architecture", "checks", "log"];
+// The page a repo opens on from the switcher: the current repo stays on this page, another opens
+// on the same page where it has one, on its Docs from a doc, else on its dashboard. A product page
+// is its repo's own.
 const samePage = (r: Repo) => {
-  const to = page.type === "doc" ? "docs" : page.type;
-  return SHARED.includes(to) || (to === "catalog" && r.designSystem) ? r.prefix + to : r.dashboard;
+  if (r.key === repo?.key) return page.path;
+  const to = r.prefix + (page.type === "doc" ? "docs" : page.path.slice(repo!.prefix.length));
+  return page.type !== "product" && hasPage(to) ? to : r.dashboard;
 };
 // The current entry wears space-nav's active link, the rail link of every expert app.
 const active = navLinkClass("x", "x")[1];
@@ -74,9 +75,20 @@ const current = (to: string) =>
     <AppHeader product="Admin" href={at("index")}>
       <nav class="hw-breadcrumb admin-where ml-auto" aria-label="Where">
         <ol>
-          <li>{repo ? <a href={at("index")}>Hub</a> : <span aria-current="page">Hub</span>}</li>
           <li>
-            <button type="button" class="admin-switch" popovertarget="admin-repos">
+            {page.type === "hub" ? (
+              <span aria-current="page">Hub</span>
+            ) : (
+              <a href={at("index")}>Hub</a>
+            )}
+          </li>
+          <li>
+            <button
+              type="button"
+              class="admin-switch"
+              popovertarget="admin-repos"
+              aria-current={repo ? "location" : undefined}
+            >
               {repo ? repo.key : "Repos"} <span aria-hidden="true">▾</span>
             </button>
           </li>

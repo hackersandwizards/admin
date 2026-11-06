@@ -65,11 +65,20 @@
   /* The top bar's "Hub / <repo> ▾": brand's breadcrumb on one line, its last item the button that
      opens the repo list, a popover the browser closes on a click outside and on Escape. */
   .admin-where {
+    min-width: 0;
     white-space: nowrap;
   }
   .admin-where ol {
     flex-wrap: nowrap;
     align-items: center;
+  }
+  /* A long repo key shortens rather than push the button off a phone's header. */
+  .admin-where li {
+    flex: none;
+  }
+  .admin-where li:last-child {
+    flex: 0 1 auto;
+    min-width: 0;
   }
   .admin-switch {
     padding: 0.25rem 0.625rem;
@@ -81,6 +90,9 @@
     font-size: inherit;
     font-weight: 600;
     cursor: pointer;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .admin-repos {
     inset: auto;
@@ -150,8 +162,9 @@
       max-height: none;
     }
     /* The phone keeps the current place's menu as one row of chips under the search, the current
-       page filled (blind review 2026-11-03: +1.2 at noise 0.3 over no menu); the top bar's switcher
-       reaches the repos and the hub. */
+       page filled (blind review 2026-11-03: +1.2 at noise 0.3 over no menu; the hub's two rows, its
+       menu and every repo, lost -0.8). The hub's one row of its own pages and the top bar's
+       switcher for the repos won the review of 2026-11-06. */
     .admin-rail .admin-back,
     .admin-rail nav > .hw-label,
     .admin-rail [data-repos] {
