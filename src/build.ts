@@ -185,6 +185,9 @@ export async function buildSite(data: SiteData, outDir: string) {
     await build({
       root: join(PKG, "site"),
       configFile: false,
+      // Astro's default, JSX whitespace, drops a line break where text meets a tag, so words run
+      // together; off, a line break in a template renders as the space the formatter assumes.
+      compressHTML: false,
       outDir: built,
       cacheDir: join(work, "cache"),
       logLevel: "error",

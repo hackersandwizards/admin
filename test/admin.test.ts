@@ -323,6 +323,8 @@ describe("pages", () => {
     expect(repos(decisions)).toContain('href="decisions.html"');
     expect(repos(html)).toContain('href="spoke/dashboard.html"');
     expect(repos(decisions)).toContain('href="../plain/decisions.html"');
+    // A line break between text and a tag renders as a space: the pill and the label stay apart.
+    expect(decisions).toMatch(/Recommended\s*<\/span>\s+<b>/);
     for (const [from, to] of [
       ["spoke/catalog.html", "../plain/dashboard.html"],
       ["spoke/products-1.html", "../plain/dashboard.html"],

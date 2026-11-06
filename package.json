@@ -17,7 +17,6 @@
   "files": [
     "bin",
     "src",
-    "site/astro.config.ts",
     "site/src",
     "scripts/repo/only-bun.cjs"
   ],
