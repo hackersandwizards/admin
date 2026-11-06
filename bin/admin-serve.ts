@@ -2,7 +2,7 @@
 // Serves the hub over HTTP, built from every repository's last commit on each request that finds
 // one moved, and writes no file. Binds 127.0.0.1 only.
 // Usage: admin-serve [--root <dir>] [--port <n>]
-import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -15,8 +15,7 @@ import { createHub } from "../src/serve.ts";
 // (a Git pin, whose range bun does not check).
 const missing = Object.entries(peerDependencies).filter(([p, range]) => {
   try {
-    const pkg = Bun.resolveSync(`${p}/package.json`, import.meta.dir);
-    const { version } = JSON.parse(readFileSync(pkg, "utf8"));
+    const { version } = createRequire(import.meta.url)(`${p}/package.json`);
     return p in peerDependenciesMeta && !Bun.semver.satisfies(version, range);
   } catch {
     return true;
@@ -24,7 +23,7 @@ const missing = Object.entries(peerDependencies).filter(([p, range]) => {
 });
 if (missing.length) {
   console.error(
-    `admin-serve: ${missing.map(([p, range]) => `${p} ${range}`).join(", ")} not installed. Pin them in this repository's package.json, then run bun install.`,
+    `admin-serve: needs ${missing.map(([p, range]) => `${p} ${range}`).join(", ")}. Pin them in this repository's package.json, then run bun install.`,
   );
   process.exit(1);
 }
