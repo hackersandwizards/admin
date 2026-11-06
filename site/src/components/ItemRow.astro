@@ -17,11 +17,6 @@ const shots = (key: string) => i.optionImages[key] ?? [];
 const carded = options.some((o) => shots(o.key).length);
 const score = (o: (typeof options)[number]) =>
   o.score === undefined ? "" : `${o.score}${o.noise === undefined ? "" : ` ± ${o.noise}`}`;
-// P3 and no priority keep brand's neutral pill.
-const hue = {
-  1: "--hw-pill-hue: var(--color-red); --hw-pill-hue-night: var(--color-red-night)",
-  2: "--hw-pill-hue: var(--color-amber); --hw-pill-hue-night: var(--color-amber)",
-}[i.priority ?? 3];
 const meta = [
   showRepo ? i.repo : "",
   i.status === "open" ? i.kind : i.status,
@@ -42,9 +37,9 @@ const meta = [
   <summary class="flex items-start gap-3 px-3 py-2">
     <span
       class="hw-pill shrink-0 font-mono"
-      data-tone={hue ? undefined : "neutral"}
+      data-priority={i.priority}
+      data-tone={i.priority ? undefined : "neutral"}
       data-hw-exception="priority-pill"
-      style={hue}
     >
       {i.priority ? `P${i.priority}` : "Goal"}
     </span>

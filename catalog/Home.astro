@@ -137,20 +137,17 @@ const notes: Record<string, string> = {
           {name === "item-list" && <ItemGroups items={items.slice(0, 2)} title="Priority 1" />}
           {name === "priority-pill" && (
             <p class="flex flex-wrap gap-2">
-              <span
-                class="hw-pill font-mono"
-                style="--hw-pill-hue: var(--color-red); --hw-pill-hue-night: var(--color-red-night)"
-              >
+              <span class="hw-pill font-mono" data-priority="1">
                 P1
               </span>
-              <span
-                class="hw-pill font-mono"
-                style="--hw-pill-hue: var(--color-amber); --hw-pill-hue-night: var(--color-amber)"
-              >
+              <span class="hw-pill font-mono" data-priority="2">
                 P2
               </span>
-              <span class="hw-pill font-mono" data-tone="neutral">
+              <span class="hw-pill font-mono" data-priority="3">
                 P3
+              </span>
+              <span class="hw-pill font-mono" data-tone="neutral">
+                Goal
               </span>
             </p>
           )}
