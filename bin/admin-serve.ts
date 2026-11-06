@@ -5,21 +5,27 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { peerDependencies } from "../package.json";
 import { stylesheet } from "../src/build.ts";
 import { createHub } from "../src/serve.ts";
 
-// brand and scaffolding come from the repository that installs admin (peerDependencies): stop
-// with what to pin before the first build fails on a missing one.
-try {
-  stylesheet();
-  Bun.resolveSync("@hackersandwizards/scaffolding/catalog/path.ts", import.meta.dir);
-} catch (e) {
-  if (!(e as Error).message.includes("@hackersandwizards/")) throw e;
+// Every peer comes from the repository that installs admin: stop with what to pin before the
+// first build fails on a missing one.
+const missing = Object.keys(peerDependencies).filter((p) => {
+  try {
+    return !Bun.resolveSync(`${p}/package.json`, import.meta.dir);
+  } catch {
+    return true;
+  }
+});
+if (missing.length) {
   console.error(
-    `admin-serve: ${(e as Error).message}. Pin @hackersandwizards/brand and @hackersandwizards/scaffolding in this repository's package.json, then run bun install.`,
+    `admin-serve: ${missing.join(", ")} not installed. Pin them in this repository's package.json, then run bun install.`,
   );
   process.exit(1);
 }
+stylesheet();
+Bun.resolveSync("@hackersandwizards/scaffolding/catalog/path.ts", import.meta.dir);
 
 const { values } = parseArgs({
   options: { root: { type: "string" }, port: { type: "string" } },

@@ -341,6 +341,7 @@ describe("pages", () => {
       expect(doc).toContain(`class="${el} not-prose"`);
     // A link stays in the block, which draws it as the link in text.
     expect(doc).toContain('<a class="hw-link" href=');
+    expect(doc).not.toMatch(/<a [^>]*not-prose/);
     // The title shows above the article, so the article opens on what follows it.
     expect(doc).toMatch(/<article[^>]*><p>A report/);
     const sheets = [...doc.matchAll(/href="([^"]+\.css)"/g)]
