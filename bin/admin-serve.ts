@@ -14,6 +14,7 @@ try {
   stylesheet();
   Bun.resolveSync("@hackersandwizards/scaffolding/catalog/path.ts", import.meta.dir);
 } catch (e) {
+  if (!(e as Error).message.includes("@hackersandwizards/")) throw e;
   console.error(
     `admin-serve: ${(e as Error).message}. Pin @hackersandwizards/brand and @hackersandwizards/scaffolding in this repository's package.json, then run bun install.`,
   );

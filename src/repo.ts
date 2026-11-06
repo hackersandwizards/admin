@@ -1,6 +1,7 @@
 // Reads one repository for its admin pages: at HEAD (what the hub shows, committed only) or from
 // the working tree (what `admin-check` validates in a gate).
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { basename, join } from "node:path";
 import {
   ITEMS_DIR,
@@ -221,7 +222,7 @@ function astrobookDev(src: Source, scripts: Record<string, string>, scaffolding 
         .map((q) => q.slice(folder.length).split("/")[0]!);
       // Required here rather than imported: admin-check, which reads only items, then needs no
       // scaffolding installed.
-      const { catalogPath } = import.meta.require(
+      const { catalogPath } = createRequire(import.meta.url)(
         "@hackersandwizards/scaffolding/catalog/path.ts",
       ) as typeof import("@hackersandwizards/scaffolding/catalog/path.ts");
       path = catalogPath({ base, pages, dev: true });
