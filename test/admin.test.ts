@@ -81,6 +81,7 @@ describe("item files", () => {
     [{ due: "3 Nov" }, "not ISO"],
     [{ id: "Bad_Id" }, "not lower-case kebab"],
     [{ kind: "work", status: "assumed" }, "work is assumed"],
+    [{ kind: "goal", priority: 2 }, "goal has a priority"],
     [{ images: { z: "x.jpg" } }, "image key z is not an option"],
     [{ recommended: ["a", "b"] }, "several recommended without multiple"],
     [{ multiple: "yes" }, "multiple yes is not true or false"],

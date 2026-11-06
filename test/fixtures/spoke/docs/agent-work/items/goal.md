@@ -1,6 +1,8 @@
 ---
 kind: goal
 status: open
+images:
+  - target.svg
 ---
 
 # Goal

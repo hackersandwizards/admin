@@ -17,7 +17,7 @@ repository pins both itself, and admin uses those copies, so no second copy land
 `node_modules/@hackersandwizards/admin/`. They are marked optional, so bun never looks them up on
 the npm registry, where the packages do not exist. `admin-check` needs neither; `admin-serve` stops
 and names what to pin when one is missing or older than its peer range, which bun does not check for
-a Git pin (brand from v1.15.0, whose priority pill keeps the outline for an unset value). The versions in admin's
+a Git pin (older brand draws P3 as the outline that means unset). The versions in admin's
 `devDependencies` are the tested set.
 
 `astro`, `tailwindcss`, `@tailwindcss/vite` and `@tailwindcss/typography`, which `admin-serve`

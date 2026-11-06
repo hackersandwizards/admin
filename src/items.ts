@@ -99,6 +99,7 @@ export function itemDefects(item: Item, exists: (path: string) => boolean): stri
   if (!STATUSES.includes(status)) d.push(`status ${status}`);
   if (kind !== "goal" && ![1, 2, 3].includes(item.priority as number))
     d.push(`priority ${item.priority}`);
+  if (kind === "goal" && item.priority !== undefined) d.push("goal has a priority");
   if (item.order !== undefined && typeof item.order !== "number") d.push(`order ${item.order}`);
   if (kind !== "goal" && !item.owner) d.push("lacks owner");
   if (item.due !== undefined && !ISO.test(String(item.due))) d.push(`due ${item.due} not ISO`);
