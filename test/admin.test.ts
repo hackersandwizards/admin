@@ -189,6 +189,12 @@ describe("admin-check", () => {
   test("a stray % in a Markdown link stays as written", () => {
     expect(renderMarkdown("/r", "docs/a.md", "[half](50%.md)")).toContain("docs/50%25.md");
   });
+
+  test("a task list wears no marker beside its checkboxes", () => {
+    const html = renderMarkdown("/r", "docs/a.md", "- [ ] open\n- [x] done\n\nNext:\n\n- plain\n");
+    expect(html.match(/hw-marker-list/g)).toHaveLength(1);
+    expect(html).toContain('<ul>\n<li class="task-list-item">');
+  });
 });
 
 describe("hub", () => {

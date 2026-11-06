@@ -1,6 +1,6 @@
 # Sample topic
 
-A report with an image, a table, a list and code.
+A report with an image, a table, a list, a task list and code.
 
 ![Variant A](2026-01-15-sample-topic/variant-a.svg)
 
@@ -12,6 +12,11 @@ A report with an image, a table, a list and code.
 
 - Wire the gate with `bun run check`.
 - Keep the cache in `node_modules/.cache`.
+
+Done when:
+
+- [x] Draft the report.
+- [ ] Review it.
 
 ```sh
 bun run check

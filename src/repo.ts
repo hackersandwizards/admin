@@ -158,13 +158,14 @@ const ASTRO_CONFIG = /^([^/]+\/)?astro\.config\.(ts|mjs|js)$/;
 const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
 export const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
 
-// Rendered Markdown wears brand's shared elements.
+// Rendered Markdown wears brand's shared elements. A task list keeps only its checkboxes: the
+// marker beside them would be a second mark per line.
 export const withElements = (html: string) =>
   html
     .replace(/<table>/g, '<table class="hw-table">')
     .replace(/<blockquote>/g, '<blockquote class="hw-quote">')
     .replace(/<a href=/g, '<a class="hw-link" href=')
-    .replace(/<ul>/g, '<ul class="hw-marker-list">')
+    .replace(/<ul>(?!\s*<li class="task-list-item")/g, '<ul class="hw-marker-list">')
     .replace(/<pre>/g, '<pre class="hw-code">')
     .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');
 

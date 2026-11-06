@@ -1,0 +1,13 @@
+---
+// The "For whom" filter over the open questions, on the hub and a repo's Decisions; admin.js
+// reads data-who-button.
+import { data } from "../data";
+---
+
+<div class="hw-segmented max-w-full self-start overflow-x-auto" role="group" aria-label="For whom">
+  {[...data().people, "all"].map((p) => (
+    <button type="button" data-who-button={p} aria-pressed="false">
+      {p === "all" ? "All" : p}
+    </button>
+  ))}
+</div>

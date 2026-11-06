@@ -2,6 +2,7 @@
 import Layout from "../components/Layout.astro";
 import ItemGroups from "../components/ItemGroups.astro";
 import ItemRow from "../components/ItemRow.astro";
+import WhoFilter from "../components/WhoFilter.astro";
 import { compareItems, imagesOf } from "../../../src/items.ts";
 import {
   age,
@@ -93,17 +94,7 @@ const leads: Partial<Record<Page["type"], string>> = {
     <>
       <section class="flex flex-col gap-2">
         <h2 class="font-mono font-semibold text-heading">Needs you</h2>
-        <div
-          class="hw-segmented max-w-full self-start overflow-x-auto"
-          role="group"
-          aria-label="For whom"
-        >
-          {[...d.people, "all"].map((p) => (
-            <button type="button" data-who-button={p} aria-pressed="false">
-              {p === "all" ? "All" : p}
-            </button>
-          ))}
-        </div>
+        <WhoFilter />
         <ItemGroups items={allNeeds} showRepo openUpTo={1} />
         <ItemGroups
           items={d.repos.flatMap((r) => r.items.filter((i) => i.status !== "open"))}
@@ -294,17 +285,7 @@ const leads: Partial<Record<Page["type"], string>> = {
 
   {page.type === "decisions" && (
     <>
-      <div
-        class="hw-segmented max-w-full self-start overflow-x-auto"
-        role="group"
-        aria-label="For whom"
-      >
-        {[...d.people, "all"].map((p) => (
-          <button type="button" data-who-button={p} aria-pressed="false">
-            {p === "all" ? "All" : p}
-          </button>
-        ))}
-      </div>
+      <WhoFilter />
       {questions.length ? <ItemGroups items={questions} /> : <p class="text-ui">Nothing open.</p>}
       {decided.length > 0 && (
         <ItemGroups items={decided} title="Decided, the file leaves with the work" />
@@ -444,7 +425,7 @@ const leads: Partial<Record<Page["type"], string>> = {
         · {repo.key} HEAD {repo.head}
       </p>
       <article
-        class="max-w-3xl text-subheading [&_h1]:hidden [&_h2]:mt-8 [&_h2]:mb-2 [&_h2]:font-mono [&_h2]:font-semibold [&_h2]:text-heading [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:font-semibold [&_img]:my-4 [&_img]:max-w-full [&_img]:rounded-brand [&_li]:mb-1 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:mb-3 [&_pre]:mb-3 [&_table]:mb-4 [&_table]:block [&_table]:overflow-x-auto [&_ul]:mb-3"
+        class="max-w-3xl text-subheading [&_.task-list-item-checkbox]:mr-2 [&_h1]:hidden [&_h2]:mt-8 [&_h2]:mb-2 [&_h2]:font-mono [&_h2]:font-semibold [&_h2]:text-heading [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:font-semibold [&_img]:my-4 [&_img]:max-w-full [&_img]:rounded-brand [&_li]:mb-1 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:mb-3 [&_pre]:mb-3 [&_table]:mb-4 [&_table]:block [&_table]:overflow-x-auto [&_ul]:mb-3"
         set:html={doc.html}
       />
     </>
