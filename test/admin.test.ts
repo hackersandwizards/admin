@@ -333,21 +333,19 @@ describe("pages", () => {
       for (const [, ref] of text.matchAll(/(?:href|src)="([^"]*_astro\/[^"]+)"/g))
         expect(existsSync(resolve(dirname(join(out, page)), ref!))).toBe(true);
     }
-    const doc = readFileSync(
-      join(out, "spoke/doc/docs/agent-work/2026-01-15-sample-topic.html"),
-      "utf8",
-    );
+    const docPath = join(out, "spoke/doc/docs/agent-work/2026-01-15-sample-topic.html");
+    const doc = readFileSync(docPath, "utf8");
     // brand's prose block sets the article; its tables, quotes and code blocks stay hw-* elements.
     expect(doc).toContain('<article class="prose hw-prose');
-    for (const el of ["hw-table", "hw-quote", "hw-code"])
+    for (const el of ["hw-table", "hw-quote", "hw-code", "hw-link"])
       expect(doc).toContain(`class="${el} not-prose"`);
-    const css = doc.match(/href="([^"]+\.css)"/)![1]!;
-    const sheet = readFileSync(
-      resolve(dirname(join(out, "spoke/doc/docs/agent-work/x")), css),
-      "utf8",
-    );
+    // The title shows above the article, so the article opens on what follows it.
+    expect(doc).toMatch(/<article[^>]*><p>A report/);
+    const sheets = [...doc.matchAll(/href="([^"]+\.css)"/g)]
+      .map(([, css]) => readFileSync(resolve(dirname(docPath), css!), "utf8"))
+      .join("");
     // Typography's plugin is loaded: without it, prose styles nothing.
-    expect(sheet).toContain(".prose");
+    expect(sheets).toContain(".prose :where(p)");
     expect(doc).toContain(`file://${repo}/docs/agent-work/2026-01-15-sample-topic/variant-a.svg`);
     // The top bar leads back to the hub. Its switcher keeps the current repo on its page and opens
     // another on the same page, on its Docs from a doc, else on its dashboard.

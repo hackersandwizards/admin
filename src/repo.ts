@@ -158,14 +158,15 @@ const ASTRO_CONFIG = /^([^/]+\/)?astro\.config\.(ts|mjs|js)$/;
 const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
 export const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
 
-// Rendered Markdown wears brand's shared elements; tables, quotes and code blocks are marked
-// not-prose, as brand's prose block (elements/prose.css) asks. A task list keeps only its
-// checkboxes: the marker beside them would be a second mark per line.
+// Rendered Markdown wears brand's shared elements. brand's prose block asks for tables, quotes and
+// code blocks to be not-prose; links too, since Typography's link rule sits in a later layer than
+// hw-link and would set its weight and hover. A task list keeps only its checkboxes: the marker
+// beside them would be a second mark per line.
 export const withElements = (html: string) =>
   html
     .replace(/<table>/g, '<table class="hw-table not-prose">')
     .replace(/<blockquote>/g, '<blockquote class="hw-quote not-prose">')
-    .replace(/<a href=/g, '<a class="hw-link" href=')
+    .replace(/<a href=/g, '<a class="hw-link not-prose" href=')
     .replace(/<ul>(?!\s*<li class="task-list-item")/g, '<ul class="hw-marker-list">')
     .replace(/<pre>/g, '<pre class="hw-code not-prose">')
     .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');

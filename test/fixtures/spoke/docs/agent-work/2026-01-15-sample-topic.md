@@ -1,6 +1,6 @@
 # Sample topic
 
-A report with an image, a table, a list, a task list, a quote and code.
+A report with an image, a table, a list, a task list, a quote, code and a [link](#next).
 
 ![Variant A](2026-01-15-sample-topic/variant-a.svg)
 

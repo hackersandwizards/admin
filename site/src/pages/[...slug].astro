@@ -425,8 +425,8 @@ const leads: Partial<Record<Page["type"], string>> = {
         · {repo.key} HEAD {repo.head}
       </p>
       <article
-        class="prose hw-prose max-w-3xl [&_h1]:hidden [&>h1:first-child+*]:mt-0 [&_img]:rounded-brand [&_table]:block [&_table]:overflow-x-auto"
-        set:html={doc.html}
+        class="prose hw-prose max-w-3xl [&_img]:rounded-brand [&_table]:block [&_table]:overflow-x-auto"
+        set:html={doc.html.replace(/<h1[^>]*>[\s\S]*?<\/h1>\n?/, "")}
       />
     </>
   )}
