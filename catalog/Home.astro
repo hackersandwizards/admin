@@ -4,13 +4,11 @@
 // it, and each element the engine keeps as its own with its reason, which brand-elements measures
 // in `bun run check`. Its utilities are ones site/src uses: the stylesheet scans site/src only.
 import Home from "@hackersandwizards/scaffolding/catalog/Home.astro";
-import pkg from "../package.json";
+import { version } from "@hackersandwizards/brand/package.json";
 import ItemGroups from "../site/src/components/ItemGroups.astro";
 import elements from "../brand-elements.json";
 import { items } from "./story";
 
-// The brand version the tiles name, from the pin: brand-elements fails on any other.
-const version = pkg.devDependencies["@hackersandwizards/brand"].split("#v")[1];
 const BRAND = "https://hackersandwizards.github.io/brand/";
 const notes: Record<string, string> = {
   label: "The rail's group names.",
@@ -38,7 +36,7 @@ const notes: Record<string, string> = {
       {elements.uses.map((name) => (
         <div class="flex flex-col gap-2" data-hw-tile={name} data-hw-version={version}>
           <p class="text-ui">
-            aus brand v{version} · <code class="hw-inline-code">hw-{name}</code> ·{" "}
+            from brand v{version} · <code class="hw-inline-code">hw-{name}</code> ·{" "}
             <a class="hw-link" href={`${BRAND}#hw-${name}`}>
               catalog
             </a>

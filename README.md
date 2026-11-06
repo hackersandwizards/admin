@@ -9,7 +9,7 @@ A repository adds the package as a dev dependency pinned to a tag. The repositor
 the install needs no GitHub login:
 
 ```sh
-bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.5.0"
+bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.6.0"
 ```
 
 `@hackersandwizards/brand` and `@hackersandwizards/scaffolding` are peer dependencies: the
@@ -17,6 +17,10 @@ repository pins both itself, and admin uses those copies, so no second copy land
 `node_modules/@hackersandwizards/admin/`. They are marked optional, so bun never looks them up on
 the npm registry, where the packages do not exist. `admin-check` needs neither; `admin-serve` stops
 and names what to pin when one is missing. The tags in admin's `devDependencies` are the tested pair.
+
+`astro`, `tailwindcss`, `@tailwindcss/vite` and `@tailwindcss/typography`, which `admin-serve`
+builds the pages with, are peer dependencies too: a repository on another version within the
+range shares its copy instead of getting a second Astro under admin, and bun installs any it lacks.
 
 Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repositories through it.
 

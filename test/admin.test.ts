@@ -337,8 +337,10 @@ describe("pages", () => {
     const doc = readFileSync(docPath, "utf8");
     // brand's prose block sets the article; its tables, quotes and code blocks stay hw-* elements.
     expect(doc).toContain('<article class="prose hw-prose');
-    for (const el of ["hw-table", "hw-quote", "hw-code", "hw-link"])
+    for (const el of ["hw-table", "hw-quote", "hw-code"])
       expect(doc).toContain(`class="${el} not-prose"`);
+    // A link stays in the block, which draws it as the link in text.
+    expect(doc).toContain('<a class="hw-link" href=');
     // The title shows above the article, so the article opens on what follows it.
     expect(doc).toMatch(/<article[^>]*><p>A report/);
     const sheets = [...doc.matchAll(/href="([^"]+\.css)"/g)]
