@@ -160,9 +160,7 @@
       max-height: none;
     }
     /* The phone keeps the current place's menu as one row of chips under the search, the current
-       page filled (blind review 2026-11-03: +1.2 at noise 0.3 over no menu; the hub's two rows, its
-       menu and every repo, lost -0.8). The hub's one row of its own pages and the top bar's
-       switcher for the repos won the review of 2026-11-06. */
+       page filled. The hub's row holds its own pages; the top bar's switcher holds the repos. */
     .admin-rail .admin-back,
     .admin-rail nav > .hw-label,
     .admin-rail [data-repos] {
