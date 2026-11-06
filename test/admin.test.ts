@@ -245,36 +245,6 @@ describe("hub", () => {
     );
     expect(book.designSystem).toBe("http://127.0.0.1:4999/design-system/");
     expect(book.designSystemDev).toEqual({ port: 4999, start: "design-system" });
-    // scaffolding's catalog preset, started by the `catalog` script, at the path its pin's rule gives.
-    const preset = (name: string, pin: string, files: Record<string, string> = {}) =>
-      readRepo(
-        bare(
-          name,
-          {
-            name,
-            scripts: { dev: "wrangler dev", catalog: "cd catalog && astro dev" },
-            devDependencies: {
-              "@hackersandwizards/scaffolding": `git+https://x.invalid/s.git#${pin}`,
-            },
-          },
-          {
-            "catalog/astro.config.ts":
-              'import { catalog } from "@hackersandwizards/scaffolding/catalog";\nbase: "/shell",\nsrcDir: ".",\nserver: { host: "127.0.0.1", port: 4998 }',
-            ...files,
-          },
-        ),
-      );
-    const shell = preset("shell", "v2.1.0", { "catalog/pages/types/a.astro": "" });
-    expect(shell.designSystem).toBe("http://127.0.0.1:4998/");
-    expect(shell.designSystemDev).toEqual({ port: 4998, start: "catalog" });
-    for (const [name, pin, page, path] of [
-      ["homed", "v2.1.0", "index.html.ts", "/catalog/"],
-      ["caught", "v2.0.1", "[...slug].astro", "/catalog/"],
-      ["older", "v1.0.0", "types/a.astro", "/shell/catalog/"],
-    ])
-      expect(preset(name!, pin!, { [`catalog/pages/${page}`]: "" }).designSystem).toBe(
-        `http://127.0.0.1:4998${path}`,
-      );
     const owned = readRepo(
       bare("owned", {
         name: "owned",
@@ -284,6 +254,39 @@ describe("hub", () => {
     expect(owned.designSystem).toBe(`file://${owned.path}/catalogue.html`);
     expect(owned.designSystemDev).toBeUndefined();
     expect(owned.products[0]!.href).toBe(`file://${owned.path}/a.html#x`);
+  });
+
+  test("scaffolding's catalog preset sits where its pin's rule puts it", () => {
+    // An in-memory source: the path rule reads only package.json, the config and the paths.
+    const preset = (pin: string, page: string) => {
+      const files: Record<string, string> = {
+        "package.json": JSON.stringify({
+          name: "shell",
+          scripts: { dev: "wrangler dev", catalog: "cd catalog && astro dev" },
+          devDependencies: {
+            "@hackersandwizards/scaffolding": `git+https://x.invalid/s.git#${pin}`,
+          },
+        }),
+        "catalog/astro.config.ts":
+          'import { catalog } from "@hackersandwizards/scaffolding/catalog";\nbase: "/shell",\nsrcDir: ".",\nserver: { host: "127.0.0.1", port: 4998 }',
+        [`catalog/pages/${page}`]: "",
+      };
+      return readRepo("/nonexistent/shell", { paths: Object.keys(files), read: (f) => files[f] });
+    };
+    expect(preset("v2.1.0", "types/a.astro").designSystemDev).toEqual({
+      port: 4998,
+      start: "catalog",
+    });
+    for (const [pin, page, path] of [
+      ["v2.1.0", "types/a.astro", "/"],
+      ["v2.1.0", "index.html.ts", "/catalog/"],
+      ["v2.0.1", "[...slug].astro", "/catalog/"],
+      ["v2.1.0", "index/a.astro", "/catalog/"],
+      // A pin without a readable major takes the current rule.
+      ["06308c8", "types/a.astro", "/"],
+      ["v1.0.0", "types/a.astro", "/shell/catalog/"],
+    ])
+      expect(preset(pin!, page!).designSystem).toBe(`http://127.0.0.1:4998${path}`);
   });
 
   test("reads at HEAD, not the working tree", () => {
