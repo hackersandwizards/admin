@@ -13,7 +13,7 @@
     "dist/catalog/stories/Pages/hub/default/index.html",
     "dist/catalog/stories/Pages/docs/default/index.html"
   ],
-  "uses": ["label", "pill", "card", "callout", "quote", "table", "link", "code"],
+  "uses": ["label", "pill", "card", "callout", "quote", "table", "link", "code", "breadcrumb"],
   "exceptions": {
     "item-list": "A card framing a list of item rows edge to edge: no padding, since each row carries its own padding and the hairline between rows. brand's card pads its content.",
     "priority-pill": "An item's priority (P1 red, P2 amber, P3 and a goal neutral) in the mono face, as a code the eye scans down the list. brand's pill sets Inter.",

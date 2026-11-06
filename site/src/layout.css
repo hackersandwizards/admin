@@ -59,6 +59,70 @@
   .admin-count {
     font-weight: 400;
   }
+  .admin-back {
+    margin-bottom: 0.75rem;
+  }
+  /* The top bar's "Hub / <repo> ▾": brand's breadcrumb on one line, its last item the button that
+     opens the repo list, a popover the browser closes on a click outside and on Escape. */
+  .admin-where {
+    white-space: nowrap;
+  }
+  .admin-where ol {
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+  .admin-switch {
+    padding: 0.25rem 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--foreground);
+    font-family: var(--font-mono);
+    font-size: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .admin-repos {
+    inset: auto;
+    top: var(--spacing-app-header);
+    right: 1rem;
+    min-width: 16rem;
+    max-height: 70vh;
+    margin: 0;
+    padding: 0.25rem;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: var(--text-ui);
+    list-style: none;
+  }
+  /* Where the browser anchors, the list hangs under its button on a screen wider than the page. */
+  @supports (anchor-name: --a) {
+    .admin-switch {
+      anchor-name: --admin-switch;
+    }
+    .admin-repos {
+      position-anchor: --admin-switch;
+      top: calc(anchor(bottom) + 0.5rem);
+      right: anchor(right);
+    }
+  }
+  .admin-repos a {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    border-radius: var(--radius-sm);
+    color: inherit;
+    text-decoration: none;
+  }
+  .admin-repos a:hover,
+  .admin-repos a[aria-current] {
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  }
   .admin-main {
     padding-inline-end: 1rem;
   }
@@ -85,12 +149,10 @@
       position: static;
       max-height: none;
     }
-    .admin-rail nav:not([data-phone]) {
-      display: none;
-    }
-    /* On a repository's pages the phone keeps the menu as one row of chips under the search, the
-       current page filled (blind review 2026-11-03: +1.2 at noise 0.3 over no menu). The hub keeps
-       none: its two rows lost (-0.8). */
+    /* The phone keeps the current place's menu as one row of chips under the search, the current
+       page filled (blind review 2026-11-03: +1.2 at noise 0.3 over no menu); the top bar's switcher
+       reaches the repos and the hub. */
+    .admin-rail .admin-back,
     .admin-rail nav > .hw-label,
     .admin-rail [data-repos] {
       display: none;

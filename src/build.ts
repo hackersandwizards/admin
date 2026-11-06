@@ -52,7 +52,6 @@ export type Page = {
 
 export type SiteData = {
   version: string;
-  hub: boolean;
   people: string[];
   repos: (Omit<RepoData, "items"> & { items: ViewItem[]; prefix: string; dashboard: string })[];
   pages: Page[];
@@ -74,7 +73,7 @@ function itemHtml(repo: RepoData, text: string) {
 
 export const firstWord = (owner = "") => owner.match(/^[\p{L}\p{N}-]+/u)?.[0] ?? owner;
 
-export function siteData(repos: RepoData[], hub: boolean): SiteData {
+export function siteData(repos: RepoData[]): SiteData {
   // A person is whoever answers an open question somewhere; work they own counts as theirs. The
   // person with the most open questions comes first, and the hub's filter starts on them.
   const asked = repos.flatMap((r) =>
@@ -86,7 +85,7 @@ export function siteData(repos: RepoData[], hub: boolean): SiteData {
   const people = [...new Set(asked)].sort((a, b) => count(b) - count(a) || a.localeCompare(b));
   const pages: Page[] = [];
   const out = repos.map((r) => {
-    const prefix = hub ? `${r.key}/` : "";
+    const prefix = `${r.key}/`;
     const items = [...r.items].sort(compareItems).map((i) => {
       const recommendedKeys = [i.recommended ?? []].flat();
       return {
@@ -112,9 +111,9 @@ export function siteData(repos: RepoData[], hub: boolean): SiteData {
     });
     const add = (p: Omit<Page, "repo" | "path"> & { path: string }) =>
       pages.push({ ...p, path: prefix + p.path, repo: r.key });
-    // A slug ending in "index" collides with the folder's own route, so a hub repo's dashboard is
+    // A slug ending in "index" collides with the folder's own route, so a repo's dashboard is
     // <repo>/dashboard.
-    const dashboard = hub ? `${prefix}dashboard` : "index";
+    const dashboard = `${prefix}dashboard`;
     pages.push({ path: dashboard, type: "dashboard", repo: r.key, title: `${r.key} admin` });
     add({ path: "decisions", type: "decisions", title: "Decisions" });
     add({ path: "work", type: "work", title: "Work" });
@@ -136,11 +135,9 @@ export function siteData(repos: RepoData[], hub: boolean): SiteData {
       });
     return { ...r, items, prefix, dashboard };
   });
-  if (hub) {
-    pages.unshift({ path: "index", type: "hub", title: "Admin hub" });
-    pages.splice(1, 0, { path: "architecture", type: "hub-architecture", title: "Packages" });
-  }
-  return { version: VERSION, hub, people, repos: out, pages };
+  pages.unshift({ path: "index", type: "hub", title: "Admin hub" });
+  pages.splice(1, 0, { path: "architecture", type: "hub-architecture", title: "Packages" });
+  return { version: VERSION, people, repos: out, pages };
 }
 
 // The stylesheet entry the site imports as admin:styles, with every path resolved: the package

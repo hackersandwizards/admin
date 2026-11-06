@@ -21,6 +21,7 @@ const notes: Record<string, string> = {
   table: "Every list of rows: repositories, reports, scripts, checks, commits.",
   link: "A link in an item's text or a report.",
   code: "A config key named in running text.",
+  breadcrumb: "The top bar's way back to the hub, its last item the repo switcher.",
 };
 ---
 
@@ -76,6 +77,18 @@ const notes: Record<string, string> = {
               </a>{" "}
               first.
             </p>
+          )}
+          {name === "breadcrumb" && (
+            <nav class="hw-breadcrumb" aria-label="Breadcrumb">
+              <ol>
+                <li>
+                  <a href="#">Hub</a>
+                </li>
+                <li>
+                  <span aria-current="page">spoke</span>
+                </li>
+              </ol>
+            </nav>
           )}
           {name === "code" && (
             <p class="text-ui">

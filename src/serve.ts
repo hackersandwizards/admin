@@ -52,7 +52,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const out = mkdtempSync(join(tmpdir(), "admin-serve-"));
     const json = `${out}.json`;
     try {
-      writeFileSync(json, JSON.stringify(siteData(repos, true)));
+      writeFileSync(json, JSON.stringify(siteData(repos)));
       const child = Bun.spawn([process.execPath, import.meta.path, json, out], {
         stderr: "inherit",
       });

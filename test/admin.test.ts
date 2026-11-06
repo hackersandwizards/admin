@@ -182,7 +182,7 @@ describe("admin-check", () => {
     const repo = readRepo(dir, treeSource(dir));
     expect(repo.defects.join("\n")).toContain("odd.md: options is not a list");
     const out = join(scratch(), "out");
-    await buildSite(siteData([repo], true), out);
+    await buildSite(siteData([repo]), out);
     expect(readFileSync(join(out, "r/decisions.html"), "utf8")).toContain("Odd");
   });
 
@@ -283,7 +283,7 @@ describe("pages", () => {
   test("build pages that open from disk", async () => {
     const repo = repoFrom("spoke");
     const out = join(dirname(repo), "out");
-    await buildSite(siteData([readRepo(repo)], true), out);
+    await buildSite(siteData([readRepo(repo)]), out);
     const html = readFileSync(join(out, "index.html"), "utf8");
     expect(html).toContain("Which variant ships?");
     const pages = readdirSync(join(out, "spoke"), { recursive: true }) as string[];
@@ -311,6 +311,15 @@ describe("pages", () => {
     );
     expect(doc).toContain('class="hw-table"');
     expect(doc).toContain(`file://${repo}/docs/agent-work/2026-01-15-sample-topic/variant-a.svg`);
+    // The top bar leads back to the hub, and its switcher opens a repo on the same page: a doc on
+    // its repo's Docs.
+    const where = (html: string) => html.match(/<nav[^>]*aria-label="Where"[\s\S]*?<\/nav>/)![0];
+    const repos = (html: string) => html.match(/<ul id="admin-repos"[\s\S]*?<\/ul>/)![0];
+    expect(where(doc)).toContain('href="../../../../index.html"');
+    expect(repos(doc)).toContain('href="../../../docs.html"');
+    const decisions = readFileSync(join(out, "spoke/decisions.html"), "utf8");
+    expect(repos(decisions)).toContain('href="decisions.html"');
+    expect(repos(html)).toContain('href="spoke/dashboard.html"');
   }, 60_000);
 });
 

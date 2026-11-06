@@ -19,7 +19,7 @@ mkdirSync(cache, { recursive: true });
 writeFileSync(join(cache, "admin.css"), stylesheet());
 writeFileSync(
   join(cache, "data.json"),
-  JSON.stringify(siteData([readRepo(fixture, treeSource(fixture))], true)),
+  JSON.stringify(siteData([readRepo(fixture, treeSource(fixture))])),
 );
 process.env.ADMIN_DATA = join(cache, "data.json");
 

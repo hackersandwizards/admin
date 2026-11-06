@@ -1,6 +1,10 @@
 ---
 // Every colour, font and size role comes from brand: tokens, the expert set, the elements at the
 // dense scale with its compact tier.
+// Navigation (blind review 2026-11-06, two rounds, over the rail that switched between the hub's
+// and a repo's menu): the top bar says where you are, "Hub / <repo> ▾", and its switcher opens
+// another repo on the same page; the rail holds only the current place's pages, a repo's under a
+// way back to the hub.
 import "admin:styles";
 import AppHeader from "@hackersandwizards/brand/expert/components/AppHeader.astro";
 import { navLinkClass } from "@hackersandwizards/brand/expert/components/space-nav.ts";
@@ -18,8 +22,9 @@ interface Props {
 const { page, lead, provenance, answersAll = false } = Astro.props;
 const d = data();
 const repo = repoOf(page.repo);
-const home = d.hub ? "index" : (repo?.dashboard ?? "index");
+type Repo = NonNullable<typeof repo>;
 const at = (to: string) => href(page.path, to);
+const waiting = (r: Repo) => openQuestions(r.items).length + forPerson(r.items).length;
 const menu = repo
   ? [
       { to: "", label: "Dashboard" },
@@ -38,16 +43,16 @@ const menu = repo
       { to: "log", label: "Log" },
     ].map((m) => ({ ...m, to: m.to ? repo.prefix + m.to : repo.dashboard }))
   : [
-      {
-        to: "index",
-        label: "Needs a person",
-        count: d.repos.reduce(
-          (n, r) => n + openQuestions(r.items).length + forPerson(r.items).length,
-          0,
-        ),
-      },
+      { to: "index", label: "Needs a person", count: d.repos.reduce((n, r) => n + waiting(r), 0) },
       { to: "architecture", label: "Packages" },
     ];
+// The page another repo opens on from the switcher: the same page where that repo has it, a doc's
+// list for a doc, else its dashboard.
+const SHARED = ["decisions", "work", "reviews", "docs", "architecture", "checks", "log"];
+const samePage = (r: Repo) => {
+  const to = page.type === "doc" ? "docs" : page.type;
+  return SHARED.includes(to) || (to === "catalog" && r.designSystem) ? r.prefix + to : r.dashboard;
+};
 // The current entry wears space-nav's active link, the rail link of every expert app.
 const active = navLinkClass("x", "x")[1];
 const current = (to: string) =>
@@ -66,22 +71,30 @@ const current = (to: string) =>
     data-hw-scale="dense"
     data-answers={answersAll ? "all" : undefined}
   >
-    <AppHeader product="Admin" href={at(home)}>
-      <nav class="ml-auto flex items-center gap-1 text-ui" aria-label="Where">
-        {d.hub && (
-          <a
-            href={at("index")}
-            class:list={navLinkClass(at("index"), page.type.startsWith("hub") ? at("index") : "")}
-          >
-            Hub
-          </a>
-        )}
-        {repo && (
-          <a href={at(repo.dashboard)} class:list={navLinkClass("x", "x")}>
-            {repo.key}
-          </a>
-        )}
+    <AppHeader product="Admin" href={at("index")}>
+      <nav class="hw-breadcrumb admin-where ml-auto" aria-label="Where">
+        <ol>
+          <li>{repo ? <a href={at("index")}>Hub</a> : <span aria-current="page">Hub</span>}</li>
+          <li>
+            <button type="button" class="admin-switch" popovertarget="admin-repos">
+              {repo ? repo.key : "Repos"} <span aria-hidden="true">▾</span>
+            </button>
+          </li>
+        </ol>
       </nav>
+      <ul id="admin-repos" class="admin-repos" popover aria-label="Repos">
+        {d.repos.map((r) => (
+          <li>
+            <a
+              href={at(repo ? samePage(r) : r.dashboard)}
+              aria-current={r.key === repo?.key ? "true" : undefined}
+            >
+              <span>{r.key}</span>
+              <span class="admin-count">{waiting(r) || ""}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
     </AppHeader>
     <div class="admin-shell hw-container">
       <aside class="admin-rail">
@@ -92,8 +105,13 @@ const current = (to: string) =>
           placeholder="Search /"
           aria-label="Search this page"
         />
-        <nav aria-label="Menu" data-phone={repo ? "menu" : undefined}>
-          <p class="hw-label mb-1 px-2">{repo ? repo.key : "hub"}</p>
+        <nav aria-label="Menu">
+          {repo && (
+            <a href={at("index")} class="admin-back">
+              ← Hub
+            </a>
+          )}
+          <p class="hw-label mb-1 px-2">{repo ? repo.key : "Hub"}</p>
           <ul>
             {menu.map((m) => (
               <li>
@@ -115,7 +133,7 @@ const current = (to: string) =>
               </li>
             ))}
           </ul>
-          {d.hub && (
+          {!repo && (
             <>
               <p class="hw-label mt-6 mb-1 px-2" data-repos>
                 Repos
@@ -123,15 +141,9 @@ const current = (to: string) =>
               <ul data-repos>
                 {d.repos.map((r) => (
                   <li>
-                    <a
-                      href={at(r.dashboard)}
-                      aria-current={r.key === repo?.key ? "true" : undefined}
-                      class:list={r.key === repo?.key && active}
-                    >
+                    <a href={at(r.dashboard)}>
                       <span>{r.key}</span>
-                      <span class="admin-count">
-                        {openQuestions(r.items).length + forPerson(r.items).length || ""}
-                      </span>
+                      <span class="admin-count">{waiting(r) || ""}</span>
                     </a>
                   </li>
                 ))}
