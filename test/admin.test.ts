@@ -245,8 +245,7 @@ describe("hub", () => {
     );
     expect(book.designSystem).toBe("http://127.0.0.1:4999/design-system/");
     expect(book.designSystemDev).toEqual({ port: 4999, start: "design-system" });
-    // scaffolding's catalog preset from v2 is the dev server's root, without base, started by the
-    // `catalog` script; at /catalog where the site's pages have a home; before v2 <base>/catalog.
+    // scaffolding's catalog preset, started by the `catalog` script, at the path its pin's rule gives.
     const preset = (name: string, pin: string, files: Record<string, string> = {}) =>
       readRepo(
         bare(
@@ -268,13 +267,14 @@ describe("hub", () => {
     const shell = preset("shell", "v2.1.0", { "catalog/pages/types/a.astro": "" });
     expect(shell.designSystem).toBe("http://127.0.0.1:4998/");
     expect(shell.designSystemDev).toEqual({ port: 4998, start: "catalog" });
-    expect(preset("homed", "v2.1.0", { "catalog/pages/index.html.ts": "" }).designSystem).toBe(
-      "http://127.0.0.1:4998/catalog/",
-    );
-    expect(preset("caught", "v2.0.1", { "catalog/pages/[...slug].astro": "" }).designSystem).toBe(
-      "http://127.0.0.1:4998/catalog/",
-    );
-    expect(preset("older", "v1.0.0").designSystem).toBe("http://127.0.0.1:4998/shell/catalog/");
+    for (const [name, pin, page, path] of [
+      ["homed", "v2.1.0", "index.html.ts", "/catalog/"],
+      ["caught", "v2.0.1", "[...slug].astro", "/catalog/"],
+      ["older", "v1.0.0", "types/a.astro", "/shell/catalog/"],
+    ])
+      expect(preset(name!, pin!, { [`catalog/pages/${page}`]: "" }).designSystem).toBe(
+        `http://127.0.0.1:4998${path}`,
+      );
     const owned = readRepo(
       bare("owned", {
         name: "owned",

@@ -26,11 +26,11 @@ A repository shows in the hub when its HEAD has `docs/agent-work/items/` or its 
 `@hackersandwizards` package, so this engine shows itself.
 
 A repository gets a Catalog entry when an `astro.config.*` at its root or one folder down loads
-Astrobook or scaffolding's catalog preset: the link is `http://127.0.0.1:<port><base><subpath>` from
-that config. The preset from v2 serves at the root without `base`, or at `/catalog` where the
-site's pages have an index or a top-level catch-all of their own; before v2 at `<base>/catalog`.
-The page names the package script that starts
-it (`catalog` where the preset's repository has one) and says whether it is running now.
+Astrobook or scaffolding's catalog preset, at `http://127.0.0.1:<port>` from that config. Astrobook
+serves at `<base><subpath>`. The preset, by the major of its pinned tag: from v2 at the root without
+`base`, or at `/catalog` where the site's pages have an index or a top-level catch-all of their own;
+before v2 at `<base>/catalog`. The page names the package script that starts it (`catalog` where
+the preset's repository has one) and says whether it is running now.
 `admin.designSystem` overrides it.
 
 Answers to decisions stay in the browser until "Copy answers" puts

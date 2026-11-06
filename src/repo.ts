@@ -192,14 +192,12 @@ function firstComment(text: string) {
 }
 
 // Where a repository's catalog runs in development: the astro config at the root or one folder
-// down that loads astrobook or scaffolding's catalog preset, read for its server port, base and
-// subpath, and the package script that starts it: `catalog` where the preset's repository has one.
-// The preset's path restates scaffolding's rule (catalog/index.ts), which it exports no function
-// for: from v2 the catalog is the dev server's root, without `base`, unless the site's pages have
-// a home of their own (an index file or folder, or a top-level catch-all), then /catalog; before
-// v2 always <base>/catalog.
-function astrobookDev(src: Source, scripts: Record<string, string>, deps: Record<string, string>) {
-  const major = Number(deps["@hackersandwizards/scaffolding"]?.match(/#v?(\d+)\./)?.[1] ?? 2);
+// down that loads astrobook or scaffolding's catalog preset, read for its server port and path,
+// and the package script that starts it: `catalog` where the preset's repository has one.
+// Astrobook's path is <base><subpath>. The preset's restates scaffolding's rule (catalog/index.ts,
+// which exports no function for it), as the README states it, by the major of the pinned tag.
+function astrobookDev(src: Source, scripts: Record<string, string>, scaffolding = "") {
+  const major = Number(scaffolding.match(/#v?(\d+)\./)?.[1] ?? 2);
   for (const p of src.paths.filter((q) => ASTRO_CONFIG.test(q))) {
     const text = src.read(p) ?? "";
     const preset = text.includes("@hackersandwizards/scaffolding/catalog");
@@ -207,21 +205,19 @@ function astrobookDev(src: Source, scripts: Record<string, string>, deps: Record
       preset || text.includes("astrobook") ? text.match(/\bport:\s*(\d+)/)?.[1] : undefined;
     if (!port) continue;
     const at = (key: string) => text.match(new RegExp(`\\b${key}:\\s*["']([^"']+)["']`))?.[1];
-    const pages = join(p, "..", at("srcDir") ?? "src", "pages");
-    const home = src.paths.some(
-      (q) =>
-        q.startsWith(`${pages}/`) &&
-        /^(index(\.|$)|\[\.\.\.)/.test(q.slice(pages.length + 1).split("/")[0]!),
-    );
-    const path = (
-      !preset
-        ? `${at("base") ?? ""}${at("subpath") ?? ""}`
-        : major < 2
-          ? `${at("base") ?? ""}/catalog`
-          : home
-            ? "/catalog"
-            : ""
-    ).replace(/\/*$/, "/");
+    const base = at("base") ?? "";
+    // The site's own home: an index file or folder, or a top-level catch-all, in its pages.
+    const home = () => {
+      const pages = `${join(p, "..", at("srcDir") ?? "src", "pages")}/`;
+      return src.paths.some(
+        (q) =>
+          q.startsWith(pages) &&
+          /^(index(\.|$)|\[\.\.\.)/.test(q.slice(pages.length).split("/")[0]!),
+      );
+    };
+    let path = `${base}${at("subpath") ?? ""}`;
+    if (preset) path = major < 2 ? `${base}/catalog` : home() ? "/catalog" : "";
+    path = path.replace(/\/*$/, "/");
     const dir = p.includes("/") ? p.slice(0, p.indexOf("/")) : "";
     const runs = Object.keys(scripts).filter((k) => {
       const v = scripts[k]!;
@@ -264,7 +260,7 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
     ...((pkg.dependencies ?? {}) as Record<string, string>),
     ...((pkg.devDependencies ?? {}) as Record<string, string>),
   };
-  const dev = astrobookDev(src, scriptsMap, dependencies);
+  const dev = astrobookDev(src, scriptsMap, dependencies["@hackersandwizards/scaffolding"]);
   const designSystem = typeof admin.designSystem === "string" ? href(admin.designSystem) : dev?.url;
   const designSystemDev =
     dev && designSystem === dev.url ? { port: dev.port, start: dev.start } : undefined;

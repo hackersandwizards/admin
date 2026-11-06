@@ -28,7 +28,6 @@ export default defineConfig({
   server: { host: "127.0.0.1", port: 4332 },
   // A page opened from disk finds its stylesheets by file URL.
   build: { assetsPrefix: pathToFileURL(join(root, "dist")).href },
-  redirects: { "/design-system": "/" },
   integrations: [
     catalog({
       product: "Admin",
