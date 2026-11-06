@@ -24,6 +24,7 @@ const notes: Record<string, string> = {
   "inline-code": "A config key or command named in running text.",
   segmented: "The choice whose questions show: one person or all.",
   breadcrumb: "The top bar's way back to the hub, its last item the repo switcher.",
+  prose: "A report or document read on its doc page.",
 };
 ---
 
@@ -105,6 +106,21 @@ const notes: Record<string, string> = {
             </nav>
           )}
           {name === "code" && <pre class="hw-code">bun run check</pre>}
+          {name === "prose" && (
+            <article class="prose hw-prose">
+              <p>Done when:</p>
+              <ul>
+                <li class="task-list-item">
+                  <input type="checkbox" disabled checked />
+                  Draft the report.
+                </li>
+                <li class="task-list-item">
+                  <input type="checkbox" disabled />
+                  Review it.
+                </li>
+              </ul>
+            </article>
+          )}
           {name === "inline-code" && (
             <p class="text-ui">
               Set <code class="hw-inline-code">admin.designSystem</code> in package.json.

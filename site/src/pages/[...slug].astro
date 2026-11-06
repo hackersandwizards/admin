@@ -425,7 +425,7 @@ const leads: Partial<Record<Page["type"], string>> = {
         · {repo.key} HEAD {repo.head}
       </p>
       <article
-        class="max-w-3xl text-subheading [&_h1]:hidden [&_h2]:mt-8 [&_h2]:mb-2 [&_h2]:font-mono [&_h2]:font-semibold [&_h2]:text-heading [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:font-semibold [&_img]:my-4 [&_img]:max-w-full [&_img]:rounded-brand [&_li]:mb-1 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:mb-3 [&_pre]:mb-3 [&_table]:mb-4 [&_table]:block [&_table]:overflow-x-auto [&_ul]:mb-3"
+        class="prose hw-prose max-w-3xl [&_h1]:hidden [&>h1:first-child+*]:mt-0 [&_img]:rounded-brand [&_table]:block [&_table]:overflow-x-auto"
         set:html={doc.html}
       />
     </>

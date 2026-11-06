@@ -149,6 +149,7 @@ export function stylesheet() {
   const brandRoot = join(brand, "..");
   return [
     `@import "${at("tailwindcss/index.css")}";`,
+    `@plugin "${at("@tailwindcss/typography")}";`,
     `@import "${at("@hackersandwizards/brand/tokens.css")}";`,
     `@import "${at("@hackersandwizards/brand/expert.css")}";`,
     `@import "${at("@hackersandwizards/brand/header.css")}";`,

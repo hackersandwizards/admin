@@ -1,6 +1,6 @@
 # Sample topic
 
-A report with an image, a table, a list, a task list and code.
+A report with an image, a table, a list, a task list, a quote and code.
 
 ![Variant A](2026-01-15-sample-topic/variant-a.svg)
 
@@ -17,6 +17,8 @@ Done when:
 
 - [x] Draft the report.
 - [ ] Review it.
+
+> The gate runs on every commit.
 
 ```sh
 bun run check
