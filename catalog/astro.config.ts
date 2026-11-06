@@ -25,8 +25,6 @@ process.env.ADMIN_DATA = join(cache, "data.json");
 
 export default defineConfig({
   devToolbar: { enabled: false },
-  // As in src/build.ts: a line break in a template renders as a space.
-  compressHTML: false,
   server: { host: "127.0.0.1", port: 4332 },
   // A page opened from disk finds its stylesheets by file URL.
   build: { assetsPrefix: pathToFileURL(join(root, "dist")).href },
