@@ -165,7 +165,8 @@ const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
 export const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
 
 // brand's prose block asks for tables, quotes and code blocks to be not-prose. A link keeps hw-link
-// for an item's text, which no prose block holds. A task list gets no marker beside its checkboxes.
+// for an item's text, which no prose block holds. A task list gets no marker beside its checkboxes,
+// and its boxes are brand's read-only hw-check, a state shown rather than a control.
 // A <meta> tag shows as text, since csp() in serve.ts cannot stop its refresh. The opening is
 // escaped rather than the attributes matched, which quoting would defeat.
 export const withElements = (html: string) =>
@@ -175,6 +176,10 @@ export const withElements = (html: string) =>
     .replace(/<blockquote>/g, '<blockquote class="hw-quote not-prose">')
     .replace(/<a href=/g, '<a class="hw-link" href=')
     .replace(/<ul>(?!\s*<li class="task-list-item")/g, '<ul class="hw-marker-list">')
+    .replace(
+      /<input type="checkbox" class="task-list-item-checkbox" disabled/g,
+      '<input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly disabled',
+    )
     .replace(/<pre>/g, '<pre class="hw-code not-prose">')
     .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');
 

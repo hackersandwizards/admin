@@ -211,10 +211,13 @@ describe("admin-check", () => {
     }
   });
 
-  test("a task list wears no marker beside its checkboxes", () => {
+  test("a task list wears no marker beside its read-only hw-check boxes", () => {
     const html = renderMarkdown("/r", "docs/a.md", "- [ ] open\n- [x] done\n\nNext:\n\n- plain\n");
     expect(html.match(/hw-marker-list/g)).toHaveLength(1);
     expect(html).toContain('<ul>\n<li class="task-list-item">');
+    expect(
+      html.match(/class="task-list-item-checkbox hw-check" data-readonly disabled/g),
+    ).toHaveLength(2);
   });
 });
 
