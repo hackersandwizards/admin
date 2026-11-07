@@ -9,7 +9,7 @@ A repository adds the package as a dev dependency pinned to a tag. The repositor
 the install needs no GitHub login:
 
 ```sh
-bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.10.1"
+bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.10.7"
 ```
 
 `@hackersandwizards/brand` and `@hackersandwizards/scaffolding` are peer dependencies: the
