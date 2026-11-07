@@ -55,7 +55,7 @@
   }
   function load(d) {
     const a = read(d.dataset.k);
-    for (const i of d.querySelectorAll("input"))
+    for (const i of d.querySelectorAll("input[data-option], input[value=done]"))
       i.checked = !!a && ("option" in i.dataset ? picked(a).includes(i.value) : !!a.done);
     const t = d.querySelector("textarea");
     if (t) t.value = a ? a.note || "" : "";

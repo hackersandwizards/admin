@@ -24,6 +24,7 @@
     "code",
     "inline-code",
     "segmented",
+    "check",
     "breadcrumb",
     "prose"
   ],

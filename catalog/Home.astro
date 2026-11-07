@@ -19,6 +19,7 @@ const notes: Record<string, string> = {
   code: "A code block in an item's Markdown or a report.",
   "inline-code": "A config key or command named in running text.",
   segmented: "The choice whose questions show: one person or all.",
+  check: "An option to tick or pick, and a work item's done box.",
   breadcrumb: "The top bar's way back to the hub, its last item the repo switcher.",
   prose: "A report or document read on its doc page.",
 };
@@ -85,6 +86,22 @@ const notes: Record<string, string> = {
               <button type="button" aria-pressed="false">
                 All
               </button>
+            </div>
+          )}
+          {name === "check" && (
+            <div class="flex flex-col gap-1 text-ui">
+              <label class="flex items-start gap-2">
+                <input type="checkbox" class="hw-check" checked /> Option A
+              </label>
+              <label class="flex items-start gap-2">
+                <input type="checkbox" class="hw-check" /> Option B
+              </label>
+              <label class="flex items-start gap-2">
+                <input type="radio" class="hw-check" name="check-tile" checked /> One
+              </label>
+              <label class="flex items-start gap-2">
+                <input type="radio" class="hw-check" name="check-tile" /> Other
+              </label>
             </div>
           )}
           {name === "breadcrumb" && (
