@@ -39,7 +39,7 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.19.0",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.19.2",
     "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.11.4",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.3",
