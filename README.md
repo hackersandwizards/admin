@@ -9,8 +9,11 @@ A repository adds the package as a dev dependency pinned to a tag. The repositor
 the install needs no GitHub login:
 
 ```sh
-bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.10.7"
+bun add -d "git+https://github.com/hackersandwizards/admin.git#v<version>"
 ```
+
+`<version>` is the newest of the
+[repository's tags](https://github.com/hackersandwizards/admin/tags).
 
 `@hackersandwizards/brand` and `@hackersandwizards/scaffolding` are peer dependencies: the
 repository pins both itself, and admin uses those copies, so no second copy lands under

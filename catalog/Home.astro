@@ -26,153 +26,151 @@ const notes: Record<string, string> = {
 ---
 
 <Home>
-  <details class="hw-disclosure mt-6">
-    <summary class="py-2 font-mono font-semibold text-ui">
-      Foundations: {elements.uses.length} elements from brand,{" "}
-      {Object.keys(elements.exceptions).length} kept as the engine's own
-    </summary>
-    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-      {elements.uses.map((name) => (
-        <div class="flex flex-col gap-2" data-hw-tile={name} data-hw-version={version}>
-          <p class="text-ui">
-            from brand v{version} · <code class="hw-inline-code">hw-{name}</code> ·{" "}
-            <a class="hw-link" href={`${BRAND}#hw-${name}`}>
-              catalog
-            </a>
-          </p>
-          <p class="text-ui text-foreground/70">{notes[name]}</p>
-          {name === "label" && <p class="hw-label">spoke</p>}
-          {name === "pill" && (
-            <p class="flex flex-wrap gap-2">
-              <span class="hw-pill" data-caps>
-                Recommended
-              </span>
-              <span class="hw-pill" data-tone="neutral">
-                optional
-              </span>
-            </p>
-          )}
-          {name === "card" && <div class="hw-card text-ui">Open questions</div>}
-          {name === "callout" && (
-            <p class="hw-callout text-ui">
-              <b>Assumed:</b> the cache stays in node_modules.
-            </p>
-          )}
-          {name === "quote" && <blockquote class="hw-quote">Ship the smaller one.</blockquote>}
-          {name === "table" && (
-            <table class="hw-table w-full">
-              <tbody>
-                <tr>
-                  <td class="font-mono">check</td>
-                  <td class="font-mono">bun run lint && bun test</td>
-                </tr>
-              </tbody>
-            </table>
-          )}
-          {name === "link" && (
-            <p class="text-ui">
-              See{" "}
-              <a class="hw-link" href="#">
-                the sample topic
-              </a>{" "}
-              first.
-            </p>
-          )}
-          {name === "segmented" && (
-            <div class="hw-segmented" role="group" aria-label="For whom">
-              <button type="button" aria-pressed="true">
-                Alex
-              </button>
-              <button type="button" aria-pressed="false">
-                All
-              </button>
-            </div>
-          )}
-          {name === "check" && (
-            <div class="flex flex-col gap-1 text-ui">
-              <label class="flex items-start gap-2">
-                <input type="checkbox" class="hw-check" checked /> Option A
-              </label>
-              <label class="flex items-start gap-2">
-                <input type="checkbox" class="hw-check" /> Option B
-              </label>
-              <label class="flex items-start gap-2">
-                <input type="radio" class="hw-check" name="check-tile" checked /> One
-              </label>
-              <label class="flex items-start gap-2">
-                <input type="radio" class="hw-check" name="check-tile" /> Other
-              </label>
-            </div>
-          )}
-          {name === "breadcrumb" && (
-            <nav class="hw-breadcrumb" aria-label="Breadcrumb">
-              <ol>
-                <li>
-                  <a href="#">Hub</a>
-                </li>
-                <li>
-                  <button type="button" class="admin-switch" aria-current="location">
-                    spoke <span aria-hidden="true">▾</span>
-                  </button>
-                </li>
-              </ol>
-            </nav>
-          )}
-          {name === "code" && <pre class="hw-code">bun run check</pre>}
-          {name === "prose" && (
-            <article class="prose hw-prose">
-              <p>Done when:</p>
-              <ul>
-                <li class="task-list-item">
-                  <input type="checkbox" disabled checked />
-                  Draft the report.
-                </li>
-                <li class="task-list-item">
-                  <input type="checkbox" disabled />
-                  Review it.
-                </li>
-              </ul>
-            </article>
-          )}
-          {name === "inline-code" && (
-            <p class="text-ui">
-              Set <code class="hw-inline-code">admin.designSystem</code> in package.json.
-            </p>
-          )}
-        </div>
-      ))}
-    </div>
-    <h2 class="mt-6 mb-2 font-mono font-semibold text-heading">Kept as the engine's own</h2>
-    <div class="grid gap-4 xl:grid-cols-3">
-      {Object.entries(elements.exceptions).map(([name, reason]) => (
-        <section class="flex flex-col gap-2" data-hw-exception={name}>
-          <p class="font-medium text-ui">{name}</p>
-          <p class="text-ui text-foreground/70">{reason}</p>
-          {name === "item-list" && <ItemGroups items={items.slice(0, 2)} title="Priority 1" />}
-          {name === "priority-pill" && (
-            <p class="flex flex-wrap gap-2">
-              <span class="hw-pill font-mono" data-priority="1">
-                P1
-              </span>
-              <span class="hw-pill font-mono" data-priority="2">
-                P2
-              </span>
-              <span class="hw-pill font-mono" data-priority="3">
-                P3
-              </span>
-              <span class="hw-pill font-mono" data-variant="outline">
-                P–
-              </span>
-            </p>
-          )}
-          {name === "image-tile" && (
-            <span class="hw-card flex flex-col gap-1 p-2!">
-              <span class="aspect-video w-full rounded-brand bg-muted" />
-              <span class="truncate font-mono text-micro text-foreground/70">variant-a.svg</span>
+  <p class="mb-4 text-ui">
+    {elements.uses.length} elements from brand, {Object.keys(elements.exceptions).length} kept as
+    the engine's own.
+  </p>
+  <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    {elements.uses.map((name) => (
+      <div class="flex flex-col gap-2" data-hw-tile={name} data-hw-version={version}>
+        <p class="text-ui">
+          from brand v{version} · <code class="hw-inline-code">hw-{name}</code> ·{" "}
+          <a class="hw-link" href={`${BRAND}#hw-${name}`}>
+            catalog
+          </a>
+        </p>
+        <p class="text-ui text-foreground/70">{notes[name]}</p>
+        {name === "label" && <p class="hw-label">spoke</p>}
+        {name === "pill" && (
+          <p class="flex flex-wrap gap-2">
+            <span class="hw-pill" data-caps>
+              Recommended
             </span>
-          )}
-        </section>
-      ))}
-    </div>
-  </details>
+            <span class="hw-pill" data-tone="neutral">
+              optional
+            </span>
+          </p>
+        )}
+        {name === "card" && <div class="hw-card text-ui">Open questions</div>}
+        {name === "callout" && (
+          <p class="hw-callout text-ui">
+            <b>Assumed:</b> the cache stays in node_modules.
+          </p>
+        )}
+        {name === "quote" && <blockquote class="hw-quote">Ship the smaller one.</blockquote>}
+        {name === "table" && (
+          <table class="hw-table w-full">
+            <tbody>
+              <tr>
+                <td class="font-mono">check</td>
+                <td class="font-mono">bun run lint && bun test</td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+        {name === "link" && (
+          <p class="text-ui">
+            See{" "}
+            <a class="hw-link" href="#">
+              the sample topic
+            </a>{" "}
+            first.
+          </p>
+        )}
+        {name === "segmented" && (
+          <div class="hw-segmented" role="group" aria-label="For whom">
+            <button type="button" aria-pressed="true">
+              Alex
+            </button>
+            <button type="button" aria-pressed="false">
+              All
+            </button>
+          </div>
+        )}
+        {name === "check" && (
+          <div class="flex flex-col gap-1 text-ui">
+            <label class="flex items-start gap-2">
+              <input type="checkbox" class="hw-check" checked /> Option A
+            </label>
+            <label class="flex items-start gap-2">
+              <input type="checkbox" class="hw-check" /> Option B
+            </label>
+            <label class="flex items-start gap-2">
+              <input type="radio" class="hw-check" name="check-tile" checked /> One
+            </label>
+            <label class="flex items-start gap-2">
+              <input type="radio" class="hw-check" name="check-tile" /> Other
+            </label>
+          </div>
+        )}
+        {name === "breadcrumb" && (
+          <nav class="hw-breadcrumb" aria-label="Breadcrumb">
+            <ol>
+              <li>
+                <a href="#">Hub</a>
+              </li>
+              <li>
+                <button type="button" class="admin-switch" aria-current="location">
+                  spoke <span aria-hidden="true">▾</span>
+                </button>
+              </li>
+            </ol>
+          </nav>
+        )}
+        {name === "code" && <pre class="hw-code">bun run check</pre>}
+        {name === "prose" && (
+          <article class="prose hw-prose">
+            <p>Done when:</p>
+            <ul>
+              <li class="task-list-item">
+                <input type="checkbox" disabled checked />
+                Draft the report.
+              </li>
+              <li class="task-list-item">
+                <input type="checkbox" disabled />
+                Review it.
+              </li>
+            </ul>
+          </article>
+        )}
+        {name === "inline-code" && (
+          <p class="text-ui">
+            Set <code class="hw-inline-code">admin.designSystem</code> in package.json.
+          </p>
+        )}
+      </div>
+    ))}
+  </div>
+  <h3 class="mt-6 mb-2 font-mono font-semibold text-heading">Kept as the engine's own</h3>
+  <div class="grid gap-4 xl:grid-cols-3">
+    {Object.entries(elements.exceptions).map(([name, reason]) => (
+      <section class="flex flex-col gap-2" data-hw-exception={name}>
+        <p class="font-medium text-ui">{name}</p>
+        <p class="text-ui text-foreground/70">{reason}</p>
+        {name === "item-list" && <ItemGroups items={items.slice(0, 2)} title="Priority 1" />}
+        {name === "priority-pill" && (
+          <p class="flex flex-wrap gap-2">
+            <span class="hw-pill font-mono" data-priority="1">
+              P1
+            </span>
+            <span class="hw-pill font-mono" data-priority="2">
+              P2
+            </span>
+            <span class="hw-pill font-mono" data-priority="3">
+              P3
+            </span>
+            <span class="hw-pill font-mono" data-variant="outline">
+              P–
+            </span>
+          </p>
+        )}
+        {name === "image-tile" && (
+          <span class="hw-card flex flex-col gap-1 p-2!">
+            <span class="aspect-video w-full rounded-brand bg-muted" />
+            <span class="truncate font-mono text-micro text-foreground/70">variant-a.svg</span>
+          </span>
+        )}
+      </section>
+    ))}
+  </div>
 </Home>
