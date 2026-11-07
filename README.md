@@ -143,7 +143,7 @@ Tailwind arbitrary value defined here.
 
 ```sh
 bun install
-bun run check     # the gate: scaffolding's shared steps, then check:values, check:colours, check:copies, check:fixture, check:elements
+bun run check     # the gate: scaffolding's shared steps, then the steps in package.json's scaffolding.check
 bun run dev       # the hub on http://admin.localhost:4329
 bun run catalog   # the site's pages on the invented fixture, http://127.0.0.1:4332/
 ```
