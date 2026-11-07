@@ -177,8 +177,8 @@ export const withElements = (html: string) =>
     .replace(/<a href=/g, '<a class="hw-link" href=')
     .replace(/<ul>(?!\s*<li class="task-list-item")/g, '<ul class="hw-marker-list">')
     .replace(
-      /<input type="checkbox" class="task-list-item-checkbox" disabled/g,
-      '<input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly disabled',
+      /class="task-list-item-checkbox"/g,
+      'class="task-list-item-checkbox hw-check" data-readonly',
     )
     .replace(/<pre>/g, '<pre class="hw-code not-prose">')
     .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');
