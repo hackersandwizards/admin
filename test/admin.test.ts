@@ -190,6 +190,27 @@ describe("admin-check", () => {
     expect(renderMarkdown("/r", "docs/a.md", "[half](50%.md)")).toContain("docs/50%25.md");
   });
 
+  test("no committed <meta> in a doc or item body reaches the page as a tag", () => {
+    const body = [
+      '<meta http-equiv="refresh" content="0;url=https://elsewhere.example/">',
+      '<META HTTP-EQUIV="refresh" CONTENT="0">',
+      '<meta\ncontent="a>b" http-equiv="refresh">',
+      "`<meta http-equiv>` in code",
+    ].join("\n\n");
+    const item = parseItem(
+      "m",
+      `---\nkind: work\nstatus: open\npriority: 1\nowner: A\n---\n# M\n\n${body}\n`,
+    );
+    const repo = { ...readRepo(join(FIX, "spoke"), treeSource(join(FIX, "spoke"))), items: [item] };
+    for (const html of [
+      renderMarkdown("/r", "docs/a.md", body),
+      siteData([repo]).repos[0]!.items[0]!.html,
+    ]) {
+      expect(html).not.toMatch(/<meta/i);
+      expect(html).toContain("&lt;meta http-equiv=");
+    }
+  });
+
   test("a task list wears no marker beside its checkboxes", () => {
     const html = renderMarkdown("/r", "docs/a.md", "- [ ] open\n- [x] done\n\nNext:\n\n- plain\n");
     expect(html.match(/hw-marker-list/g)).toHaveLength(1);
@@ -381,6 +402,17 @@ describe("serve", () => {
     expect(csp("http://admin.localhost")).toMatch(
       /(^|; )script-src http:\/\/admin\.localhost\/_astro\/(;|$)/,
     );
+    // A committed form posts nowhere else, and no outside page is framed into the hub.
+    expect(csp("http://admin.localhost")).toMatch(/(^|; )form-action 'self'(;|$)/);
+    expect(csp("http://admin.localhost")).toMatch(/(^|; )frame-src 'self'(;|$)/);
+    for (const bare of ["/spoke", "/spoke/?who=A"]) {
+      const r = await get(bare);
+      expect([r.status, r.headers.get("location")]).toEqual([
+        302,
+        `http://admin.localhost/spoke/dashboard${bare.slice(6).replace(/^\//, "")}`,
+      ]);
+    }
+    expect((await get("/nosuchrepo/")).status).toBe(404);
     // Every script, on the hub and on a nested page, resolves under the one path the policy runs.
     const nested = await decisions.text();
     for (const [page, html] of [

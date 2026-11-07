@@ -29,10 +29,12 @@ const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
 
 // Item and doc bodies render committed raw HTML, and /_file/ serves every committed file from this
 // origin, so only the site's own build under /_astro/ may run, with no <base> to repoint it, else
-// that markup could read every repository through /_file/. Reports lay themselves out in raw
-// HTML, so styles and images stay free.
+// that markup could read every repository through /_file/. Nor may it post a form or frame a page
+// from elsewhere, which would put an outside login inside the hub; withElements in repo.ts defuses
+// the meta refresh no policy stops, and a refresh inside a frame stays under frame-src. Reports lay
+// themselves out in raw HTML, so styles and images stay free.
 export const csp = (origin: string) =>
-  `script-src ${origin}/_astro/; object-src 'none'; base-uri 'none'`;
+  `script-src ${origin}/_astro/; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'`;
 
 export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   let paths: Promise<string[]> | undefined;
@@ -176,9 +178,14 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
       return Response.redirect(url.origin + url.pathname.slice(0, -1), 302);
     const name = path.slice(1) || "index.html";
     const hit = files.get(name) ?? files.get(`${name}.html`);
-    return hit
-      ? typed(hit, files.has(name) ? name : `${name}.html`)
-      : new Response("no such page", { status: 404 });
+    if (hit) return typed(hit, files.has(name) ? name : `${name}.html`);
+    // A repository's own address, with or without the slash, opens its dashboard.
+    if (files.has(`${path.slice(1).replace(/\/$/, "")}/dashboard.html`))
+      return Response.redirect(
+        `${url.origin}${url.pathname.replace(/\/$/, "")}/dashboard${url.search}`,
+        302,
+      );
+    return new Response("no such page", { status: 404 });
   }
 
   return { fetch, pages };

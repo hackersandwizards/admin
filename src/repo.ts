@@ -166,8 +166,11 @@ export const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g
 
 // brand's prose block asks for tables, quotes and code blocks to be not-prose. A link keeps hw-link
 // for an item's text, which no prose block holds. A task list gets no marker beside its checkboxes.
+// A <meta> tag shows as text, since csp() in serve.ts cannot stop its refresh. The opening is
+// escaped rather than the attributes matched, which quoting would defeat.
 export const withElements = (html: string) =>
   html
+    .replace(/<meta(?=[\s/>])/gi, "&lt;meta")
     .replace(/<table>/g, '<table class="hw-table not-prose">')
     .replace(/<blockquote>/g, '<blockquote class="hw-quote not-prose">')
     .replace(/<a href=/g, '<a class="hw-link" href=')
