@@ -14,18 +14,10 @@
     max-height: calc(100vh - var(--spacing-app-header) - 3rem);
     overflow-y: auto;
   }
+  /* The field is brand's form-input; the rail sets only its width and spacing. */
   .admin-search {
-    box-sizing: border-box;
     width: 100%;
-    min-height: var(--hw-control-height);
     margin-bottom: 1rem;
-    padding: 0 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: var(--hw-corner-sm);
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    font-size: var(--text-ui);
   }
   .admin-rail ul {
     margin: 0;
