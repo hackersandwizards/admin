@@ -286,37 +286,22 @@ describe("hub", () => {
     expect(owned.products[0]!.href).toBe(`file://${owned.path}/a.html#x`);
   });
 
-  test("scaffolding's catalog preset sits where its pin's rule puts it", () => {
-    // An in-memory source: the path rule reads only package.json, the config and the paths.
-    const preset = (pin: string, page: string) => {
-      const files: Record<string, string> = {
-        "package.json": JSON.stringify({
-          name: "shell",
-          scripts: { dev: "wrangler dev", catalog: "cd catalog && astro dev" },
-          devDependencies: {
-            "@hackersandwizards/scaffolding": `git+https://x.invalid/s.git#${pin}`,
-          },
-        }),
-        "catalog/astro.config.ts":
-          'import { catalog } from "@hackersandwizards/scaffolding/catalog";\nbase: "/shell",\nsrcDir: ".",\nserver: { host: "127.0.0.1", port: 4998 }',
-        [`catalog/pages/${page}`]: "",
-      };
-      return readRepo("/nonexistent/shell", { paths: Object.keys(files), read: (f) => files[f] });
+  test("scaffolding's catalog preset links /catalog/ wherever its catalog sits", () => {
+    // An in-memory source: the path rule reads only package.json and the config.
+    const files: Record<string, string> = {
+      "package.json": JSON.stringify({
+        name: "shell",
+        scripts: { dev: "wrangler dev", catalog: "cd catalog && astro dev" },
+      }),
+      "catalog/astro.config.ts":
+        'import { catalog } from "@hackersandwizards/scaffolding/catalog";\nbase: "/shell",\nserver: { host: "127.0.0.1", port: 4998 }',
     };
-    expect(preset("v2.1.0", "types/a.astro").designSystemDev).toEqual({
-      port: 4998,
-      start: "catalog",
+    const shell = readRepo("/nonexistent/shell", {
+      paths: Object.keys(files),
+      read: (f) => files[f],
     });
-    for (const [pin, page, path] of [
-      ["v2.1.0", "types/a.astro", "/"],
-      ["v2.1.0", "index.html.ts", "/catalog/"],
-      ["v2.0.1", "[...slug].astro", "/catalog/"],
-      ["v2.1.0", "index/a.astro", "/catalog/"],
-      // A pin without a readable major takes the current rule.
-      ["06308c8", "types/a.astro", "/"],
-      ["v1.0.0", "types/a.astro", "/shell/catalog/"],
-    ])
-      expect(preset(pin!, page!).designSystem).toBe(`http://127.0.0.1:4998${path}`);
+    expect(shell.designSystem).toBe("http://127.0.0.1:4998/catalog/");
+    expect(shell.designSystemDev).toEqual({ port: 4998, start: "catalog" });
   });
 
   test("reads at HEAD, not the working tree", () => {

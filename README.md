@@ -15,13 +15,12 @@ bun add -d "git+https://github.com/hackersandwizards/admin.git#v<version>"
 `<version>` is the newest of the
 [repository's tags](https://github.com/hackersandwizards/admin/tags).
 
-`@hackersandwizards/brand` and `@hackersandwizards/scaffolding` are peer dependencies: the
-repository pins both itself, and admin uses those copies, so no second copy lands under
-`node_modules/@hackersandwizards/admin/`. They are marked optional, so bun never looks them up on
-the npm registry, where the packages do not exist. `admin-check` needs neither; `admin-serve` stops
-and names what to pin when one is missing or older than its peer range, which bun does not check for
-a Git pin (older brand draws P3 as the outline that means unset). The versions in admin's
-`devDependencies` are the tested set.
+`@hackersandwizards/brand` is a peer dependency: the repository pins it itself, and admin uses
+that copy, so no second copy lands under `node_modules/@hackersandwizards/admin/`. It is marked
+optional, so bun never looks it up on the npm registry, where the package does not exist.
+`admin-check` does not need it; `admin-serve` stops and names what to pin when it is missing or
+older than its peer range, which bun does not check for a Git pin (older brand draws P3 as the
+outline that means unset). The versions in admin's `devDependencies` are the tested set.
 
 `astro`, `tailwindcss`, `@tailwindcss/vite` and `@tailwindcss/typography`, which `admin-serve`
 builds the pages with, are peer dependencies too: a repository on another version within the
@@ -54,11 +53,11 @@ elsewhere: the policy lets no form post and no frame load from another site, and
 in a body shows as text. A committed `.html` file opened through `/_file/` is served as written.
 
 A repository gets a Catalog entry when an `astro.config.*` at its root or one folder down loads
-Astrobook or scaffolding's catalog preset, at `http://127.0.0.1:<port>` from that config. Astrobook
-serves at `<base><subpath>`. The preset, by the major of its pinned tag: from v2 at the root without
-`base`, or at `/catalog` where the site's pages have an index or a top-level catch-all of their own;
-before v2 at `<base>/catalog`. The page names the package script that starts it (`catalog` where
-the preset's repository has one) and says whether it is running now.
+Astrobook or scaffolding's catalog preset, at `http://127.0.0.1:<port>` from that config: at
+`/catalog/` for the preset (v2 or later), which answers there whether its catalog is the site's
+home or sits under `/catalog/`, and at `<base><subpath>` for Astrobook. The page names the package
+script that starts it (`catalog` where the preset's repository has one) and says whether it is
+running now.
 `admin.designSystem` overrides it.
 
 Answers to decisions stay in the browser until "Copy answers" puts

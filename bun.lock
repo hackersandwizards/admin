@@ -22,7 +22,6 @@
       },
       "peerDependencies": {
         "@hackersandwizards/brand": ">=1.28.2",
-        "@hackersandwizards/scaffolding": ">=2.3.0",
         "@tailwindcss/typography": "^0.5.20",
         "@tailwindcss/vite": "^4.3.3",
         "astro": "^7.4.4",
@@ -30,7 +29,6 @@
       },
       "optionalPeers": [
         "@hackersandwizards/brand",
-        "@hackersandwizards/scaffolding",
         "@tailwindcss/typography",
         "@tailwindcss/vite",
         "tailwindcss",

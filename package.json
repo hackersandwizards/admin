@@ -1,6 +1,6 @@
 {
   "name": "@hackersandwizards/admin",
-  "version": "1.10.7",
+  "version": "1.11.0",
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -73,7 +73,6 @@
   },
   "peerDependencies": {
     "@hackersandwizards/brand": ">=1.28.2",
-    "@hackersandwizards/scaffolding": ">=2.3.0",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
     "astro": "^7.4.4",
@@ -81,9 +80,6 @@
   },
   "peerDependenciesMeta": {
     "@hackersandwizards/brand": {
-      "optional": true
-    },
-    "@hackersandwizards/scaffolding": {
       "optional": true
     },
     "@tailwindcss/typography": {

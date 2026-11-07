@@ -1,5 +1,4 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { createRequire } from "node:module";
 import { basename, join } from "node:path";
 import {
   ITEMS_DIR,
@@ -208,9 +207,7 @@ function firstComment(text: string) {
   return "";
 }
 
-function astrobookDev(src: Source, scripts: Record<string, string>, scaffolding = "") {
-  // A spoke pinning scaffolding by no Git tag is read as major 2.
-  const major = Number(scaffolding.match(/#v?(\d+)\./)?.[1] ?? 2);
+function astrobookDev(src: Source, scripts: Record<string, string>) {
   for (const p of src.paths.filter((q) => ASTRO_CONFIG.test(q))) {
     const text = src.read(p) ?? "";
     const preset = text.includes("@hackersandwizards/scaffolding/catalog");
@@ -218,22 +215,11 @@ function astrobookDev(src: Source, scripts: Record<string, string>, scaffolding 
       preset || text.includes("astrobook") ? text.match(/\bport:\s*(\d+)/)?.[1] : undefined;
     if (!port) continue;
     const at = (key: string) => text.match(new RegExp(`\\b${key}:\\s*["']([^"']+)["']`))?.[1];
-    const base = at("base") ?? "";
-    let path = `${base}${at("subpath") ?? ""}`;
-    if (preset && major < 2) path = `${base}/catalog`;
-    else if (preset) {
-      const folder = `${join(p, "..", at("srcDir") ?? "src", "pages")}/`;
-      const pages = src.paths
-        .filter((q) => q.startsWith(folder))
-        .map((q) => q.slice(folder.length).split("/")[0]!);
-      // Required here rather than imported: admin-check, which reads only items, then needs no
-      // scaffolding installed.
-      const { catalogPath } = createRequire(import.meta.url)(
-        "@hackersandwizards/scaffolding/catalog/path.ts",
-      ) as typeof import("@hackersandwizards/scaffolding/catalog/path.ts");
-      path = catalogPath({ base, pages, dev: true });
-    }
-    path = path.replace(/\/*$/, "/");
+    // The preset answers /catalog/ wherever its catalog sits, forwarding a home catalog to its
+    // root; dev drops the base.
+    const path = preset
+      ? "/catalog/"
+      : `${at("base") ?? ""}${at("subpath") ?? ""}`.replace(/\/*$/, "/");
     const dir = p.includes("/") ? p.slice(0, p.indexOf("/")) : "";
     const runs = Object.keys(scripts).filter((k) => {
       const v = scripts[k]!;
@@ -275,7 +261,7 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
     ...((pkg.dependencies ?? {}) as Record<string, string>),
     ...((pkg.devDependencies ?? {}) as Record<string, string>),
   };
-  const dev = astrobookDev(src, scriptsMap, dependencies["@hackersandwizards/scaffolding"]);
+  const dev = astrobookDev(src, scriptsMap);
   const designSystem = typeof admin.designSystem === "string" ? href(admin.designSystem) : dev?.url;
   const designSystemDev =
     dev && designSystem === dev.url ? { port: dev.port, start: dev.start } : undefined;

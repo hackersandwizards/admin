@@ -27,7 +27,6 @@ if (missing.length) {
 }
 // A newer peer within its range may have moved a file the build reads.
 stylesheet();
-Bun.resolveSync("@hackersandwizards/scaffolding/catalog/path.ts", import.meta.dir);
 
 const { values } = parseArgs({
   options: { root: { type: "string" }, port: { type: "string" } },
