@@ -31,5 +31,6 @@ exported file is a release whose commit names the change.
 `bun run check` is the gate, `scaffolding check` from `@hackersandwizards/scaffolding`: the shared
 steps, then `check:values` (no design value here), `check:colours` and `check:copies` (brand's
 colour and copy scans), `check:fixture` (admin-check on the fixture), `check:elements`
-(brand-elements over the built catalog) and `check:markers` (brand-markers on the built doc and decisions pages).
+(brand-elements over the built catalog), `check:markers` (brand-markers on the built doc and decisions pages)
+and `check:retired` (brand-retired over the built catalog).
 The pre-commit hook runs scaffolding's `check-staged`.

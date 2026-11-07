@@ -33,13 +33,14 @@
     "check:copies": "brand-copies",
     "check:elements": "brand-elements",
     "check:markers": "brand-markers dist/stories/Pages/doc/default/index.html dist/stories/Pages/decisions/default/index.html",
+    "check:retired": "brand-retired dist",
     "check:staged": "check-staged",
     "fix": "bun --bun eslint --cache --concurrency=auto . --fix && bun --bun prettier --write .",
     "test": "bun test"
   },
   "devDependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.16.1",
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.11.0",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.19.0",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.11.4",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.3",
     "@types/bun": "1.4.4",
@@ -62,7 +63,8 @@
       ],
       "check:fixture",
       "check:elements",
-      "check:markers"
+      "check:markers",
+      "check:retired"
     ],
     "allow": [
       {
