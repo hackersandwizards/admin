@@ -1,6 +1,3 @@
-/* The admin shell's layout (Layout.astro). It reads brand's token roles (the expert set's, which
-   admin.css loads) by name; the lengths are the shell's own. */
-
 @layer components {
   .admin-shell {
     display: grid;
@@ -35,7 +32,6 @@
     padding: 0;
     list-style: none;
   }
-  /* A rail link and a repo in the top bar's list: one row, its count at the end. */
   .admin-rail a,
   .admin-repos a {
     display: flex;
@@ -66,8 +62,6 @@
   .admin-back {
     margin-bottom: 0.75rem;
   }
-  /* The top bar's "Hub / <repo> ▾": brand's breadcrumb on one line, its last item the button that
-     opens the repo list, a popover the browser closes on a click outside and on Escape. */
   .admin-where {
     min-width: 0;
     white-space: nowrap;
@@ -147,7 +141,6 @@
   .admin-provenance {
     margin: 0.5rem 0 0;
   }
-  /* A Markdown task item, in a doc or an item's text: its checkbox apart from its words. */
   .task-list-item-checkbox {
     margin-inline-end: 0.5rem;
   }

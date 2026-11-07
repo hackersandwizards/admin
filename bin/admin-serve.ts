@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
-// Serves the hub over HTTP, built from every repository's last commit on each request that finds
-// one moved, and writes no file. Binds 127.0.0.1 only.
+// Serves the hub over HTTP from every repository's HEAD, rebuilt when one moves; writes no file.
 // Usage: admin-serve [--root <dir>] [--port <n>]
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -10,9 +9,8 @@ import { peerDependencies, peerDependenciesMeta } from "../package.json";
 import { stylesheet } from "../src/build.ts";
 import { createHub } from "../src/serve.ts";
 
-// Every peer comes from the repository that installs admin: stop with what to pin before the
-// first build fails on a missing one, or renders wrong on an optional one older than its range
-// (a Git pin, whose range bun does not check).
+// Stop with what to pin on a missing peer, or on an optional one older than its range: that one
+// is a Git pin, whose range bun does not check.
 const missing = Object.entries(peerDependencies).filter(([p, range]) => {
   try {
     const { version } = createRequire(import.meta.url)(`${p}/package.json`);
@@ -27,6 +25,7 @@ if (missing.length) {
   );
   process.exit(1);
 }
+// A newer peer within its range may have moved a file the build reads.
 stylesheet();
 Bun.resolveSync("@hackersandwizards/scaffolding/catalog/path.ts", import.meta.dir);
 

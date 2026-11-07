@@ -15,7 +15,7 @@ import { buildSite, siteData } from "../src/build.ts";
 import { findRepos } from "../src/hub.ts";
 import { itemDefects, parseItem, type Item } from "../src/items.ts";
 import { gitEnv, readItems, readRepo, renderMarkdown, treeSource } from "../src/repo.ts";
-import { createHub, CSP } from "../src/serve.ts";
+import { createHub, csp } from "../src/serve.ts";
 
 const FIX = join(import.meta.dir, "fixtures");
 const made: string[] = [];
@@ -32,7 +32,6 @@ const sh = (cwd: string, ...cmd: string[]) => {
   if (r.exitCode) throw new Error(`${cmd.join(" ")}: ${r.stderr}`);
   return r.stdout.toString();
 };
-// A git repository holding a copy of a fixture, committed, as the hub reads it.
 function repoFrom(fixture: string, name = "spoke") {
   const dir = join(scratch(), name);
   cpSync(join(FIX, fixture), dir, { recursive: true });
@@ -199,14 +198,14 @@ describe("admin-check", () => {
 });
 
 describe("hub", () => {
-  test("finds each repo with committed items once, skipping dot folders", () => {
+  test("finds each repo with committed items once, skipping dot folders", async () => {
     const repo = repoFrom("spoke");
     const root = dirname(repo);
     sh(root, "git", "clone", "-q", repo, join(root, ".hidden"));
-    expect(findRepos(root)).toEqual([repo]);
+    expect(await findRepos(root)).toEqual([repo]);
   });
 
-  test("finds a repo naming an @hackersandwizards package with no items, and none other", () => {
+  test("finds a repo naming an @hackersandwizards package with no items, and none other", async () => {
     const repo = repoFrom("spoke");
     const root = dirname(repo);
     const bare = (name: string, pkg: object, files: Record<string, string> = {}) => {
@@ -234,9 +233,8 @@ describe("hub", () => {
     };
     const tool = bare("tool", { name: "@hackersandwizards/tool" });
     bare("other", { name: "other" });
-    expect(findRepos(root)).toEqual([repo, tool]);
+    expect(await findRepos(root)).toEqual([repo, tool]);
     expect(readRepo(tool).designSystem).toBeUndefined();
-    // A frontend without Astrobook has no design system; Astrobook's own config gives port and path.
     expect(readRepo(bare("ui", { name: "ui", devDependencies: { astro: "1" } })).designSystem).toBe(
       undefined,
     );
@@ -336,11 +334,9 @@ describe("pages", () => {
     }
     const docPath = join(out, "spoke/doc/docs/agent-work/2026-01-15-sample-topic.html");
     const doc = readFileSync(docPath, "utf8");
-    // brand's prose block sets the article; its tables, quotes and code blocks stay hw-* elements.
     expect(doc).toContain('<article class="prose hw-prose');
     for (const el of ["hw-table", "hw-quote", "hw-code"])
       expect(doc).toContain(`class="${el} not-prose"`);
-    // A link stays in the block, which draws it as the link in text.
     expect(doc).toContain('<a class="hw-link" href=');
     expect(doc).not.toMatch(/<a [^>]*not-prose/);
     // The title shows above the article, so the article opens on what follows it.
@@ -351,8 +347,6 @@ describe("pages", () => {
     // Typography's plugin is loaded: without it, prose styles nothing.
     expect(sheets).toContain(".prose :where(p)");
     expect(doc).toContain(`file://${repo}/docs/agent-work/2026-01-15-sample-topic/variant-a.svg`);
-    // The top bar leads back to the hub. Its switcher keeps the current repo on its page and opens
-    // another on the same page, on its Docs from a doc, else on its dashboard.
     const where = (html: string) => html.match(/<nav[^>]*aria-label="Where"[\s\S]*?<\/nav>/)![0];
     const repos = (html: string) => html.match(/<ul id="admin-repos"[\s\S]*?<\/ul>/)![0];
     expect(where(doc)).toContain('href="../../../../index.html"');
@@ -383,16 +377,33 @@ describe("serve", () => {
     expect(first).toContain("/_file/spoke/docs/agent-work/");
     const decisions = await get("/spoke/decisions");
     expect(decisions.status).toBe(200);
-    expect(decisions.headers.get("content-security-policy")).toBe(CSP);
-    expect(CSP).toMatch(/(^|; )script-src 'self'(;|$)/);
+    expect(decisions.headers.get("content-security-policy")).toBe(csp("http://admin.localhost"));
+    expect(csp("http://admin.localhost")).toMatch(
+      /(^|; )script-src http:\/\/admin\.localhost\/_astro\/(;|$)/,
+    );
+    // Every script, on the hub and on a nested page, resolves under the one path the policy runs.
+    const nested = await decisions.text();
+    for (const [page, html] of [
+      ["/", first],
+      ["/spoke/decisions", nested],
+    ] as const) {
+      const srcs = [...html.matchAll(/<script[^>]*src="([^"]+)"/g)].map((m) => m[1]!);
+      expect(srcs.length).toBeGreaterThan(0);
+      for (const src of srcs)
+        expect(new URL(src, `http://admin.localhost${page}`).pathname).toStartWith("/_astro/");
+    }
+    const slash = await get("/spoke/decisions/");
+    expect([slash.status, slash.headers.get("location")]).toEqual([
+      302,
+      "http://admin.localhost/spoke/decisions",
+    ]);
     const svg = await get("/_file/spoke/docs/agent-work/2026-01-15-sample-topic/variant-a.svg");
     expect(svg.headers.get("content-type")).toContain("image/svg");
-    expect((await get("/_file/spoke/../../etc/passwd")).status).toBe(404);
-    // node_modules, which no commit holds, answers from the installed package.
+    writeFileSync(join(repo, "uncommitted.txt"), "uncommitted");
+    expect((await get("/_file/spoke/node_modules/..%2Funcommitted.txt")).status).toBe(404);
     Bun.spawnSync(["mkdir", "-p", join(repo, "node_modules/pkg")]);
     writeFileSync(join(repo, "node_modules/pkg/tokens.css"), ":root{}");
     expect(await (await get("/_file/spoke/node_modules/pkg/tokens.css")).text()).toBe(":root{}");
-    // A symlink there leaving the repository reads nothing.
     const outside = scratch();
     writeFileSync(join(outside, "secret.txt"), "secret");
     symlinkSync(outside, join(repo, "node_modules/escape"));
@@ -400,7 +411,6 @@ describe("serve", () => {
     expect((await get("/_file/spoke/node_modules/escape/secret.txt")).status).toBe(404);
     expect((await get("/_file/spoke/node_modules/pkg/secret.txt")).status).toBe(404);
     expect((await hub.fetch(new Request("http://evil.example/"))).status).toBe(403);
-    // A Git LFS pointer is answered with the object from the local LFS store.
     const oid = "ab".repeat(32);
     const store = join(repo, ".git/lfs/objects/ab/ab");
     Bun.spawnSync(["mkdir", "-p", store]);
@@ -424,7 +434,6 @@ describe("serve", () => {
     expect(await (await get("/_file/spoke/docs/agent-work/lfs.svg")).text()).toBe(
       "<svg>stored</svg>",
     );
-    // Uncommitted work changes nothing; a commit does.
     const item = join(repo, "docs/agent-work/items/check-the-copy.md");
     writeFileSync(item, readFileSync(item, "utf8").replace("# ", "# Renamed "));
     const cached = await hub.pages();

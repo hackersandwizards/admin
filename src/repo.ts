@@ -1,5 +1,3 @@
-// Reads one repository for its admin pages: at HEAD (what the hub shows, committed only) or from
-// the working tree (what `admin-check` validates in a gate).
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, join } from "node:path";
@@ -17,8 +15,8 @@ export const LEGACY = ["GOAL.md"];
 
 export type Source = { paths: string[]; read: (path: string) => string | undefined };
 
-// A hook exports GIT_DIR, GIT_INDEX_FILE and the like, which would point every git call at the
-// repository running the hook, whatever -C names. Each call gets the environment without them.
+// A hook exports GIT_DIR, GIT_INDEX_FILE and the like, which point git at the hook's repository
+// whatever -C names.
 export const gitEnv = Object.fromEntries(
   Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")),
 ) as Record<string, string>;
@@ -27,6 +25,17 @@ export const git = (cwd: string, ...args: string[]) => {
   const r = Bun.spawnSync(["git", "-C", cwd, ...args], { stderr: "ignore", env: gitEnv });
   return r.exitCode === 0 ? r.stdout.toString() : "";
 };
+
+// The same without blocking, so that many repositories are asked at once.
+export async function gitAsync(cwd: string, args: string[], stdin = "") {
+  const r = Bun.spawn(["git", "-C", cwd, ...args], {
+    stdin: stdin ? Buffer.from(stdin) : "ignore",
+    stderr: "ignore",
+    env: gitEnv,
+  });
+  const out = await new Response(r.stdout).text();
+  return (await r.exited) === 0 ? out : "";
+}
 
 export function headSource(repo: string): Source {
   const paths = git(repo, "ls-tree", "-r", "--name-only", "-z", "HEAD").split("\0").filter(Boolean);
@@ -38,7 +47,6 @@ export function headSource(repo: string): Source {
       (/\.md$/i.test(p) && (p.startsWith("docs/") || !p.includes("/"))) ||
       /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/.test(p),
   );
-  // One cat-file process for every text file the pages read.
   const batch = Bun.spawnSync(["git", "-C", repo, "cat-file", "--batch"], {
     env: gitEnv,
     stdin: Buffer.from(wanted.map((p) => `HEAD:${p}`).join("\n") + "\n"),
@@ -90,7 +98,6 @@ export function readItems(src: Source): ReadItems {
   for (const p of src.paths) {
     if (!p.startsWith(`${ITEMS_DIR}/`)) continue;
     const name = p.slice(ITEMS_DIR.length + 1);
-    // An item's images sit in a folder named for it; the folder goes with the item.
     const [folder, file, deeper] = name.split("/");
     if (file && !deeper && IMAGE.test(file)) {
       if (!has.has(`${ITEMS_DIR}/${folder}.md`)) defects.push(`${p}: no item ${folder}.md`);
@@ -144,7 +151,6 @@ export type RepoData = {
     bin: Record<string, string>;
   };
   designSystem?: string;
-  // The dev server the design system runs on, when it is this repository's own Astrobook.
   designSystemDev?: { port: number; start?: string };
   products: Product[];
   links: Link[];
@@ -158,10 +164,8 @@ const ASTRO_CONFIG = /^([^/]+\/)?astro\.config\.(ts|mjs|js)$/;
 const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
 export const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
 
-// Rendered Markdown wears brand's shared elements. brand's prose block asks for tables, quotes and
-// code blocks to be not-prose; a link stays in it, where the block draws it as hw-link does, and
-// keeps hw-link for an item's text, which no prose block holds. A task list keeps only its
-// checkboxes: the marker beside them would be a second mark per line.
+// brand's prose block asks for tables, quotes and code blocks to be not-prose. A link keeps hw-link
+// for an item's text, which no prose block holds. A task list gets no marker beside its checkboxes.
 export const withElements = (html: string) =>
   html
     .replace(/<table>/g, '<table class="hw-table not-prose">')
@@ -171,7 +175,6 @@ export const withElements = (html: string) =>
     .replace(/<pre>/g, '<pre class="hw-code not-prose">')
     .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');
 
-// A Markdown file as HTML; relative src and href resolve to the file in the spoke.
 export function renderMarkdown(repo: string, path: string, text: string) {
   const dir = join(repo, path, "..");
   const html = withElements(Bun.markdown.html(text.replace(/^---\n[\s\S]*?\n---\n/, "")));
@@ -189,7 +192,6 @@ export function renderMarkdown(repo: string, path: string, text: string) {
 const firstHeading = (text: string, fallback: string) =>
   text.match(/^# (.+)$/m)?.[1]?.trim() ?? fallback;
 
-// The first comment line of a script: its purpose, by this codebase's convention.
 function firstComment(text: string) {
   for (const line of text.split("\n").slice(0, 12)) {
     const m = line.match(/^\s*(?:\/\/|#(?!!)|\/\*+|\*)\s?(.*?)\s*(?:\*\/)?$/);
@@ -198,12 +200,8 @@ function firstComment(text: string) {
   return "";
 }
 
-// Where a repository's catalog runs in development: the astro config at the root or one folder
-// down that loads astrobook or scaffolding's catalog preset, read for its server port and path,
-// and the package script that starts it: `catalog` where the preset's repository has one.
-// Astrobook's path is <base><subpath>. The preset's, for a spoke pinning scaffolding at major 2 or
-// up, is catalogPath from the scaffolding installed beside admin (one rule across v2); below major 2, <base>/catalog.
 function astrobookDev(src: Source, scripts: Record<string, string>, scaffolding = "") {
+  // A spoke pinning scaffolding by no Git tag is read as major 2.
   const major = Number(scaffolding.match(/#v?(\d+)\./)?.[1] ?? 2);
   for (const p of src.paths.filter((q) => ASTRO_CONFIG.test(q))) {
     const text = src.read(p) ?? "";
@@ -260,7 +258,6 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
   const admin = (pkg.admin ?? {}) as AdminConfig;
   const key = admin.name ?? basename(repo);
   const scriptsMap = (pkg.scripts ?? {}) as Record<string, string>;
-  // A repository-relative href opens the committed file; one with a scheme stays as written.
   const href = (h: string) => {
     if (/^[a-z][\w+.-]*:/i.test(h)) return h;
     const [path, hash] = h.split("#");

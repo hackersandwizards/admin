@@ -9,7 +9,7 @@ A repository adds the package as a dev dependency pinned to a tag. The repositor
 the install needs no GitHub login:
 
 ```sh
-bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.8.1"
+bun add -d "git+https://github.com/hackersandwizards/admin.git#v1.9.0"
 ```
 
 `@hackersandwizards/brand` and `@hackersandwizards/scaffolding` are peer dependencies: the
@@ -37,6 +37,10 @@ Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repos
 `bun run dev` in this checkout runs `admin-serve`, the one hub: open `http://admin.localhost:4329`.
 A repository shows in the hub when its HEAD has `docs/agent-work/items/` or its `package.json` names an
 `@hackersandwizards` package, so this engine shows itself.
+
+Item and doc bodies keep their raw HTML, styles and images included, but no script in them runs:
+the hub's content security policy runs only its own build under `/_astro/`, so a `.js` file a
+repository commits and links through `/_file/` stays inert.
 
 A repository gets a Catalog entry when an `astro.config.*` at its root or one folder down loads
 Astrobook or scaffolding's catalog preset, at `http://127.0.0.1:<port>` from that config. Astrobook

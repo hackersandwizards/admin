@@ -93,6 +93,7 @@
   }
   const copy = document.getElementById("copy");
   const status = document.getElementById("state");
+  const idle = status?.textContent.trim();
   function state() {
     if (!copy) return;
     const n = answered().length;
@@ -101,7 +102,7 @@
     copy.textContent = n ? `Copy ${n} answer${n === 1 ? "" : "s"}` : "Copy answers";
     if (status)
       status.textContent = !n
-        ? "Answers stay in this browser."
+        ? idle
         : open
           ? `${open} not copied yet.`
           : `All copied at ${hhmm(since)}.`;

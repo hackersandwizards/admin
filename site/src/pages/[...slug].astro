@@ -83,7 +83,9 @@ const leads: Partial<Record<Page["type"], string>> = {
 >
   {(page.type === "decisions" || page.type === "hub") && (
     <Fragment slot="action">
-      <span id="state" class="text-ui text-foreground/70" role="status" />
+      <span id="state" class="text-ui text-foreground/70" role="status">
+        Answers stay in this browser.
+      </span>
       <button id="copy" type="button" class="btn-primary">
         Copy answers
       </button>
@@ -357,7 +359,7 @@ const leads: Partial<Record<Page["type"], string>> = {
                   <img
                     loading="lazy"
                     src={fileHref(`${repo.path}/${r.dir}/${f}`)}
-                    alt={f}
+                    alt=""
                     class="aspect-video w-full rounded-brand bg-muted object-contain"
                   />
                   <span class="truncate font-mono text-micro text-foreground/70">{f}</span>

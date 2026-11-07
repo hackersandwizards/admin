@@ -1,4 +1,3 @@
-// The build's data, written by src/build.ts and named by ADMIN_DATA.
 import { readFileSync } from "node:fs";
 import { relative, dirname } from "node:path/posix";
 import type { Page, SiteData, ViewItem } from "../../src/build.ts";

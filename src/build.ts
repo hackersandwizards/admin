@@ -1,5 +1,3 @@
-// Turns read repositories into the admin pages: prepares one view per page, runs the Astro site
-// in site/ as a static build, and rewrites asset URLs so every page opens from disk.
 import {
   cpSync,
   existsSync,
@@ -141,8 +139,7 @@ export function siteData(repos: RepoData[]): SiteData {
   return { version: VERSION, people, repos: out, pages };
 }
 
-// The stylesheet entry the site imports as admin:styles, with every path resolved: the package
-// may sit hoisted or nested. The catalog (catalog/) imports the same entry.
+// Every path is resolved, since the package may sit hoisted or nested.
 export function stylesheet() {
   const at = (spec: string) => Bun.resolveSync(spec, PKG);
   const brand = dirname(at("@hackersandwizards/brand/tokens.css"));

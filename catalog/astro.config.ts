@@ -1,8 +1,3 @@
-// The catalog (repo-uniformity-plan, hub-max): Astrobook over catalog/stories in scaffolding's
-// catalog shell, served at http://127.0.0.1:4332/ by `bun run catalog`. The stories render
-// the site's own components (site/src) on the invented fixture repository test/fixtures/spoke, read
-// as the hub reads it, under the stylesheet the build writes. `bun run build` writes dist/, where
-// brand-elements reads the pages from disk; nothing publishes it.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";

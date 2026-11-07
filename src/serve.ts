@@ -1,8 +1,6 @@
-// Serves the hub over HTTP instead of writing it to disk. Every page request checks each
-// repository's HEAD, upstream and last fetch; when one moved, that repository is read again at HEAD and the
-// pages are rebuilt into memory, each build in a child process, since an Astro build leaves
-// about 50 MB behind in the process that ran it. Paths that pages link as file:// are served from HEAD under
-// /_file/<repo>/, since a browser opens no file:// link from an http page.
+// Each build runs in a child process, since an Astro build leaves about 50 MB behind in the
+// process that ran it, and file:// links are served under /_file/<repo>/, since a browser opens no
+// file:// link from an http page.
 import {
   existsSync,
   mkdtempSync,
@@ -16,37 +14,33 @@ import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { buildSite, filesUnder, siteData } from "./build.ts";
 import { findRepos } from "./hub.ts";
-import { fileHref, git, gitEnv, readRepo, type RepoData } from "./repo.ts";
+import { fileHref, git, gitAsync, gitEnv, readRepo, type RepoData } from "./repo.ts";
 
 export type ServeOptions = { root: string; rescanMs?: number };
 
-// What decides whether a repository's pages are current: every ref, HEAD and upstream included,
-// and the last fetch.
-export function stateOf(repo: string) {
+// The pages show when each repository was last fetched, so a fetch that moves no ref counts too.
+export async function stateOf(repo: string) {
   const fetchHead = join(repo, ".git", "FETCH_HEAD");
   const fetched = existsSync(fetchHead) ? statSync(fetchHead).mtimeMs : 0;
-  return git(repo, "show-ref", "--head") + fetched;
+  return (await gitAsync(repo, ["show-ref", "--head"])) + fetched;
 }
 
 const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
 
-// Item and doc bodies render their raw HTML, so markup committed to any repository the hub reads
-// lands on its pages. Only the site's own script files run: no inline script or event handler, no
-// foreign script, and no <base> to repoint them, else that markup could read every repository
-// through /_file/. Styles and images stay free, since reports lay themselves out in raw HTML.
-export const CSP = "script-src 'self'; object-src 'none'; base-uri 'none'";
+// Item and doc bodies render committed raw HTML, and /_file/ serves every committed file from this
+// origin, so only the site's own build under /_astro/ may run, with no <base> to repoint it, else
+// that markup could read every repository through /_file/. Reports lay themselves out in raw
+// HTML, so styles and images stay free.
+export const csp = (origin: string) =>
+  `script-src ${origin}/_astro/; object-src 'none'; base-uri 'none'`;
 
 export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
-  let paths: string[] = [];
+  let paths: Promise<string[]> | undefined;
   let scanned = 0;
+  let scanning: Promise<string[]> | undefined;
   const read = new Map<string, { state: string; data: RepoData }>();
   let site: { key: string; files: Map<string, Buffer> } | undefined;
   let building: Promise<Map<string, Buffer>> | undefined;
-
-  const scan = () => {
-    scanned = Date.now();
-    paths = findRepos(root);
-  };
 
   async function rebuild(key: string, repos: RepoData[]) {
     const out = mkdtempSync(join(tmpdir(), "admin-serve-"));
@@ -79,12 +73,23 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     }
   }
 
-  // The current pages, rebuilt only when a repository moved. Concurrent requests share one build.
   async function pages() {
-    // The first request waits for the search; a later one finds new repositories on the next.
-    if (!scanned) scan();
-    else if (Date.now() - scanned > rescanMs) setTimeout(scan, 0);
-    const states = paths.map((p) => [p, stateOf(p)] as const);
+    // The first request waits for the search; a later one keeps the last result while the next
+    // search runs.
+    if (!paths || Date.now() - scanned > rescanMs) {
+      scanned = Date.now();
+      const next = (scanning = findRepos(root));
+      if (paths)
+        next.then(() => {
+          // Only the latest search replaces the list, should an earlier one finish after it.
+          if (scanning === next) paths = next;
+        }, console.error);
+      else (paths = next).catch(() => (paths = undefined));
+    }
+    const current = await paths;
+    // A repository gone from the search leaves no entry for /_file/ to find under its key.
+    for (const p of read.keys()) if (!current.includes(p)) read.delete(p);
+    const states = await Promise.all(current.map(async (p) => [p, await stateOf(p)] as const));
     const key = states.map(([p, s]) => `${p} ${s}`).join("\n");
     if (site?.key === key) return site.files;
     if (building) return building;
@@ -115,10 +120,9 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     return building;
   }
 
-  // A committed file of a repository the hub shows, read at HEAD. A Git LFS pointer resolves to
-  // the object in the repository's local LFS store, never fetched. Under node_modules, which no
-  // commit holds, the installed file answers: specimen pages link the brand's stylesheets there,
-  // and only from inside the repository, since a symlink there may point anywhere on disk.
+  // Specimen pages link brand's stylesheets under node_modules, which no commit holds, so the
+  // installed file answers, only from inside the repository, since a symlink there may point
+  // anywhere on disk.
   function file(repoKey: string, path: string) {
     const repo = [...read.values()].find((r) => r.data.key === repoKey)?.data.path;
     if (!repo || path.split("/").includes("..")) return undefined;
@@ -154,7 +158,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
         headers: {
           "content-type": Bun.file(name).type,
           "cache-control": "no-store",
-          "content-security-policy": CSP,
+          "content-security-policy": csp(url.origin),
         },
       });
     // Hashed asset names never change, so an asset needs no check whether a repository moved.
@@ -167,8 +171,11 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
       return body ? typed(body, path) : new Response("not committed", { status: 404 });
     }
     const files = await pages();
+    // A page's asset URLs are relative, so they only resolve from the page's own address.
+    if (path.length > 1 && path.endsWith("/") && files.has(`${path.slice(1, -1)}.html`))
+      return Response.redirect(url.origin + url.pathname.slice(0, -1), 302);
     const name = path.slice(1) || "index.html";
-    const hit = files.get(name) ?? files.get(`${name.replace(/\/$/, "")}.html`);
+    const hit = files.get(name) ?? files.get(`${name}.html`);
     return hit
       ? typed(hit, files.has(name) ? name : `${name}.html`)
       : new Response("no such page", { status: 404 });
@@ -177,7 +184,6 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   return { fetch, pages };
 }
 
-// The child: builds the pages of a site data file into a folder.
 if (import.meta.main) {
   const [json, out] = Bun.argv.slice(2);
   await buildSite(JSON.parse(readFileSync(json!, "utf8")), out!);

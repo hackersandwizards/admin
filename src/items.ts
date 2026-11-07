@@ -1,14 +1,8 @@
-// The item file: docs/agent-work/items/<id>.md, YAML frontmatter plus a Markdown body whose first
-// line is "# <title>". Decisions, review requests, assumptions, open work and goals share it.
-// A decided or finished item is deleted; git keeps it.
-
-// The folder for a run's documents: dated reports, review folders and the items.
 export const WORK_DIR = "docs/agent-work";
 export const ITEMS_DIR = `${WORK_DIR}/items`;
 export const KINDS = ["decision", "review", "work", "goal"] as const;
 export const STATUSES = ["open", "assumed", "decided"] as const;
 
-// An option may carry its blind-review score and the noise measured around it.
 export type Option = {
   key: string;
   label: string;
@@ -16,8 +10,6 @@ export type Option = {
   score?: number;
   noise?: number;
 };
-// An image is a file name in the item's own folder, docs/agent-work/items/<id>/, or a path with a
-// slash, read from the repository root as before that folder existed; either with a caption.
 export type Image = string | { src: string; caption?: string };
 export type Item = {
   id: string;
@@ -31,7 +23,6 @@ export type Item = {
   recommended?: string | string[];
   multiple?: boolean;
   options?: Option[];
-  // Option key to one image or several (light, dark, phone), or a list for the item as a whole.
   images?: Record<string, Image | Image[]> | Image[];
   assumption?: string;
   decision?: string;
@@ -90,7 +81,6 @@ export function parseItem(id: string, text: string): Item {
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 
-// Defects of one item; `exists` answers whether a repo-relative path is present.
 export function itemDefects(item: Item, exists: (path: string) => boolean): string[] {
   const d: string[] = [];
   const { kind, status } = item;
@@ -194,7 +184,6 @@ export function compareItems(a: Item & { changed?: number }, b: Item & { changed
 export const imagePath = (id: string, src: string) =>
   src.includes("/") ? src : `${ITEMS_DIR}/${id}/${src}`;
 
-// Every image as {src, caption}, src repo-relative: option images by key, the item's own under "".
 export function imagesOf(item: Item): Record<string, { src: string; caption?: string }[]> {
   const norm = (v: Image | Image[]) =>
     [v]
