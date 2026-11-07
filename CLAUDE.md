@@ -25,6 +25,8 @@ exported file is a release whose commit names the change.
   parallel-session skill names it. `brand-elements.json` lists the brand elements the site uses and the ones it keeps.
 - `test/`: `admin.test.ts` and its invented fixtures; `no-values.ts`, the check that no design value
   lives here.
+- `docs/agent-work/`: empty but for `.gitkeep`, since scaffolding's skeleton requires the folder; no
+  item or report goes here.
 
 ## Checks
 

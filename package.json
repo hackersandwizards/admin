@@ -1,6 +1,6 @@
 {
   "name": "@hackersandwizards/admin",
-  "version": "1.10.3",
+  "version": "1.10.4",
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -39,19 +39,20 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.25.0",
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.13.0",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.26.0",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.16.0",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.3",
     "@types/bun": "1.4.4",
-    "astro": "7.4.4",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "astro": "7.4.7",
     "astrobook": "0.13.3",
     "eslint": "10.14.0",
     "prettier": "3.9.10",
     "prettier-plugin-astro": "1.1.2",
-    "stylelint": "17.16.0",
+    "stylelint": "18.0.0",
     "tailwindcss": "4.3.3",
-    "typescript": "6.0.3"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "scaffolding": {
     "test": "test",
@@ -85,5 +86,9 @@
     "@hackersandwizards/scaffolding": {
       "optional": true
     }
+  },
+  "overrides": {
+    "minimatch": "11.0.5",
+    "postcss-selector-parser": "7.1.7"
   }
 }
