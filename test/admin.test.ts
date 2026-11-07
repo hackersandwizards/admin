@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { peerDependenciesMeta } from "../package.json";
 import { buildSite, siteData } from "../src/build.ts";
 import { findRepos } from "../src/hub.ts";
 import { itemDefects, parseItem, type Item } from "../src/items.ts";
@@ -391,6 +392,12 @@ describe("pages", () => {
 });
 
 describe("serve", () => {
+  test("a repository that never serves the hub installs no Tailwind for it", () => {
+    // admin-serve stops and names a missing optional peer, so only a repository that serves pins it.
+    for (const p of ["tailwindcss", "@tailwindcss/vite", "@tailwindcss/typography"])
+      expect(peerDependenciesMeta).toHaveProperty([p, "optional"], true);
+  });
+
   test("serves committed pages and files, rebuilding only after a commit", async () => {
     const repo = repoFrom("spoke");
     const hub = createHub({ root: dirname(repo) });

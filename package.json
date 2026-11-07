@@ -1,6 +1,6 @@
 {
   "name": "@hackersandwizards/admin",
-  "version": "1.10.5",
+  "version": "1.10.6",
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -40,9 +40,9 @@
   },
   "devDependencies": {
     "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.28.2",
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.16.0",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v2.18.0",
     "@tailwindcss/typography": "0.5.20",
-    "@tailwindcss/vite": "4.3.3",
+    "@tailwindcss/vite": "4.3.5",
     "@types/bun": "1.4.4",
     "@typescript/native": "npm:typescript@7.0.2",
     "astro": "7.4.7",
@@ -51,7 +51,7 @@
     "prettier": "3.9.10",
     "prettier-plugin-astro": "1.1.2",
     "stylelint": "18.0.0",
-    "tailwindcss": "4.3.3",
+    "tailwindcss": "4.3.5",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "scaffolding": {
@@ -84,6 +84,15 @@
       "optional": true
     },
     "@hackersandwizards/scaffolding": {
+      "optional": true
+    },
+    "@tailwindcss/typography": {
+      "optional": true
+    },
+    "@tailwindcss/vite": {
+      "optional": true
+    },
+    "tailwindcss": {
       "optional": true
     }
   },

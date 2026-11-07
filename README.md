@@ -22,8 +22,11 @@ a Git pin (older brand draws P3 as the outline that means unset). The versions i
 
 `astro`, `tailwindcss`, `@tailwindcss/vite` and `@tailwindcss/typography`, which `admin-serve`
 builds the pages with, are peer dependencies too: a repository on another version within the
-range shares its copy instead of getting a second Astro under admin, and bun installs any it lacks;
-one outside the range gets bun's peer warning and builds with its own, untested version.
+range shares its copy instead of getting a second Astro under admin. bun installs Astro where it is
+missing, and one outside the range gets bun's peer warning and builds with its own, untested
+version. The three Tailwind packages are optional, so a repository that only runs `admin-check`
+installs none of them, and `admin-serve` stops and names them when they are missing or outside
+their range.
 
 Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repositories through it.
 
