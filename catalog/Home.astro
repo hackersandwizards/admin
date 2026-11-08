@@ -5,6 +5,7 @@ import Home from "@hackersandwizards/scaffolding/catalog/Home.astro";
 import { version } from "@hackersandwizards/brand/package.json";
 import ItemGroups from "../site/src/components/ItemGroups.astro";
 import elements from "../brand-elements.json";
+import { withElements } from "../src/repo.ts";
 import { items } from "./story";
 
 const BRAND = "https://hackersandwizards.github.io/brand/";
@@ -119,19 +120,12 @@ const notes: Record<string, string> = {
         )}
         {name === "code" && <pre class="hw-code">bun run check</pre>}
         {name === "prose" && (
-          <article class="prose hw-prose">
-            <p>Done when:</p>
-            <ul>
-              <li class="task-list-item">
-                <input type="checkbox" disabled checked />
-                Draft the report.
-              </li>
-              <li class="task-list-item">
-                <input type="checkbox" disabled />
-                Review it.
-              </li>
-            </ul>
-          </article>
+          <article
+            class="prose hw-prose"
+            set:html={withElements(
+              Bun.markdown.html("Done when:\n\n- [x] Draft the report.\n- [ ] Review it.\n"),
+            )}
+          />
         )}
         {name === "inline-code" && (
           <p class="text-ui">

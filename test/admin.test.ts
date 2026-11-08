@@ -419,11 +419,13 @@ describe("serve", () => {
       for (const src of srcs)
         expect(new URL(src, `http://admin.localhost${page}`).pathname).toStartWith("/_astro/");
     }
-    const slash = await get("/spoke/decisions/");
-    expect([slash.status, slash.headers.get("location")]).toEqual([
-      302,
-      "http://admin.localhost/spoke/decisions",
-    ]);
+    for (const query of ["", "?who=A"]) {
+      const slash = await get(`/spoke/decisions/${query}`);
+      expect([slash.status, slash.headers.get("location")]).toEqual([
+        302,
+        `http://admin.localhost/spoke/decisions${query}`,
+      ]);
+    }
     const svg = await get("/_file/spoke/docs/agent-work/2026-01-15-sample-topic/variant-a.svg");
     expect(svg.headers.get("content-type")).toContain("image/svg");
     writeFileSync(join(repo, "uncommitted.txt"), "uncommitted");

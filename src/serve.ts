@@ -175,7 +175,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const files = await pages();
     // A page's asset URLs are relative, so they only resolve from the page's own address.
     if (path.length > 1 && path.endsWith("/") && files.has(`${path.slice(1, -1)}.html`))
-      return Response.redirect(url.origin + url.pathname.slice(0, -1), 302);
+      return Response.redirect(url.origin + url.pathname.slice(0, -1) + url.search, 302);
     const name = path.slice(1) || "index.html";
     const hit = files.get(name) ?? files.get(`${name}.html`);
     if (hit) return typed(hit, files.has(name) ? name : `${name}.html`);
