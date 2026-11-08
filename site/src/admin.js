@@ -98,17 +98,17 @@ function block() {
 const copy = document.getElementById("copy");
 const status = document.getElementById("state");
 const idle = status?.textContent.trim();
-// label: false leaves the button's text to brand's copy button, which says on it how the copy went.
-function state(label = true) {
+// brand's copy button (enhance(), data-hw-copy) copies the block and says on itself how it went:
+// the click passes relabel false, so that label stays.
+function state(relabel = true) {
   if (!copy) return;
   const keys = answered();
   const n = keys.length;
   const since = localStorage.getItem(STORE + "copied") || "";
   const open = keys.filter((k) => read(k).at > since).length;
-  // brand's copy button (enhance(), data-hw-copy) copies this text and says on itself how it went.
   copy.dataset.hwCopy = block();
   copy.disabled = !n;
-  if (label) copy.textContent = n ? `Copy ${n} answer${n === 1 ? "" : "s"}` : "Copy answers";
+  if (relabel) copy.textContent = n ? `Copy ${n} answer${n === 1 ? "" : "s"}` : "Copy answers";
   // Once all is copied the button steps back, so it no longer reads as work left.
   if (n && !open) copy.dataset.variant = "secondary";
   else delete copy.dataset.variant;

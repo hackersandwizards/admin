@@ -379,6 +379,9 @@ describe("pages", () => {
     // Answers given on a repo page are copied there, not on a trip back to the hub.
     for (const page of ["dashboard", "work", "reviews"])
       expect(readFileSync(join(out, `spoke/${page}.html`), "utf8")).toContain('id="copy"');
+    // brand's enhance() wires the Copy button by its data-hw-copy attribute.
+    expect(decisions).toMatch(/id="copy"[^>]*data-hw-copy/);
+    expect(bundled).toContain("[data-hw-copy]");
     // Astro drops a line break next to a tag: the pill keeps an explicit space before its label.
     expect(decisions).toMatch(/Recommended\s*<\/span>\s+<b>/);
     for (const [from, to] of [
