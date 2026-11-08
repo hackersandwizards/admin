@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "astro/config";
@@ -12,11 +12,15 @@ const cache = join(root, "node_modules/.cache/admin-catalog");
 const fixture = join(root, "test/fixtures/spoke");
 const base = "/catalog";
 mkdirSync(cache, { recursive: true });
-writeFileSync(join(cache, "admin.css"), stylesheet());
-writeFileSync(
-  join(cache, "data.json"),
-  JSON.stringify(siteData([await readRepo(fixture, treeSource(fixture))])),
-);
+// The hub's catalog build and the gate's may load this config at once: each file is swapped in
+// whole, so neither reads the other's half-written copy.
+const put = (name: string, text: string) => {
+  const part = join(cache, `${name}.${process.pid}`);
+  writeFileSync(part, text);
+  renameSync(part, join(cache, name));
+};
+put("admin.css", stylesheet());
+put("data.json", JSON.stringify(siteData([await readRepo(fixture, treeSource(fixture))])));
 process.env.ADMIN_DATA = join(cache, "data.json");
 
 export default defineConfig({
@@ -51,7 +55,7 @@ export default defineConfig({
       lead: "Every page and component of the admin engine, rendered by the engine's own site on an invented repository. Every value comes from brand.",
       css: [join(cache, "admin.css")],
       head: "./Head.astro",
-      copy: ["test/fixtures/spoke/docs/**"],
+      copy: ["test/fixtures/spoke/**"],
       home: "./Home.astro",
       groupOrder: ["Pages", "Shell", "Items"],
       // admin.css carries brand's header.css already.

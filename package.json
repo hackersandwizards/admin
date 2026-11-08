@@ -18,6 +18,11 @@
     "bin",
     "src",
     "site/src",
+    "catalog/*.ts",
+    "catalog/*.astro",
+    "catalog/stories",
+    "brand-elements.json",
+    "test/fixtures/spoke",
     "scripts/repo/only-bun.cjs"
   ],
   "scripts": {

@@ -208,18 +208,16 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
         ? typed(body, path, "no-store", false)
         : new Response("not committed", { status: 404 });
     }
+    if (path === "/catalog") return Response.redirect(`${url.origin}/catalog/${url.search}`, 302);
     if (catalogPage) {
-      // A failed build answers with its reason and is tried again on the next request.
-      const built = await (catalog ??= catalogFiles()).catch((e: Error) => {
-        catalog = undefined;
-        return e;
-      });
+      // A failed build answers with its reason until the hub restarts, rather than building again
+      // on every request.
+      const built = await (catalog ??= catalogFiles()).catch((e: Error) => e);
       if (built instanceof Error)
         return new Response(
-          `${built.message}: the catalog builds with astrobook and @hackersandwizards/scaffolding installed beside this package`,
+          `${built.message}: the catalog builds with astrobook and @hackersandwizards/scaffolding installed beside this package; install them and restart admin-serve`,
           { status: 503 },
         );
-      if (path === "/catalog") return Response.redirect(`${url.origin}/catalog/${url.search}`, 302);
       const name = path.slice("/catalog/".length).replace(/\/$/, "");
       const at = [name, name ? `${name}/index.html` : "index.html"].find((n) => built.has(n));
       return at
