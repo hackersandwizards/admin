@@ -180,7 +180,7 @@ describe("admin-check", () => {
       join(dir, "docs/agent-work/items/odd.md"),
       `---\n${front}\noptions: foo\nimages:\n  - caption: x\n---\n# Odd\n`,
     );
-    const repo = readRepo(dir, treeSource(dir));
+    const repo = await readRepo(dir, treeSource(dir));
     expect(repo.defects.join("\n")).toContain("odd.md: options is not a list");
     const out = join(scratch(), "out");
     await buildSite(siteData([repo]), out);
@@ -191,7 +191,7 @@ describe("admin-check", () => {
     expect(renderMarkdown("/r", "docs/a.md", "[half](50%.md)")).toContain("docs/50%25.md");
   });
 
-  test("no committed <meta> in a doc or item body reaches the page as a tag", () => {
+  test("no committed <meta> in a doc or item body reaches the page as a tag", async () => {
     const body = [
       '<meta http-equiv="refresh" content="0;url=https://elsewhere.example/">',
       '<META HTTP-EQUIV="refresh" CONTENT="0">',
@@ -202,7 +202,10 @@ describe("admin-check", () => {
       "m",
       `---\nkind: work\nstatus: open\npriority: 1\nowner: A\n---\n# M\n\n${body}\n`,
     );
-    const repo = { ...readRepo(join(FIX, "spoke"), treeSource(join(FIX, "spoke"))), items: [item] };
+    const repo = {
+      ...(await readRepo(join(FIX, "spoke"), treeSource(join(FIX, "spoke")))),
+      items: [item],
+    };
     for (const html of [
       renderMarkdown("/r", "docs/a.md", body),
       siteData([repo]).repos[0]!.items[0]!.html,
@@ -259,11 +262,11 @@ describe("hub", () => {
     const tool = bare("tool", { name: "@hackersandwizards/tool" });
     bare("other", { name: "other" });
     expect(await findRepos(root)).toEqual([repo, tool]);
-    expect(readRepo(tool).designSystem).toBeUndefined();
-    expect(readRepo(bare("ui", { name: "ui", devDependencies: { astro: "1" } })).designSystem).toBe(
-      undefined,
-    );
-    const book = readRepo(
+    expect((await readRepo(tool)).designSystem).toBeUndefined();
+    expect(
+      (await readRepo(bare("ui", { name: "ui", devDependencies: { astro: "1" } }))).designSystem,
+    ).toBe(undefined);
+    const book = await readRepo(
       bare(
         "book",
         { name: "book", scripts: { dev: "astro dev", "design-system": "astro dev --root ds" } },
@@ -275,7 +278,7 @@ describe("hub", () => {
     );
     expect(book.designSystem).toBe("http://127.0.0.1:4999/design-system/");
     expect(book.designSystemDev).toEqual({ port: 4999, start: "design-system" });
-    const owned = readRepo(
+    const owned = await readRepo(
       bare("owned", {
         name: "owned",
         admin: { designSystem: "catalogue.html", products: [{ label: "A", href: "a.html#x" }] },
@@ -286,7 +289,7 @@ describe("hub", () => {
     expect(owned.products[0]!.href).toBe(`file://${owned.path}/a.html#x`);
   });
 
-  test("scaffolding's catalog preset links /catalog/ wherever its catalog sits", () => {
+  test("scaffolding's catalog preset links /catalog/ wherever its catalog sits", async () => {
     // An in-memory source: the path rule reads only package.json and the config.
     const files: Record<string, string> = {
       "package.json": JSON.stringify({
@@ -296,7 +299,7 @@ describe("hub", () => {
       "catalog/astro.config.ts":
         'import { catalog } from "@hackersandwizards/scaffolding/catalog";\nbase: "/shell",\nserver: { host: "127.0.0.1", port: 4998 }',
     };
-    const shell = readRepo("/nonexistent/shell", {
+    const shell = await readRepo("/nonexistent/shell", {
       paths: Object.keys(files),
       read: (f) => files[f],
     });
@@ -304,13 +307,13 @@ describe("hub", () => {
     expect(shell.designSystemDev).toEqual({ port: 4998, start: "catalog" });
   });
 
-  test("reads at HEAD, not the working tree", () => {
+  test("reads at HEAD, not the working tree", async () => {
     const repo = repoFrom("spoke");
     Bun.write(
       join(repo, "docs/agent-work/items/uncommitted.md"),
       readFileSync(join(FIX, "spoke/docs/agent-work/items/check-the-copy.md")),
     );
-    expect(readRepo(repo).items.map((i) => i.id)).not.toContain("uncommitted");
+    expect((await readRepo(repo)).items.map((i) => i.id)).not.toContain("uncommitted");
   });
 });
 
@@ -320,7 +323,7 @@ describe("pages", () => {
     const out = join(dirname(repo), "out");
     // A second repo without catalog or products, for the switcher's fallbacks.
     const plain = repoFrom("legacy", "plain");
-    await buildSite(siteData([readRepo(repo), readRepo(plain)]), out);
+    await buildSite(siteData([await readRepo(repo), await readRepo(plain)]), out);
     const html = readFileSync(join(out, "index.html"), "utf8");
     expect(html).toContain("Which variant ships?");
     const pages = readdirSync(join(out, "spoke"), { recursive: true }) as string[];
@@ -410,6 +413,17 @@ describe("serve", () => {
     expect((await get("/nosuchrepo/")).status).toBe(404);
     // Every script, on the hub and on a nested page, resolves under the one path the policy runs.
     const nested = await decisions.text();
+    // A page travels gzipped where the browser takes it, and a hashed asset stays in its cache.
+    const zipped = await hub.fetch(
+      new Request("http://admin.localhost/spoke/decisions", {
+        headers: { "accept-encoding": "gzip, br" },
+      }),
+    );
+    expect(zipped.headers.get("content-encoding")).toBe("gzip");
+    expect(new TextDecoder().decode(Bun.gunzipSync(await zipped.bytes()))).toBe(nested);
+    const css = first.match(/href="\.\/(_astro\/[^"]+\.css)"/)![1]!;
+    expect((await get(`/${css}`)).headers.get("cache-control")).toContain("immutable");
+    expect(decisions.headers.get("cache-control")).toBe("no-store");
     for (const [page, html] of [
       ["/", first],
       ["/spoke/decisions", nested],

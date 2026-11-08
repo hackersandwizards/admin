@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { buildSite, filesUnder, siteData } from "./build.ts";
 import { findRepos } from "./hub.ts";
-import { fileHref, git, gitAsync, gitEnv, readRepo, type RepoData } from "./repo.ts";
+import { fileHref, gitAsync, gitBytes, readRepo, type RepoData } from "./repo.ts";
 
 export type ServeOptions = { root: string; rescanMs?: number };
 
@@ -43,6 +43,8 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   const read = new Map<string, { state: string; data: RepoData }>();
   let site: { key: string; files: Map<string, Buffer> } | undefined;
   let building: Promise<Map<string, Buffer>> | undefined;
+  // A page is compressed once per build; a body read per request is compressed per request.
+  const gzipped = new WeakMap<Buffer, Uint8Array<ArrayBuffer>>();
 
   async function rebuild(key: string, repos: RepoData[]) {
     const out = mkdtempSync(join(tmpdir(), "admin-serve-"));
@@ -98,19 +100,26 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     // A repository that fails to read keeps its last pages, or is left out, and is read again on
     // the next request.
     let failed = false;
-    const repos = states.flatMap(([p, s]) => {
-      const had = read.get(p);
-      if (had?.state === s) return [had.data];
-      try {
-        const data = readRepo(p);
-        read.set(p, { state: s, data });
-        return [data];
-      } catch (e) {
-        console.error(`admin-serve: ${p}:`, e);
-        failed = true;
-        return had ? [had.data] : [];
-      }
-    });
+    const repos = (
+      await Promise.all(
+        states.map(async ([p, s]) => {
+          const had = read.get(p);
+          if (had?.state === s) return [had.data];
+          try {
+            const data = await readRepo(p);
+            read.set(p, { state: s, data });
+            return [data];
+          } catch (e) {
+            console.error(`admin-serve: ${p}:`, e);
+            failed = true;
+            return had ? [had.data] : [];
+          }
+        }),
+      )
+    ).flat();
+    // Another request may have started the build while the repositories were read.
+    if (site?.key === key) return site.files;
+    if (building) return building;
     // A failed build keeps the last pages on show and is tried again on the next request.
     building = rebuild(failed ? "" : key, repos)
       .catch((e) => {
@@ -125,7 +134,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   // Specimen pages link brand's stylesheets under node_modules, which no commit holds, so the
   // installed file answers, only from inside the repository, since a symlink there may point
   // anywhere on disk.
-  function file(repoKey: string, path: string) {
+  async function file(repoKey: string, path: string) {
     const repo = [...read.values()].find((r) => r.data.key === repoKey)?.data.path;
     if (!repo || path.split("/").includes("..")) return undefined;
     if (path.startsWith("node_modules/")) {
@@ -135,17 +144,14 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
         ? readFileSync(installed)
         : undefined;
     }
-    const r = Bun.spawnSync(["git", "-C", repo, "cat-file", "blob", `HEAD:${path}`], {
-      stderr: "ignore",
-      env: gitEnv,
-    });
-    if (r.exitCode) return undefined;
-    const oid = r.stdout
+    const blob = await gitBytes(repo, ["cat-file", "blob", `HEAD:${path}`]);
+    if (!blob) return undefined;
+    const oid = blob
       .subarray(0, 200)
       .toString()
       .match(/^version https:\/\/git-lfs\S+\noid sha256:([0-9a-f]{64})/)?.[1];
-    if (!oid) return r.stdout;
-    const common = resolve(repo, git(repo, "rev-parse", "--git-common-dir").trim());
+    if (!oid) return blob;
+    const common = resolve(repo, (await gitAsync(repo, ["rev-parse", "--git-common-dir"])).trim());
     const object = join(common, "lfs/objects", oid.slice(0, 2), oid.slice(2, 4), oid);
     return existsSync(object) ? readFileSync(object) : undefined;
   }
@@ -155,21 +161,30 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     // Only a local name: a page elsewhere that points its own domain at 127.0.0.1 reads nothing.
     if (!LOCAL.test(url.hostname)) return new Response("local only", { status: 403 });
     const path = decodeURIComponent(url.pathname);
-    const typed = (body: Buffer, name: string) =>
-      new Response(new Uint8Array(body), {
+    const gzip = /\bgzip\b/.test(req.headers.get("accept-encoding") ?? "");
+    const typed = (body: Buffer, name: string, cache = "no-store") => {
+      const type = Bun.file(name).type;
+      const zip = gzip && body.length > 1024 && /^(text\/|application\/json|image\/svg)/.test(type);
+      let bytes = zip ? gzipped.get(body) : new Uint8Array(body);
+      if (!bytes) gzipped.set(body, (bytes = Bun.gzipSync(new Uint8Array(body))));
+      return new Response(bytes, {
         headers: {
-          "content-type": Bun.file(name).type,
-          "cache-control": "no-store",
+          "content-type": type,
+          "cache-control": cache,
           "content-security-policy": csp(url.origin),
+          vary: "accept-encoding",
+          ...(zip && { "content-encoding": "gzip" }),
         },
       });
-    // Hashed asset names never change, so an asset needs no check whether a repository moved.
+    };
+    // Hashed asset names never change, so an asset needs no check whether a repository moved, and
+    // the browser keeps it.
     if (path.startsWith("/_astro/") && site?.files.has(path.slice(1)))
-      return typed(site.files.get(path.slice(1))!, path);
+      return typed(site.files.get(path.slice(1))!, path, "public, max-age=31536000, immutable");
     if (path.startsWith("/_file/")) {
       if (!site) await pages().catch(() => undefined);
       const [repoKey, ...rest] = path.slice("/_file/".length).split("/");
-      const body = file(repoKey!, rest.join("/"));
+      const body = await file(repoKey!, rest.join("/"));
       return body ? typed(body, path) : new Response("not committed", { status: 404 });
     }
     const files = await pages();

@@ -25,19 +25,24 @@ export const git = (cwd: string, ...args: string[]) => {
   return r.exitCode === 0 ? r.stdout.toString() : "";
 };
 
-// The same without blocking, so that many repositories are asked at once.
-export async function gitAsync(cwd: string, args: string[], stdin = "") {
+// The same without blocking, so that many repositories are asked at once, as bytes or as text.
+export async function gitBytes(cwd: string, args: string[], stdin = "") {
   const r = Bun.spawn(["git", "-C", cwd, ...args], {
     stdin: stdin ? Buffer.from(stdin) : "ignore",
     stderr: "ignore",
     env: gitEnv,
   });
-  const out = await new Response(r.stdout).text();
-  return (await r.exited) === 0 ? out : "";
+  const out = Buffer.from(await new Response(r.stdout).arrayBuffer());
+  return (await r.exited) === 0 ? out : undefined;
 }
 
-export function headSource(repo: string): Source {
-  const paths = git(repo, "ls-tree", "-r", "--name-only", "-z", "HEAD").split("\0").filter(Boolean);
+export const gitAsync = async (cwd: string, args: string[], stdin = "") =>
+  (await gitBytes(cwd, args, stdin))?.toString() ?? "";
+
+export async function headSource(repo: string): Promise<Source> {
+  const paths = (await gitAsync(repo, ["ls-tree", "-r", "--name-only", "-z", "HEAD"]))
+    .split("\0")
+    .filter(Boolean);
   const cache = new Map<string, string>();
   const wanted = paths.filter(
     (p) =>
@@ -46,10 +51,12 @@ export function headSource(repo: string): Source {
       (/\.md$/i.test(p) && (p.startsWith("docs/") || !p.includes("/"))) ||
       /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/.test(p),
   );
-  const batch = Bun.spawnSync(["git", "-C", repo, "cat-file", "--batch"], {
-    env: gitEnv,
-    stdin: Buffer.from(wanted.map((p) => `HEAD:${p}`).join("\n") + "\n"),
-  }).stdout;
+  const batch =
+    (await gitBytes(
+      repo,
+      ["cat-file", "--batch"],
+      wanted.map((p) => `HEAD:${p}`).join("\n") + "\n",
+    )) ?? Buffer.alloc(0);
   let at = 0;
   for (const p of wanted) {
     const nl = batch.indexOf(10, at);
@@ -240,7 +247,24 @@ const linked = <T extends { href: unknown }>(list: T[] | undefined) =>
 
 type AdminConfig = { name?: string; designSystem?: string; products?: Product[]; links?: Link[] };
 
-export function readRepo(repo: string, src: Source = headSource(repo)): RepoData {
+// Every git call of a repository runs at once, and the hub reads its repositories at once.
+export async function readRepo(repo: string, source?: Source): Promise<RepoData> {
+  const src = source ?? (await headSource(repo));
+  const commits = async (...a: string[]) =>
+    (await gitAsync(repo, ["log", "--format=%h%x09%ct%x09%s", ...a]))
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => {
+        const [hash, time, ...s] = l.split("\t");
+        return { hash: hash!, time: Number(time), subject: s.join("\t") };
+      });
+  const [itemsLog, head, behind, trackingLog, log] = await Promise.all([
+    gitAsync(repo, ["log", "--format=@%ct", "--name-only", "--", ITEMS_DIR]),
+    gitAsync(repo, ["rev-parse", "--short", "HEAD"]),
+    gitAsync(repo, ["rev-list", "--count", "HEAD..@{u}"]),
+    commits("-n", "60", "--", WORK_DIR),
+    commits("-n", "60"),
+  ]);
   const { items, defects } = readItems(src);
   const pkgText = src.read("package.json");
   let pkg: Record<string, unknown> = {};
@@ -268,9 +292,7 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
 
   const changed = new Map<string, number>();
   let t = 0;
-  for (const line of git(repo, "log", "--format=@%ct", "--name-only", "--", ITEMS_DIR).split(
-    "\n",
-  )) {
+  for (const line of itemsLog.split("\n")) {
     if (line.startsWith("@")) t = Number(line.slice(1));
     else if (line && !changed.has(line)) changed.set(line, t);
   }
@@ -329,21 +351,12 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
     .filter((p) => /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/.test(p))
     .map((p) => ({ path: p, comment: firstComment(src.read(p) ?? "") }));
 
-  const commits = (...a: string[]) =>
-    git(repo, "log", "--format=%h%x09%ct%x09%s", ...a)
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => {
-        const [hash, time, ...s] = l.split("\t");
-        return { hash: hash!, time: Number(time), subject: s.join("\t") };
-      });
-
   const fetchHead = join(repo, ".git", "FETCH_HEAD");
   return {
     key,
     path: repo,
-    head: git(repo, "rev-parse", "--short", "HEAD").trim(),
-    behind: Number(git(repo, "rev-list", "--count", "HEAD..@{u}").trim() || 0),
+    head: head.trim(),
+    behind: Number(behind.trim() || 0),
     fetched: existsSync(fetchHead) ? statSync(fetchHead).mtimeMs : undefined,
     items: withChange,
     defects,
@@ -365,7 +378,7 @@ export function readRepo(repo: string, src: Source = headSource(repo)): RepoData
     links: linked(admin.links).map((l) => ({ ...l, href: href(l.href) })),
     checkSteps,
     scripts,
-    trackingLog: commits("-n", "60", "--", WORK_DIR),
-    log: commits("-n", "60"),
+    trackingLog,
+    log,
   };
 }
