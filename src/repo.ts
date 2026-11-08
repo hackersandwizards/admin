@@ -170,13 +170,17 @@ const ASTRO_CONFIG = /^([^/]+\/)?astro\.config\.(ts|mjs|js)$/;
 const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
 export const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
 
-// The widths admin-serve resizes a committed image to: a tile's width, and twice it for a 2x screen.
-export const THUMB_WIDTHS = [480, 960];
+// What admin-serve resizes a committed image to: a review tile's 16:9 box (the page's aspect-video),
+// and twice it for a 2x screen.
+export const THUMB_BOXES = [
+  [480, 270],
+  [960, 540],
+] as const;
 // The attributes of an <img> showing the linked file smaller; the browser picks from the laid-out width.
 export const thumbnail = (href: string) => ({
-  src: `${href}?w=${THUMB_WIDTHS[0]}`,
-  srcset: THUMB_WIDTHS.map((w) => `${href}?w=${w} ${w}w`).join(", "),
-  sizes: "auto, 30vw",
+  src: `${href}?w=${THUMB_BOXES[0][0]}`,
+  srcset: THUMB_BOXES.map(([w]) => `${href}?w=${w} ${w}w`).join(", "),
+  sizes: "auto, 50vw",
 });
 
 // brand's prose block asks for tables, quotes and code blocks to be not-prose. A link keeps hw-link

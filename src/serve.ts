@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { buildCatalog, buildSite, filesUnder, PKG, siteData } from "./build.ts";
 import { findRepos } from "./hub.ts";
-import { fileHref, gitAsync, gitBytes, readRepo, THUMB_WIDTHS, type RepoData } from "./repo.ts";
+import { fileHref, gitAsync, gitBytes, readRepo, THUMB_BOXES, type RepoData } from "./repo.ts";
 
 export type ServeOptions = { root: string; rescanMs?: number };
 
@@ -42,9 +42,6 @@ const catalogCsp = "object-src 'none'; base-uri 'none'; form-action 'self'; fram
 
 const IMMUTABLE = "public, max-age=31536000, immutable";
 
-// A GIF would lose its animation and an SVG has no pixels to save.
-const RESIZABLE = /\.(jpe?g|png|webp|avif)$/i;
-
 // Runs this file as a child that builds into `out`, then reads what it wrote, keyed by path.
 async function spawnBuild(what: string, args: string[], out: string) {
   const child = Bun.spawn([process.execPath, import.meta.path, ...args, out], {
@@ -65,17 +62,22 @@ async function catalogFiles() {
   }
 }
 
-// Fits an image into the review tile's 16:9 box at this width: a tall phone shot is as high as the
-// tile, not as wide. A file Bun cannot read, or one that already fits, answers at its own size.
-async function resized(body: Buffer, width: number) {
+// Fits an image into `box`. An animated file, one that already fits, one the WebP would not shrink
+// and one Bun cannot read answer as committed; only a file that is no image goes unlogged.
+async function resized(body: Buffer, [width, height]: readonly [number, number]) {
   try {
-    const image = new Bun.Image(body);
+    const image = new Bun.Image(body, { maxPixels: 64_000_000 });
     const size = await image.metadata();
-    const scale = Math.min(width / size.width, (width * 9) / 16 / size.height);
-    if (scale >= 1) return undefined;
-    const fitted = image.resize(Math.round(size.width * scale), Math.round(size.height * scale));
-    return Buffer.from(await fitted.webp({ quality: 80 }).bytes());
-  } catch {
+    const animated = size.format === "gif" || body.includes("acTL") || body.includes("ANIM");
+    if (animated || (size.width <= width && size.height <= height)) return undefined;
+    const small = await image
+      .resize(width, height, { fit: "inside" })
+      .webp({ quality: 80 })
+      .buffer();
+    return small.length < body.length ? small : undefined;
+  } catch (e) {
+    if ((e as { code?: string }).code !== "ERR_IMAGE_UNKNOWN_FORMAT")
+      console.error("admin-serve: thumbnail:", e);
     return undefined;
   }
 }
@@ -223,12 +225,15 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
       const [repoKey, ...rest] = path.slice("/_file/".length).split("/");
       const body = await file(repoKey!, rest.join("/"));
       if (!body) return new Response("not committed", { status: 404 });
-      const width = Number(url.searchParams.get("w"));
-      const small =
-        THUMB_WIDTHS.includes(width) && RESIZABLE.test(path) && (await resized(body, width));
-      return small
-        ? typed(small, "thumb.webp", "no-store", false)
-        : typed(body, path, "no-store", false);
+      const box = THUMB_BOXES.find(([w]) => w === Number(url.searchParams.get("w")));
+      // Unchanged bytes keep their tag, so a repeat view skips the resize and the download.
+      const etag = `"${Bun.hash(body).toString(36)}${box ? `-${box[0]}` : ""}"`;
+      if (req.headers.get("if-none-match") === etag)
+        return new Response(null, { status: 304, headers: { etag } });
+      const small = box && (await resized(body, box));
+      const response = typed(small || body, small ? "thumb.webp" : path, "no-cache", false);
+      response.headers.set("etag", etag);
+      return response;
     }
     if (path === "/catalog") return Response.redirect(`${url.origin}/catalog/${url.search}`, 302);
     if (catalogPage) {

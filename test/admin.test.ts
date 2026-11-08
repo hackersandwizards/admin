@@ -33,12 +33,24 @@ const sh = (cwd: string, ...cmd: string[]) => {
   if (r.exitCode) throw new Error(`${cmd.join(" ")}: ${r.stderr}`);
   return r.stdout.toString();
 };
+const commit = (cwd: string, message: string) =>
+  sh(
+    cwd,
+    "git",
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@example.invalid",
+    "commit",
+    "-qm",
+    message,
+  );
 function repoFrom(fixture: string, name = "spoke") {
   const dir = join(scratch(), name);
   cpSync(join(FIX, fixture), dir, { recursive: true });
   sh(dir, "git", "init", "-q", "-b", "main");
   sh(dir, "git", "add", "-A");
-  sh(dir, "git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "c");
+  commit(dir, "c");
   return dir;
 }
 
@@ -247,17 +259,7 @@ describe("hub", () => {
       }
       sh(dir, "git", "init", "-q", "-b", "main");
       sh(dir, "git", "add", "package.json", ...Object.keys(files));
-      sh(
-        dir,
-        "git",
-        "-c",
-        "user.name=t",
-        "-c",
-        "user.email=t@example.invalid",
-        "commit",
-        "-qm",
-        "c",
-      );
+      commit(dir, "c");
       return dir;
     };
     const tool = bare("tool", { name: "@hackersandwizards/tool" });
@@ -464,17 +466,7 @@ describe("serve", () => {
       `version https://git-lfs.github.com/spec/v1\noid sha256:${oid}\nsize 17\n`,
     );
     sh(repo, "git", "add", "docs/agent-work/lfs.svg");
-    sh(
-      repo,
-      "git",
-      "-c",
-      "user.name=t",
-      "-c",
-      "user.email=t@example.invalid",
-      "commit",
-      "-qm",
-      "l",
-    );
+    commit(repo, "l");
     expect(await (await get("/_file/spoke/docs/agent-work/lfs.svg")).text()).toBe(
       "<svg>stored</svg>",
     );
@@ -523,18 +515,9 @@ describe("catalog", () => {
     writeFileSync(join(dir, "wide.png"), await png(2000, 1000));
     writeFileSync(join(dir, "tall.png"), await png(400, 2000));
     writeFileSync(join(dir, "small.png"), await png(100, 100));
+    writeFileSync(join(dir, "broken.png"), "no image");
     sh(repo, "git", "add", "-A");
-    sh(
-      repo,
-      "git",
-      "-c",
-      "user.name=t",
-      "-c",
-      "user.email=t@example.invalid",
-      "commit",
-      "-qm",
-      "i",
-    );
+    commit(repo, "i");
     const hub = createHub({ root: dirname(repo) });
     const page = await (
       await hub.fetch(new Request("http://admin.localhost/spoke/reviews"))
@@ -543,15 +526,19 @@ describe("catalog", () => {
     const at = "/_file/spoke/docs/agent-work/2026-01-15-sample-topic";
     expect(img).toContain(`src="${at}/small.png?w=480"`);
     expect(img).toContain(`srcset="${at}/small.png?w=480 480w, ${at}/small.png?w=960 960w"`);
-    const get = (q: string) => hub.fetch(new Request(`http://admin.localhost${at}/${q}`));
+    const get = (q: string, headers = {}) =>
+      hub.fetch(new Request(`http://admin.localhost${at}/${q}`, { headers }));
     const small = await get("wide.png?w=480");
     expect(small.headers.get("content-type")).toBe("image/webp");
     expect((await new Bun.Image(await small.bytes()).metadata()).width).toBe(480);
     const tall = await new Bun.Image(await (await get("tall.png?w=480")).bytes()).metadata();
     expect([tall.width, tall.height]).toEqual([54, 270]);
     // The full file: no width, a width the hub does not offer, or an image that already fits.
-    for (const q of ["wide.png", "wide.png?w=123", "small.png?w=480"])
+    for (const q of ["wide.png", "wide.png?w=123", "small.png?w=480", "broken.png?w=480"])
       expect((await get(q)).headers.get("content-type")).toBe("image/png");
+    const repeat = await get("wide.png?w=480", { "if-none-match": small.headers.get("etag")! });
+    expect(repeat.status).toBe(304);
+    expect((await get("wide.png?w=960")).headers.get("etag")).not.toBe(small.headers.get("etag"));
   }, 60_000);
 
   test("the hub serves the catalog at /catalog/ and links it", async () => {
