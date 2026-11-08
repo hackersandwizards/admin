@@ -58,6 +58,7 @@ const current = (to: string) =>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{page.title} · {repo ? repo.key : "hub"} · Admin</title>
+    <meta name="description" content={lead ?? page.title} />
     <link rel="icon" type="image/svg+xml" href={favicon} />
     <script is:inline src={themeScript}></script>
   </head>

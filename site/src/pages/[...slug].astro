@@ -333,7 +333,8 @@ const leads: Partial<Record<Page["type"], string>> = {
               {r.dir.replace("docs/agent-work/", "")}{" "}
               <span class="font-normal text-ui text-foreground/70">{r.images.length} images</span>
             </summary>
-            <p class="flex flex-wrap gap-4 text-ui">
+            {/* The details' gap stops at its summary, so the links keep their own 24 px target. */}
+            <p class="mb-2 flex flex-wrap gap-4 text-ui">
               {r.report && (
                 <a
                   class="chip-link"
