@@ -382,6 +382,10 @@ describe("pages", () => {
     // brand's enhance() wires the Copy button by its data-hw-copy attribute.
     expect(decisions).toMatch(/id="copy"[^>]*data-hw-copy/);
     expect(bundled).toContain("[data-hw-copy]");
+    // The copy time is set from brand's hw-copy event, which says whether the copy worked.
+    expect(readFileSync(join(import.meta.dir, "../site/src/admin.js"), "utf8")).toMatch(
+      /addEventListener\("hw-copy"[\s\S]*?if \(!e\.detail\?\.ok\) return;/,
+    );
     // Astro drops a line break next to a tag: the pill keeps an explicit space before its label.
     expect(decisions).toMatch(/Recommended\s*<\/span>\s+<b>/);
     for (const [from, to] of [

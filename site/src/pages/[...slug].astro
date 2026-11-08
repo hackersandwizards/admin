@@ -340,14 +340,14 @@ const leads: Partial<Record<Page["type"], string>> = {
               <p class="flex flex-wrap gap-4 text-ui">
                 {r.report && (
                   <a
-                    class="chip-link"
+                    class="hw-link"
                     href={link(`${repo.prefix}doc/${r.report.replace(/\.md$/i, "")}`)}
                   >
                     Report
                   </a>
                 )}
                 {named.map((id) => (
-                  <a class="chip-link" href={link(`${repo.prefix}decisions`)}>
+                  <a class="hw-link" href={link(`${repo.prefix}decisions`)}>
                     {id}
                   </a>
                 ))}
@@ -441,7 +441,7 @@ const leads: Partial<Record<Page["type"], string>> = {
   {page.type === "catalog" && repo?.designSystem && (
     <div class="hw-card flex max-w-prose flex-col gap-2 text-ui">
       <p>
-        <a class="chip-link" href={repo.designSystem}>
+        <a class="hw-link" href={repo.designSystem}>
           {repo.designSystem}
         </a>
       </p>
@@ -468,7 +468,7 @@ const leads: Partial<Record<Page["type"], string>> = {
   {page.type === "product" && product && (
     <div class="hw-card flex max-w-prose flex-col gap-2 text-ui">
       <p>
-        <a class="chip-link" href={product.href}>
+        <a class="hw-link" href={product.href}>
           Open {product.label}
         </a>
       </p>

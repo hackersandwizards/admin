@@ -99,7 +99,7 @@ const copy = document.getElementById("copy");
 const status = document.getElementById("state");
 const idle = status?.textContent.trim();
 // brand's copy button (enhance(), data-hw-copy) copies the block and says on itself how it went:
-// the click passes relabel false, so that label stays.
+// a copy passes relabel false, so that label stays.
 function state(relabel = true) {
   if (!copy) return;
   const keys = answered();
@@ -137,7 +137,10 @@ for (const d of items) {
     state();
   });
 }
-copy?.addEventListener("click", () => {
+// brand's button reports each press as hw-copy, detail { ok }: only a copy that worked counts, so a
+// failed one leaves the answers it did not copy in place.
+copy?.addEventListener("hw-copy", (e) => {
+  if (!e.detail?.ok) return;
   try {
     localStorage.setItem(STORE + "copied", new Date().toISOString());
   } catch {
