@@ -164,6 +164,18 @@ export function stylesheet() {
   ].join("\n");
 }
 
+// admin.js with brand's element script, as one classic script.
+export async function script(outDir: string) {
+  const { success, logs } = await Bun.build({
+    entrypoints: [join(PKG, "site/src/admin.js")],
+    outdir: outDir,
+    format: "iife",
+    minify: true,
+  });
+  if (!success) throw new AggregateError(logs, "admin.js did not bundle");
+  return join(outDir, "admin.js");
+}
+
 // Builds the pages into `outDir`. Astro writes absolute /_astro/ URLs; each page gets them
 // relative, so the folder opens from disk and can move.
 export async function buildSite(data: SiteData, outDir: string) {
@@ -181,6 +193,7 @@ export async function buildSite(data: SiteData, outDir: string) {
   try {
     writeFileSync(join(work, "data.json"), JSON.stringify(data));
     writeFileSync(join(work, "admin.css"), stylesheet());
+    const adminScript = await script(work);
     process.env.ADMIN_DATA = join(work, "data.json");
     const { build } = await import("astro");
     const tailwind = (await import("@tailwindcss/vite")).default;
@@ -194,7 +207,12 @@ export async function buildSite(data: SiteData, outDir: string) {
       vite: {
         cacheDir: join(work, "vite"),
         plugins: [tailwind()],
-        resolve: { alias: { "admin:styles": join(work, "admin.css") } },
+        resolve: {
+          alias: {
+            "admin:styles": join(work, "admin.css"),
+            "admin:script?url": `${adminScript}?url`,
+          },
+        },
         build: { assetsInlineLimit: 0 },
       },
     });

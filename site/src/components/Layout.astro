@@ -1,9 +1,8 @@
 ---
 import "admin:styles";
 import AppHeader from "@hackersandwizards/brand/expert/components/AppHeader.astro";
-import { navLinkClass } from "@hackersandwizards/brand/expert/components/space-nav.ts";
 import favicon from "@hackersandwizards/brand/logos/favicon.svg?url";
-import adminScript from "../admin.js?url";
+import adminScript from "admin:script?url";
 import themeScript from "../theme.js?url";
 import { data, forPerson, hasPage, href, openQuestions, repoOf, type Page } from "../data";
 
@@ -49,8 +48,6 @@ const samePage = (r: Repo) => {
   const to = r.prefix + (page.type === "doc" ? "docs" : page.path.slice(repo!.prefix.length));
   return page.type !== "product" && hasPage(to) ? to : r.dashboard;
 };
-// The current entry wears space-nav's active link, the rail link of every expert app.
-const active = navLinkClass("x", "x")[1];
 const current = (to: string) =>
   to === page.path || (page.type === "doc" && to === `${repo?.prefix}docs`);
 ---
@@ -82,77 +79,88 @@ const current = (to: string) =>
           <li>
             <button
               type="button"
-              class="admin-switch"
+              class="hw-button admin-switch"
+              data-variant="secondary"
               popovertarget="admin-repos"
+              aria-haspopup="menu"
+              aria-expanded="false"
               aria-current={repo ? "location" : undefined}
             >
-              {repo ? repo.key : "Repos"} <span aria-hidden="true">▾</span>
+              {repo ? repo.key : "Repos"}
+              <span aria-hidden="true">&nbsp;▾</span>
             </button>
           </li>
         </ol>
       </nav>
-      <ul id="admin-repos" class="admin-repos" popover aria-label="Repos">
+      <div id="admin-repos" class="hw-menu" popover role="menu" aria-label="Repos">
         {d.repos.map((r) => (
-          <li>
-            <a
-              href={at(repo ? samePage(r) : r.dashboard)}
-              aria-current={r.key === repo?.key ? "true" : undefined}
-            >
-              <span>{r.key}</span>
-              <span class="admin-count">{waiting(r) || ""}</span>
-            </a>
-          </li>
+          <a
+            class="hw-menu-item"
+            role="menuitemradio"
+            aria-checked={String(r.key === repo?.key)}
+            href={at(repo ? samePage(r) : r.dashboard)}
+          >
+            {r.key}
+            <span class="hw-nav-count">{waiting(r) || ""}</span>
+          </a>
         ))}
-      </ul>
+      </div>
     </AppHeader>
     <div class="admin-shell hw-container">
       <aside class="admin-rail">
-        <input
-          id="admin-search"
-          type="search"
-          class="admin-search form-input"
-          placeholder="Search /"
-          aria-label="Search this page"
-        />
-        <nav aria-label="Menu">
-          {repo && (
-            <a href={at("index")} class="admin-back">
-              ← Hub
+        <div class="hw-search admin-search">
+          <input
+            id="admin-search"
+            type="search"
+            class="hw-field"
+            placeholder="Search /"
+            aria-label="Search this page"
+          />
+        </div>
+        <nav class="hw-choices admin-choices md:hidden" aria-label="Menu">
+          {menu.map((m) => (
+            <a class="hw-choice" href={at(m.to)} aria-current={current(m.to) ? "page" : undefined}>
+              {m.label}
+              {m.count !== undefined && <span class="hw-choice-count">{m.count}</span>}
             </a>
-          )}
-          <p class="hw-label mb-1 px-2">{repo ? repo.key : "Hub"}</p>
+          ))}
+          {repo?.links.map((l) => (
+            <a class="hw-choice" href={l.href}>
+              {l.label}
+            </a>
+          ))}
+        </nav>
+        <nav class="hw-nav max-md:hidden" aria-label="Menu">
+          {repo && <a href={at("index")}>← Hub</a>}
+          <p class="hw-label hw-nav-group" data-tone="muted">
+            {repo ? repo.key : "Hub"}
+          </p>
           <ul>
             {menu.map((m) => (
               <li>
-                <a
-                  href={at(m.to)}
-                  aria-current={current(m.to) ? "page" : undefined}
-                  class:list={current(m.to) && active}
-                >
-                  <span>{m.label}</span>
-                  {m.count !== undefined && <span class="admin-count">{m.count}</span>}
+                <a href={at(m.to)} aria-current={current(m.to) ? "page" : undefined}>
+                  {m.label}
+                  {m.count !== undefined && <span class="hw-nav-count">{m.count}</span>}
                 </a>
               </li>
             ))}
             {repo?.links.map((l) => (
               <li>
-                <a href={l.href}>
-                  <span>{l.label}</span>
-                </a>
+                <a href={l.href}>{l.label}</a>
               </li>
             ))}
           </ul>
           {!repo && (
             <>
-              <p class="hw-label mt-6 mb-1 px-2" data-repos>
+              <p class="hw-label hw-nav-group" data-tone="muted">
                 Repos
               </p>
-              <ul data-repos>
+              <ul>
                 {d.repos.map((r) => (
                   <li>
                     <a href={at(r.dashboard)}>
-                      <span>{r.key}</span>
-                      <span class="admin-count">{waiting(r) || ""}</span>
+                      {r.key}
+                      <span class="hw-nav-count">{waiting(r) || ""}</span>
                     </a>
                   </li>
                 ))}

@@ -1,6 +1,10 @@
-// Runs on every admin page as a classic script, not a module, so a page opened from disk loads it;
-// a file of its own, since admin-serve's Content-Security-Policy runs no inline script.
+// Runs on every admin page. src/build.ts bundles it with brand's element script into one classic
+// script, not a module, so a page opened from disk loads it; a file of its own, since admin-serve's
+// Content-Security-Policy runs no inline script.
 // An answer whose row left a rebuilt page is dropped once it was copied.
+import { enhance } from "@hackersandwizards/brand/elements/behaviour.ts";
+
+enhance();
 (() => {
   const STORE = "admin-answers:";
   const read = (k) => {

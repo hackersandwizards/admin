@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "astro/config";
 import tailwind from "@tailwindcss/vite";
 import { catalog } from "@hackersandwizards/scaffolding/catalog";
-import { filesUnder, siteData, stylesheet } from "../src/build.ts";
+import { filesUnder, script, siteData, stylesheet } from "../src/build.ts";
 import { fileHref, readRepo, treeSource } from "../src/repo.ts";
 
 const root = join(import.meta.dirname, "..");
@@ -20,6 +20,7 @@ const put = (name: string, text: string) => {
   renameSync(part, join(cache, name));
 };
 put("admin.css", stylesheet());
+const adminScript = await script(join(cache, String(process.pid)));
 put("data.json", JSON.stringify(siteData([await readRepo(fixture, treeSource(fixture))])));
 process.env.ADMIN_DATA = join(cache, "data.json");
 
@@ -64,6 +65,8 @@ export default defineConfig({
   ],
   vite: {
     plugins: [tailwind()],
-    resolve: { alias: { "admin:styles": join(cache, "admin.css") } },
+    resolve: {
+      alias: { "admin:styles": join(cache, "admin.css"), "admin:script?url": `${adminScript}?url` },
+    },
   },
 });

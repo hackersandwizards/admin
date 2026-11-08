@@ -364,10 +364,15 @@ describe("pages", () => {
     expect(sheets).toContain(".prose :where(p)");
     expect(doc).toContain(`file://${repo}/docs/agent-work/2026-01-15-sample-topic/variant-a.svg`);
     const where = (html: string) => html.match(/<nav[^>]*aria-label="Where"[\s\S]*?<\/nav>/)![0];
-    const repos = (html: string) => html.match(/<ul id="admin-repos"[\s\S]*?<\/ul>/)![0];
+    const repos = (html: string) => html.match(/<div id="admin-repos"[\s\S]*?<\/div>/)![0];
     expect(where(doc)).toContain('href="../../../../index.html"');
     expect(repos(doc)).toContain('href="../../../../plain/docs.html"');
     const decisions = readFileSync(join(out, "spoke/decisions.html"), "utf8");
+    // brand's element script reaches the page as one classic script, which a page from disk loads.
+    const [, script] = decisions.match(/<script src="([^"]*admin[^"]*\.js)"/)!;
+    const bundled = readFileSync(resolve(out, "spoke", script!), "utf8");
+    expect(bundled).toContain("hw-menu");
+    expect(bundled).not.toMatch(/^import\b/m);
     expect(repos(decisions)).toContain('href="decisions.html"');
     expect(repos(html)).toContain('href="spoke/dashboard.html"');
     expect(repos(decisions)).toContain('href="../plain/decisions.html"');
@@ -553,7 +558,7 @@ describe("catalog", () => {
     const get = (path: string) => hub.fetch(new Request(`http://admin.localhost${path}`));
     const hubPage = await get("/");
     expect(hubPage.status).toBe(200);
-    expect(await hubPage.text()).toMatch(/<a href="\/catalog\/"[^>]*>\s*<span>Catalog<\/span>/);
+    expect(await hubPage.text()).toMatch(/<a href="\/catalog\/"[^>]*>\s*Catalog\s*</);
     const bare = await get("/catalog");
     expect([bare.status, bare.headers.get("location")]).toEqual([
       302,

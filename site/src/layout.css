@@ -14,45 +14,14 @@
     max-height: calc(100vh - var(--spacing-app-header) - 3rem);
     overflow-y: auto;
   }
-  /* The field is brand's form-input; the rail sets only its width and spacing. */
   .admin-search {
-    width: 100%;
     margin-bottom: 1rem;
   }
-  .admin-rail ul {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-  .admin-rail a,
-  .admin-repos a {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: var(--hw-corner-sm);
-    color: inherit;
-    font-size: var(--text-ui);
-    text-decoration: none;
-  }
-  .admin-rail a:hover,
-  .admin-repos a:hover,
-  .admin-repos a[aria-current] {
-    background: color-mix(in srgb, var(--foreground) 6%, transparent);
-  }
-  /* Muted text is the foreground at 70 %, as the expert set dims it: there --color-muted is the
-     muted fill. */
-  .admin-count,
   .admin-provenance {
+    margin: 0.5rem 0 0;
     color: color-mix(in srgb, var(--foreground) 70%, transparent);
     font-family: var(--font-mono);
     font-size: var(--text-micro);
-  }
-  .admin-count {
-    font-weight: 400;
-  }
-  .admin-back {
-    margin-bottom: 0.75rem;
   }
   .admin-where {
     min-width: 0;
@@ -70,50 +39,11 @@
     flex: 0 1 auto;
     min-width: 0;
   }
+  /* A long repo key shortens rather than push the button off a phone's header. */
   .admin-switch {
-    padding: 0.25rem 0.625rem;
-    border: 1px solid var(--border);
-    border-radius: var(--hw-corner-sm);
-    background: transparent;
-    color: var(--foreground);
-    font-family: var(--font-mono);
-    font-size: inherit;
-    font-weight: 600;
-    cursor: pointer;
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  .admin-repos {
-    inset: auto;
-    top: var(--spacing-app-header);
-    right: 1rem;
-    min-width: 16rem;
-    max-height: 70vh;
-    margin: 0;
-    padding: 0.25rem;
-    overflow-y: auto;
-    border: 1px solid var(--border);
-    border-radius: var(--hw-corner-sm);
-    background: var(--background);
-    color: var(--foreground);
-    font-family: var(--font-sans);
-    font-size: var(--text-ui);
-    list-style: none;
-  }
-  /* Where the browser anchors, the list hangs under its button on a screen wider than the page. */
-  @supports (anchor-name: --a) {
-    .admin-switch {
-      anchor-name: --admin-switch;
-    }
-    .admin-repos {
-      position-anchor: --admin-switch;
-      top: calc(anchor(bottom) + 0.5rem);
-      right: anchor(right);
-    }
-  }
-  .admin-repos a {
-    padding-block: 0.375rem;
   }
   .admin-main {
     padding-inline-end: 1rem;
@@ -130,9 +60,6 @@
     font-size: var(--text-subheading);
     line-height: 1.5;
   }
-  .admin-provenance {
-    margin: 0.5rem 0 0;
-  }
   .task-list-item-checkbox {
     margin-inline-end: 0.5rem;
   }
@@ -144,45 +71,18 @@
       position: static;
       max-height: none;
     }
-    /* The phone keeps the current place's menu as one row of chips under the search, the current
-       page filled: a menu reads better than none, and a second row of every repo reads worse than
-       the top bar's switcher. */
-    .admin-rail .admin-back,
-    .admin-rail nav > .hw-label,
-    .admin-rail [data-repos] {
-      display: none;
+    .admin-search {
+      margin-bottom: 0.5rem;
     }
-    .admin-rail nav > ul {
-      display: flex;
-      gap: 0.375rem;
+    /* The current place's menu as one row under the search, at a thumb's height: dense sets its
+       choice for a mouse. */
+    .admin-choices {
+      --hw-choice-height: var(--hw-check-target-touch);
+      flex-wrap: nowrap;
       margin-inline: -1rem;
       padding-inline: 1rem;
       overflow-x: auto;
       scrollbar-width: none;
-    }
-    .admin-rail nav li {
-      flex: none;
-    }
-    .admin-rail nav a {
-      align-items: center;
-      gap: 0.375rem;
-      min-height: 2.75rem;
-      padding: 0 0.875rem;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-pill);
-      white-space: nowrap;
-    }
-    /* Important: space-nav's active link is a utility, a later layer. */
-    .admin-rail nav a[aria-current] {
-      border-color: var(--accent);
-      background: var(--accent) !important;
-      color: var(--background) !important;
-    }
-    .admin-rail nav a[aria-current] .admin-count {
-      color: inherit;
-    }
-    .admin-search {
-      margin-bottom: 0.5rem;
     }
   }
 }

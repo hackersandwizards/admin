@@ -24,6 +24,11 @@ const notes: Record<string, string> = {
   check: "An option to tick or pick, and a work item's done box.",
   breadcrumb: "The top bar's way back to the hub, its last item the repo switcher.",
   prose: "A report or document read on its doc page.",
+  field: "The rail's search field.",
+  search: "The rail's search, with its icon.",
+  nav: "The rail: the repository's pages, the hub's repositories, with their counts.",
+  choice: "The rail's menu on a phone, one row under the search.",
+  menu: "The repo switcher's list of repositories, opened from the top bar.",
 };
 ---
 
@@ -122,12 +127,60 @@ const notes: Record<string, string> = {
                 <a href="#">Hub</a>
               </li>
               <li>
-                <button type="button" class="admin-switch" aria-current="location">
+                <button
+                  type="button"
+                  class="hw-button admin-switch"
+                  data-variant="secondary"
+                  aria-current="location"
+                >
                   spoke <span aria-hidden="true">▾</span>
                 </button>
               </li>
             </ol>
           </nav>
+        )}
+        {name === "field" && <input class="hw-field" type="search" aria-label="Search" />}
+        {name === "search" && (
+          <div class="hw-search">
+            <input class="hw-field" type="search" aria-label="Search" placeholder="Search /" />
+          </div>
+        )}
+        {name === "nav" && (
+          <nav class="hw-nav" aria-label="Menu">
+            <p class="hw-label hw-nav-group" data-tone="muted">
+              spoke
+            </p>
+            <ul>
+              <li>
+                <a href="#">Dashboard</a>
+              </li>
+              <li>
+                <a href="#" aria-current="page">
+                  Decisions <span class="hw-nav-count">4</span>
+                </a>
+              </li>
+            </ul>
+          </nav>
+        )}
+        {name === "choice" && (
+          <nav class="hw-choices" aria-label="Menu">
+            <a class="hw-choice" href="#">
+              Dashboard
+            </a>
+            <a class="hw-choice" href="#" aria-current="page">
+              Decisions <span class="hw-choice-count">4</span>
+            </a>
+          </nav>
+        )}
+        {name === "menu" && (
+          <div class="hw-menu" role="menu" aria-label="Repos">
+            <a class="hw-menu-item" role="menuitemradio" aria-checked="true" href="#">
+              spoke
+            </a>
+            <a class="hw-menu-item" role="menuitemradio" aria-checked="false" href="#">
+              plain
+            </a>
+          </div>
         )}
         {name === "code" && <pre class="hw-code">bun run check</pre>}
         {name === "prose" && (
