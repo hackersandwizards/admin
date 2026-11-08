@@ -42,8 +42,8 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   let scanning: Promise<string[]> | undefined;
   const read = new Map<string, { state: string; data: RepoData }>();
   let site: { key: string; files: Map<string, Buffer> } | undefined;
-  let building: Promise<Map<string, Buffer>> | undefined;
-  // A page is compressed once per build; a body read per request is compressed per request.
+  let refreshing: Promise<Map<string, Buffer>> | undefined;
+  // A built file is compressed once, on its first request that accepts gzip.
   const gzipped = new WeakMap<Buffer, Uint8Array<ArrayBuffer>>();
 
   async function rebuild(key: string, repos: RepoData[]) {
@@ -77,7 +77,10 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     }
   }
 
-  async function pages() {
+  // Requests that arrive while one checks, reads or builds share its answer.
+  const pages = () => (refreshing ??= refresh().finally(() => (refreshing = undefined)));
+
+  async function refresh() {
     // The first request waits for the search; a later one keeps the last result while the next
     // search runs.
     if (!paths || Date.now() - scanned > rescanMs) {
@@ -96,7 +99,6 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const states = await Promise.all(current.map(async (p) => [p, await stateOf(p)] as const));
     const key = states.map(([p, s]) => `${p} ${s}`).join("\n");
     if (site?.key === key) return site.files;
-    if (building) return building;
     // A repository that fails to read keeps its last pages, or is left out, and is read again on
     // the next request.
     let failed = false;
@@ -117,18 +119,12 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
         }),
       )
     ).flat();
-    // Another request may have started the build while the repositories were read.
-    if (site?.key === key) return site.files;
-    if (building) return building;
     // A failed build keeps the last pages on show and is tried again on the next request.
-    building = rebuild(failed ? "" : key, repos)
-      .catch((e) => {
-        if (!site) throw e;
-        console.error(e);
-        return site.files;
-      })
-      .finally(() => (building = undefined));
-    return building;
+    return rebuild(failed ? "" : key, repos).catch((e) => {
+      if (!site) throw e;
+      console.error(e);
+      return site.files;
+    });
   }
 
   // Specimen pages link brand's stylesheets under node_modules, which no commit holds, so the
@@ -162,9 +158,11 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     if (!LOCAL.test(url.hostname)) return new Response("local only", { status: 403 });
     const path = decodeURIComponent(url.pathname);
     const gzip = /\bgzip\b/.test(req.headers.get("accept-encoding") ?? "");
-    const typed = (body: Buffer, name: string, cache = "no-store") => {
+    // Only a built file is compressed: a committed file under /_file/ is read per request.
+    const typed = (body: Buffer, name: string, cache = "no-store", built = true) => {
       const type = Bun.file(name).type;
-      const zip = gzip && body.length > 1024 && /^(text\/|application\/json|image\/svg)/.test(type);
+      const zip =
+        built && gzip && body.length > 1024 && /^(text\/|application\/json|image\/svg)/.test(type);
       let bytes = zip ? gzipped.get(body) : new Uint8Array(body);
       if (!bytes) gzipped.set(body, (bytes = Bun.gzipSync(new Uint8Array(body))));
       return new Response(bytes, {
@@ -185,7 +183,9 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
       if (!site) await pages().catch(() => undefined);
       const [repoKey, ...rest] = path.slice("/_file/".length).split("/");
       const body = await file(repoKey!, rest.join("/"));
-      return body ? typed(body, path) : new Response("not committed", { status: 404 });
+      return body
+        ? typed(body, path, "no-store", false)
+        : new Response("not committed", { status: 404 });
     }
     const files = await pages();
     // A page's asset URLs are relative, so they only resolve from the page's own address.

@@ -20,7 +20,7 @@ export const gitEnv = Object.fromEntries(
   Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")),
 ) as Record<string, string>;
 
-export const git = (cwd: string, ...args: string[]) => {
+const git = (cwd: string, ...args: string[]) => {
   const r = Bun.spawnSync(["git", "-C", cwd, ...args], { stderr: "ignore", env: gitEnv });
   return r.exitCode === 0 ? r.stdout.toString() : "";
 };
@@ -51,12 +51,12 @@ export async function headSource(repo: string): Promise<Source> {
       (/\.md$/i.test(p) && (p.startsWith("docs/") || !p.includes("/"))) ||
       /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/.test(p),
   );
-  const batch =
-    (await gitBytes(
-      repo,
-      ["cat-file", "--batch"],
-      wanted.map((p) => `HEAD:${p}`).join("\n") + "\n",
-    )) ?? Buffer.alloc(0);
+  const batch = await gitBytes(
+    repo,
+    ["cat-file", "--batch"],
+    wanted.map((p) => `HEAD:${p}`).join("\n") + "\n",
+  );
+  if (!batch) return { paths, read: () => undefined };
   let at = 0;
   for (const p of wanted) {
     const nl = batch.indexOf(10, at);
@@ -249,7 +249,6 @@ type AdminConfig = { name?: string; designSystem?: string; products?: Product[];
 
 // Every git call of a repository runs at once, and the hub reads its repositories at once.
 export async function readRepo(repo: string, source?: Source): Promise<RepoData> {
-  const src = source ?? (await headSource(repo));
   const commits = async (...a: string[]) =>
     (await gitAsync(repo, ["log", "--format=%h%x09%ct%x09%s", ...a]))
       .split("\n")
@@ -258,7 +257,8 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
         const [hash, time, ...s] = l.split("\t");
         return { hash: hash!, time: Number(time), subject: s.join("\t") };
       });
-  const [itemsLog, head, behind, trackingLog, log] = await Promise.all([
+  const [src, itemsLog, head, behind, trackingLog, log] = await Promise.all([
+    source ?? headSource(repo),
     gitAsync(repo, ["log", "--format=@%ct", "--name-only", "--", ITEMS_DIR]),
     gitAsync(repo, ["rev-parse", "--short", "HEAD"]),
     gitAsync(repo, ["rev-list", "--count", "HEAD..@{u}"]),
