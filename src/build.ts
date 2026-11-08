@@ -206,6 +206,20 @@ export async function buildSite(data: SiteData, outDir: string) {
   }
 }
 
+// The engine's own catalog, as `bun run build` builds it, into `outDir`, run from the package with
+// caches beside the output, so a build the gate runs meanwhile keeps its own.
+export async function buildCatalog(outDir: string) {
+  const { build } = await import("astro");
+  process.chdir(PKG);
+  await build({
+    root: join(PKG, "catalog"),
+    outDir,
+    cacheDir: join(outDir, "..", "cache"),
+    logLevel: "error",
+    vite: { cacheDir: join(outDir, "..", "vite") },
+  });
+}
+
 export const filesUnder = (dir: string) =>
   readdirSync(dir, { recursive: true, withFileTypes: true })
     .filter((e) => e.isFile())

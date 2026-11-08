@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
-import { buildSite, filesUnder, siteData } from "./build.ts";
+import { buildCatalog, buildSite, filesUnder, siteData } from "./build.ts";
 import { findRepos } from "./hub.ts";
 import { fileHref, gitAsync, gitBytes, readRepo, type RepoData } from "./repo.ts";
 
@@ -36,6 +36,29 @@ const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
 export const csp = (origin: string) =>
   `script-src ${origin}/_astro/; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'`;
 
+// The catalog is the package's own pages, with the inline scripts Astrobook and the catalog shell
+// write and no committed markup from a repository.
+const catalogCsp = "object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'";
+
+const PKG = join(import.meta.dirname, "..");
+
+// The engine's catalog at /catalog/, built once per hub from the package, in a child process as the
+// pages are, and kept: it changes only with the package.
+async function catalogFiles() {
+  const work = mkdtempSync(join(PKG, "site", ".build-"));
+  const out = join(work, "out");
+  try {
+    const child = Bun.spawn([process.execPath, import.meta.path, "--catalog", out], {
+      cwd: PKG,
+      stderr: "inherit",
+    });
+    if (await child.exited) throw new Error(`admin-serve: catalog build exited ${child.exitCode}`);
+    return new Map(filesUnder(out).map((f) => [relative(out, f), readFileSync(f)]));
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
 export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   let paths: Promise<string[]> | undefined;
   let scanned = 0;
@@ -43,6 +66,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   const read = new Map<string, { state: string; data: RepoData }>();
   let site: { key: string; files: Map<string, Buffer> } | undefined;
   let refreshing: Promise<Map<string, Buffer>> | undefined;
+  let catalog: Promise<Map<string, Buffer>> | undefined;
   // A built file is compressed once, on its first request that accepts gzip.
   const gzipped = new WeakMap<Buffer, Uint8Array<ArrayBuffer>>();
 
@@ -157,6 +181,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     // Only a local name: a page elsewhere that points its own domain at 127.0.0.1 reads nothing.
     if (!LOCAL.test(url.hostname)) return new Response("local only", { status: 403 });
     const path = decodeURIComponent(url.pathname);
+    const catalogPage = path === "/catalog" || path.startsWith("/catalog/");
     const gzip = /\bgzip\b/.test(req.headers.get("accept-encoding") ?? "");
     // Only a built file is compressed: a committed file under /_file/ is read per request.
     const typed = (body: Buffer, name: string, cache = "no-store", built = true) => {
@@ -169,7 +194,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
         headers: {
           "content-type": type,
           "cache-control": cache,
-          "content-security-policy": csp(url.origin),
+          "content-security-policy": catalogPage ? catalogCsp : csp(url.origin),
           vary: "accept-encoding",
           ...(zip && { "content-encoding": "gzip" }),
         },
@@ -186,6 +211,30 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
       return body
         ? typed(body, path, "no-store", false)
         : new Response("not committed", { status: 404 });
+    }
+    if (catalogPage) {
+      // A failed build answers with its reason and is tried again on the next request.
+      const built = await (catalog ??= catalogFiles()).catch((e: Error) => {
+        catalog = undefined;
+        return e;
+      });
+      if (built instanceof Error)
+        return new Response(
+          `${built.message}: the catalog builds with astrobook and @hackersandwizards/scaffolding installed beside this package`,
+          { status: 503 },
+        );
+      if (path === "/catalog") return Response.redirect(`${url.origin}/catalog/${url.search}`, 302);
+      const name = path.slice("/catalog/".length).replace(/\/$/, "");
+      const at = [name, `${name}/index.html`.replace(/^\//, ""), `${name}.html`].find((n) =>
+        built.has(n),
+      );
+      return at
+        ? typed(
+            built.get(at)!,
+            at,
+            at.startsWith("_astro/") ? "public, max-age=31536000, immutable" : "no-store",
+          )
+        : new Response("no such page", { status: 404 });
     }
     const files = await pages();
     // A page's asset URLs are relative, so they only resolve from the page's own address.
@@ -208,5 +257,6 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
 
 if (import.meta.main) {
   const [json, out] = Bun.argv.slice(2);
-  await buildSite(JSON.parse(readFileSync(json!, "utf8")), out!);
+  if (json === "--catalog") await buildCatalog(out!);
+  else await buildSite(JSON.parse(readFileSync(json!, "utf8")), out!);
 }

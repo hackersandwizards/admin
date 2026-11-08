@@ -18,7 +18,7 @@ const { page, lead, provenance, answersAll = false } = Astro.props;
 const d = data();
 const repo = repoOf(page.repo);
 type Repo = NonNullable<typeof repo>;
-const at = (to: string) => href(page.path, to);
+const at = (to: string) => (to.startsWith("/") ? to : href(page.path, to));
 const waiting = (r: Repo) => openQuestions(r.items).length + forPerson(r.items).length;
 const menu = repo
   ? [
@@ -40,6 +40,8 @@ const menu = repo
   : [
       { to: "index", label: "Needs a person", count: d.repos.reduce((n, r) => n + waiting(r), 0) },
       { to: "architecture", label: "Packages" },
+      // admin-serve serves the engine's own catalog there.
+      { to: "/catalog/", label: "Catalog" },
     ];
 // A product page is its repo's own, so the switcher opens another repo's dashboard from it.
 const samePage = (r: Repo) => {

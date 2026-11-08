@@ -32,7 +32,7 @@
     "check:colours": "brand-colours",
     "check:copies": "brand-copies",
     "check:elements": "brand-elements",
-    "check:markers": "brand-markers dist/stories/Pages/doc/default/index.html dist/stories/Pages/decisions/default/index.html",
+    "check:markers": "brand-markers --site dist /catalog/stories/Pages/doc/default/ /catalog/stories/Pages/decisions/default/",
     "check:retired": "brand-retired dist",
     "check:staged": "check-staged",
     "fix": "bun --bun eslint --cache --concurrency=auto . --fix && bun --bun prettier --write .",

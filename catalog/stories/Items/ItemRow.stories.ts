@@ -13,3 +13,5 @@ export const InTheHub = { args: { item: item("pick-a-variant"), showRepo: true }
 export const ManyVariants = { args: { item: item("pick-a-logo"), open: true } };
 // 18 candidates without images, several to pick: one dense list.
 export const PickSeveral = { args: { item: item("pick-recipients"), open: true } };
+export const Decided = { args: { item: item("name-the-command"), open: true } };
+export const Goal = { args: { item: item("goal"), open: true } };

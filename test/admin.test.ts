@@ -145,6 +145,7 @@ describe("admin-check", () => {
       "cache-folder",
       "check-the-copy",
       "goal",
+      "name-the-command",
       "pick-a-logo",
       "pick-a-variant",
       "pick-recipients",
@@ -494,5 +495,52 @@ describe("serve", () => {
     );
     expect(await hub.pages()).not.toBe(cached);
     expect(await (await get("/")).text()).toContain("Renamed ");
+  }, 60_000);
+});
+
+describe("catalog", () => {
+  const stories = join(import.meta.dir, "../catalog/stories");
+  const storyText = (readdirSync(stories, { recursive: true }) as string[])
+    .filter((f) => f.endsWith(".stories.ts"))
+    .map((f) => readFileSync(join(stories, f), "utf8"))
+    .join("\n");
+
+  test("every component and every page type has a story", () => {
+    const components = readdirSync(join(import.meta.dir, "../site/src/components"));
+    expect(components.length).toBeGreaterThan(0);
+    for (const c of components) expect(storyText).toContain(`/site/src/components/${c}"`);
+    // Every member of Page's type union, read from its declaration.
+    const all = readFileSync(join(import.meta.dir, "../src/build.ts"), "utf8")
+      .match(/type:\s*([\s\S]*?);/)![1]!
+      .match(/"[\w-]+"/g)!
+      .map((t) => t.slice(1, -1));
+    expect(all).toContain("hub");
+    for (const t of all) expect(storyText).toContain(`page("${t}")`);
+  });
+
+  test("the hub serves the catalog at /catalog/ and links it", async () => {
+    const hub = createHub({ root: dirname(repoFrom("spoke")) });
+    const get = (path: string) => hub.fetch(new Request(`http://admin.localhost${path}`));
+    expect((await get("/")).status).toBe(200);
+    expect(await (await get("/")).text()).toMatch(
+      /<a href="\/catalog\/"[^>]*>\s*<span>Catalog<\/span>/,
+    );
+    const bare = await get("/catalog");
+    expect([bare.status, bare.headers.get("location")]).toEqual([
+      302,
+      "http://admin.localhost/catalog/",
+    ]);
+    const home = await get("/catalog/");
+    expect(home.status).toBe(200);
+    const html = await home.text();
+    expect(html).toContain("Every page and component of the admin engine");
+    const sheet = html.match(/href="(\/catalog\/_astro\/[^"]+\.css)"/)![1]!;
+    expect((await get(sheet)).headers.get("cache-control")).toContain("immutable");
+    const story = await get("/catalog/stories/Items/shot/captioned");
+    expect(story.status).toBe(200);
+    const src = (await story.text()).match(/<img[^>]*src="([^"]+)"/)![1]!;
+    expect(src).toStartWith("/catalog/fixture/");
+    expect((await get(src)).headers.get("content-type")).toContain("image/svg");
+    expect((await get("/catalog/no-such-page")).status).toBe(404);
   }, 60_000);
 });

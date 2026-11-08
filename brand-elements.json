@@ -1,17 +1,17 @@
 {
   "pages": [
-    "dist/index.html",
-    "dist/stories/Pages/dashboard/default/index.html",
-    "dist/stories/Pages/decisions/default/index.html",
-    "dist/stories/Pages/work/default/index.html",
-    "dist/stories/Pages/reviews/default/index.html",
-    "dist/stories/Pages/doc/default/index.html",
-    "dist/stories/Pages/catalog/default/index.html",
-    "dist/stories/Pages/architecture/default/index.html",
-    "dist/stories/Pages/checks/default/index.html",
-    "dist/stories/Pages/log/default/index.html",
-    "dist/stories/Pages/hub/default/index.html",
-    "dist/stories/Pages/docs/default/index.html"
+    "/catalog/",
+    "/catalog/stories/Pages/dashboard/default/",
+    "/catalog/stories/Pages/decisions/default/",
+    "/catalog/stories/Pages/work/default/",
+    "/catalog/stories/Pages/reviews/default/",
+    "/catalog/stories/Pages/doc/default/",
+    "/catalog/stories/Pages/catalog/default/",
+    "/catalog/stories/Pages/architecture/default/",
+    "/catalog/stories/Pages/checks/default/",
+    "/catalog/stories/Pages/log/default/",
+    "/catalog/stories/Pages/hub/default/",
+    "/catalog/stories/Pages/docs/default/"
   ],
   "uses": [
     "label",
@@ -32,5 +32,6 @@
     "item-list": "A card framing a list of item rows edge to edge: no padding, since each row carries its own padding and the hairline between rows. brand's card pads its content.",
     "priority-pill": "An item's priority on brand's scale (data-priority) in the mono face, as a code the eye scans down the list. brand's pill sets Inter.",
     "image-tile": "A review folder's image as a link: a card at half the padding, so the thumbnail fills the tile in a grid of two or three. brand's card pads its content by the card padding."
-  }
+  },
+  "site": "dist"
 }

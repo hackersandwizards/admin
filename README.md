@@ -43,6 +43,10 @@ Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repos
 One repository's own pages open at `http://admin.localhost:4329/<repo>`, such as `/website`,
 which leads to its dashboard with only its items. `<repo>` is the folder name, or `admin.name` in
 its `package.json`. The hub's rail and its Repositories table link every repository's dashboard.
+The engine's own catalog, every page and component on an invented repository, opens at
+`http://admin.localhost:4329/catalog/`, linked in the hub's rail. `admin-serve` builds it from the
+package on its first request, which needs `astrobook` and `@hackersandwizards/scaffolding`
+installed beside the package; without them the address answers 503 and names both.
 A repository shows in the hub when its HEAD has `docs/agent-work/items/` or its `package.json` names an
 `@hackersandwizards` package, so this engine shows itself.
 
@@ -159,7 +163,7 @@ Tailwind arbitrary value defined here.
 bun install
 bun run check     # the gate: scaffolding's shared steps, then the steps in package.json's scaffolding.check
 bun run dev       # the hub on http://admin.localhost:4329
-bun run catalog   # the site's pages on the invented fixture, http://127.0.0.1:4332/
+bun run catalog   # the catalog live, http://127.0.0.1:4332/; on the hub it is /catalog/
 ```
 
 ## License
