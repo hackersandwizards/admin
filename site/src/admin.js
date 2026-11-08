@@ -137,12 +137,20 @@ for (const d of items) {
     state();
   });
 }
-// brand's button reports each press as hw-copy, detail { ok }: only a copy that worked counts, so a
-// failed one leaves the answers it did not copy in place.
+// brand's button reads its text on the press and reports each press as hw-copy, detail { ok }, once
+// the write ends. The copy time is the first press since none was pending, which no copied text is
+// older than, so an answer saved during a write or a failed press stays not copied.
+let pending = 0;
+let pressedAt = "";
+copy?.addEventListener("click", () => {
+  if (!pending++) pressedAt = new Date().toISOString();
+});
 copy?.addEventListener("hw-copy", (e) => {
+  pending = Math.max(0, pending - 1);
   if (!e.detail?.ok) return;
   try {
-    localStorage.setItem(STORE + "copied", new Date().toISOString());
+    if (pressedAt > (localStorage.getItem(STORE + "copied") || ""))
+      localStorage.setItem(STORE + "copied", pressedAt);
   } catch {
     /* storage blocked: the copy still happened */
   }
