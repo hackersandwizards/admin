@@ -39,12 +39,6 @@
     flex: 0 1 auto;
     min-width: 0;
   }
-  /* A long repo key shortens rather than push the button off a phone's header. */
-  .admin-switch {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
   .admin-main {
     padding-inline-end: 1rem;
   }
@@ -63,13 +57,14 @@
   .task-list-item-checkbox {
     margin-inline-end: 0.5rem;
   }
-  @media (max-width: 48rem) {
+  @media (width < 48rem) {
     .admin-shell {
       grid-template-columns: minmax(0, 1fr);
     }
     .admin-rail {
       position: static;
       max-height: none;
+      overflow: visible;
     }
     .admin-search {
       margin-bottom: 0.5rem;

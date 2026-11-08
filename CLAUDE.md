@@ -22,7 +22,7 @@ exported file is a release whose commit names the change.
   scaffolding's catalog shell (`catalog()` preset). Its address is `/catalog/` on the hub
   (http://admin.localhost:4329/catalog/), which `admin-serve` builds from the package on the first
   request and links in the hub's menu; it needs astrobook and scaffolding installed beside the
-  package. `bun run catalog` serves it live at http://127.0.0.1:4332/, `bun run build` writes it to
+  package. `bun run catalog` serves it live at http://127.0.0.1:4332/ (restart it after editing `site/src/admin.js`, bundled at start), `bun run build` writes it to
   `dist/catalog/`. Every component and page type has a story, guarded by `admin.test.ts`.
   `bun run dev` runs the hub (`admin-serve`) on 4329; `start` is its old name, kept while os's
   parallel-session skill names it. `brand-elements.json` lists the brand elements the site uses and the ones it keeps.

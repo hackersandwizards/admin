@@ -50,6 +50,15 @@ const samePage = (r: Repo) => {
 };
 const current = (to: string) =>
   to === page.path || (page.type === "doc" && to === `${repo?.prefix}docs`);
+const entries = [
+  ...menu.map((m) => ({ ...m, href: at(m.to), current: current(m.to) })),
+  ...(repo?.links ?? []).map((l) => ({
+    label: l.label,
+    href: l.href,
+    current: false,
+    count: undefined,
+  })),
+];
 ---
 
 <html lang="en" data-theme="light">
@@ -79,14 +88,14 @@ const current = (to: string) =>
           <li>
             <button
               type="button"
-              class="hw-button admin-switch"
+              class="hw-button"
               data-variant="secondary"
               popovertarget="admin-repos"
               aria-haspopup="menu"
               aria-expanded="false"
               aria-current={repo ? "location" : undefined}
             >
-              {repo ? repo.key : "Repos"}
+              <span class="truncate">{repo ? repo.key : "Repos"}</span>
               <span aria-hidden="true">&nbsp;▾</span>
             </button>
           </li>
@@ -100,7 +109,7 @@ const current = (to: string) =>
             aria-checked={String(r.key === repo?.key)}
             href={at(repo ? samePage(r) : r.dashboard)}
           >
-            {r.key}
+            <span class="min-w-0 flex-1 truncate">{r.key}</span>
             <span class="hw-nav-count">{waiting(r) || ""}</span>
           </a>
         ))}
@@ -118,15 +127,10 @@ const current = (to: string) =>
           />
         </div>
         <nav class="hw-choices admin-choices md:hidden" aria-label="Menu">
-          {menu.map((m) => (
-            <a class="hw-choice" href={at(m.to)} aria-current={current(m.to) ? "page" : undefined}>
-              {m.label}
-              {m.count !== undefined && <span class="hw-choice-count">{m.count}</span>}
-            </a>
-          ))}
-          {repo?.links.map((l) => (
-            <a class="hw-choice" href={l.href}>
-              {l.label}
+          {entries.map((e) => (
+            <a class="hw-choice" href={e.href} aria-current={e.current ? "page" : undefined}>
+              {e.label}
+              {e.count !== undefined && <span class="hw-choice-count">{e.count}</span>}
             </a>
           ))}
         </nav>
@@ -136,17 +140,12 @@ const current = (to: string) =>
             {repo ? repo.key : "Hub"}
           </p>
           <ul>
-            {menu.map((m) => (
+            {entries.map((e) => (
               <li>
-                <a href={at(m.to)} aria-current={current(m.to) ? "page" : undefined}>
-                  {m.label}
-                  {m.count !== undefined && <span class="hw-nav-count">{m.count}</span>}
+                <a href={e.href} aria-current={e.current ? "page" : undefined}>
+                  {e.label}
+                  {e.count !== undefined && <span class="hw-nav-count">{e.count}</span>}
                 </a>
-              </li>
-            ))}
-            {repo?.links.map((l) => (
-              <li>
-                <a href={l.href}>{l.label}</a>
               </li>
             ))}
           </ul>

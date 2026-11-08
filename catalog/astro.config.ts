@@ -20,7 +20,7 @@ const put = (name: string, text: string) => {
   renameSync(part, join(cache, name));
 };
 put("admin.css", stylesheet());
-const adminScript = await script(join(cache, String(process.pid)));
+put("admin.js", await script());
 put("data.json", JSON.stringify(siteData([await readRepo(fixture, treeSource(fixture))])));
 process.env.ADMIN_DATA = join(cache, "data.json");
 
@@ -66,7 +66,10 @@ export default defineConfig({
   vite: {
     plugins: [tailwind()],
     resolve: {
-      alias: { "admin:styles": join(cache, "admin.css"), "admin:script?url": `${adminScript}?url` },
+      alias: {
+        "admin:styles": join(cache, "admin.css"),
+        "admin:script?url": `${join(cache, "admin.js")}?url`,
+      },
     },
   },
 });
