@@ -68,10 +68,9 @@
     const done = d.querySelector("input[value=done]:checked");
     const note = (d.querySelector("textarea")?.value || "").trim();
     // The label goes with the answer, so a page without its row still copies it.
-    const name = option.includes(",") ? undefined : label(d, option);
     const a =
       option || done || note
-        ? { option, label: name, done: !!done, note, at: new Date().toISOString() }
+        ? { option, label: label(d, option), done: !!done, note, at: new Date().toISOString() }
         : null;
     if (write(d.dataset.k, a)) mark(d, a);
     state();
@@ -84,9 +83,9 @@
   function block() {
     const lines = answered().map((k) => {
       const a = read(k);
-      // An answer saved before labels were stored takes its label from its row, where shown.
+      // A shown row's label is current; the stored one serves where the row is not on the page.
       const d = items.find((x) => x.dataset.k === k);
-      const name = a.label ?? (d && picked(a).length === 1 ? label(d, a.option) : undefined);
+      const name = (d && label(d, a.option)) || a.label;
       const choice = a.option ? `${a.option}${name ? ` (${name})` : ""}` : a.done ? "done" : "";
       return `${k}: ${[choice, (a.note || "").replace(/\s+/g, " ")].filter(Boolean).join(", ")}`;
     });
@@ -97,9 +96,10 @@
   const idle = status?.textContent.trim();
   function state() {
     if (!copy) return;
-    const n = answered().length;
+    const keys = answered();
+    const n = keys.length;
     const since = localStorage.getItem(STORE + "copied") || "";
-    const open = answered().filter((k) => read(k).at > since).length;
+    const open = keys.filter((k) => read(k).at > since).length;
     copy.textContent = n ? `Copy ${n} answer${n === 1 ? "" : "s"}` : "Copy answers";
     // Once all is copied the button steps back, so it no longer reads as work left.
     if (n && !open) copy.dataset.variant = "secondary";
