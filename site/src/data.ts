@@ -3,7 +3,7 @@ import { relative, dirname } from "node:path/posix";
 import type { Page, SiteData, ViewItem } from "../../src/build.ts";
 
 export type { Page, SiteData, ViewItem };
-export { fileHref } from "../../src/repo.ts";
+export { fileHref, thumbnail } from "../../src/repo.ts";
 
 let cached: SiteData | undefined;
 export function data(): SiteData {

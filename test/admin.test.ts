@@ -512,6 +512,48 @@ describe("catalog", () => {
     for (const t of PAGE_TYPES) expect(storyText).toContain(`page("${t}")`);
   });
 
+  test("the hub serves a committed image at a thumbnail's width", async () => {
+    const pixel = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+      "base64",
+    );
+    const png = (w: number, h: number) => new Bun.Image(pixel).resize(w, h).png().bytes();
+    const repo = repoFrom("spoke");
+    const dir = join(repo, "docs/agent-work/2026-01-15-sample-topic");
+    writeFileSync(join(dir, "wide.png"), await png(2000, 1000));
+    writeFileSync(join(dir, "tall.png"), await png(400, 2000));
+    writeFileSync(join(dir, "small.png"), await png(100, 100));
+    sh(repo, "git", "add", "-A");
+    sh(
+      repo,
+      "git",
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@example.invalid",
+      "commit",
+      "-qm",
+      "i",
+    );
+    const hub = createHub({ root: dirname(repo) });
+    const page = await (
+      await hub.fetch(new Request("http://admin.localhost/spoke/reviews"))
+    ).text();
+    const img = page.match(/<img[^>]*small\.png[^>]*>/)![0];
+    const at = "/_file/spoke/docs/agent-work/2026-01-15-sample-topic";
+    expect(img).toContain(`src="${at}/small.png?w=480"`);
+    expect(img).toContain(`srcset="${at}/small.png?w=480 480w, ${at}/small.png?w=960 960w"`);
+    const get = (q: string) => hub.fetch(new Request(`http://admin.localhost${at}/${q}`));
+    const small = await get("wide.png?w=480");
+    expect(small.headers.get("content-type")).toBe("image/webp");
+    expect((await new Bun.Image(await small.bytes()).metadata()).width).toBe(480);
+    const tall = await new Bun.Image(await (await get("tall.png?w=480")).bytes()).metadata();
+    expect([tall.width, tall.height]).toEqual([54, 270]);
+    // The full file: no width, a width the hub does not offer, or an image that already fits.
+    for (const q of ["wide.png", "wide.png?w=123", "small.png?w=480"])
+      expect((await get(q)).headers.get("content-type")).toBe("image/png");
+  }, 60_000);
+
   test("the hub serves the catalog at /catalog/ and links it", async () => {
     const hub = createHub({ root: dirname(repoFrom("spoke")) });
     const get = (path: string) => hub.fetch(new Request(`http://admin.localhost${path}`));

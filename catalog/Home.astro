@@ -12,6 +12,7 @@ const BRAND = "https://hackersandwizards.github.io/brand/";
 const notes: Record<string, string> = {
   label: "The rail's group names.",
   pill: "The recommended option among an item's options.",
+  button: "Copy answers, and an item's Pick recommended and Reset.",
   card: "A row group, a dashboard figure, an option, a review image.",
   callout: "What an agent assumed or a person decided, above the item's text.",
   quote: "A blockquote in a report or an item's Markdown.",
@@ -50,6 +51,16 @@ const notes: Record<string, string> = {
             <span class="hw-pill" data-tone="neutral">
               optional
             </span>
+          </p>
+        )}
+        {name === "button" && (
+          <p class="flex flex-wrap gap-2">
+            <button type="button" class="hw-button">
+              Copy answers
+            </button>
+            <button type="button" class="hw-button" data-variant="secondary">
+              Reset
+            </button>
           </p>
         )}
         {name === "card" && <div class="hw-card text-ui">Open questions</div>}

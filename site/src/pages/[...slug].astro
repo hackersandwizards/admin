@@ -13,6 +13,7 @@ import {
   href,
   openQuestions,
   repoOf,
+  thumbnail,
   type Page,
 } from "../data";
 
@@ -86,7 +87,7 @@ const leads: Partial<Record<Page["type"], string>> = {
       <span id="state" class="text-ui text-foreground/70" role="status">
         Answers stay in this browser.
       </span>
-      <button id="copy" type="button" class="btn-primary">
+      <button id="copy" type="button" class="hw-button">
         Copy answers
       </button>
     </Fragment>
@@ -359,7 +360,7 @@ const leads: Partial<Record<Page["type"], string>> = {
                   >
                     <img
                       loading="lazy"
-                      src={fileHref(`${repo.path}/${r.dir}/${f}`)}
+                      {...thumbnail(fileHref(`${repo.path}/${r.dir}/${f}`))}
                       alt=""
                       class="aspect-video w-full rounded-brand bg-muted object-contain"
                     />

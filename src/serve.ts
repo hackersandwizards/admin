@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { buildCatalog, buildSite, filesUnder, PKG, siteData } from "./build.ts";
 import { findRepos } from "./hub.ts";
-import { fileHref, gitAsync, gitBytes, readRepo, type RepoData } from "./repo.ts";
+import { fileHref, gitAsync, gitBytes, readRepo, THUMB_WIDTHS, type RepoData } from "./repo.ts";
 
 export type ServeOptions = { root: string; rescanMs?: number };
 
@@ -42,6 +42,9 @@ const catalogCsp = "object-src 'none'; base-uri 'none'; form-action 'self'; fram
 
 const IMMUTABLE = "public, max-age=31536000, immutable";
 
+// A GIF would lose its animation and an SVG has no pixels to save.
+const RESIZABLE = /\.(jpe?g|png|webp|avif)$/i;
+
 // Runs this file as a child that builds into `out`, then reads what it wrote, keyed by path.
 async function spawnBuild(what: string, args: string[], out: string) {
   const child = Bun.spawn([process.execPath, import.meta.path, ...args, out], {
@@ -59,6 +62,21 @@ async function catalogFiles() {
     return await spawnBuild("catalog build", ["--catalog"], join(work, "out"));
   } finally {
     rmSync(work, { recursive: true, force: true });
+  }
+}
+
+// Fits an image into the review tile's 16:9 box at this width: a tall phone shot is as high as the
+// tile, not as wide. A file Bun cannot read, or one that already fits, answers at its own size.
+async function resized(body: Buffer, width: number) {
+  try {
+    const image = new Bun.Image(body);
+    const size = await image.metadata();
+    const scale = Math.min(width / size.width, (width * 9) / 16 / size.height);
+    if (scale >= 1) return undefined;
+    const fitted = image.resize(Math.round(size.width * scale), Math.round(size.height * scale));
+    return Buffer.from(await fitted.webp({ quality: 80 }).bytes());
+  } catch {
+    return undefined;
   }
 }
 
@@ -204,9 +222,13 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
       if (!site) await pages().catch(() => undefined);
       const [repoKey, ...rest] = path.slice("/_file/".length).split("/");
       const body = await file(repoKey!, rest.join("/"));
-      return body
-        ? typed(body, path, "no-store", false)
-        : new Response("not committed", { status: 404 });
+      if (!body) return new Response("not committed", { status: 404 });
+      const width = Number(url.searchParams.get("w"));
+      const small =
+        THUMB_WIDTHS.includes(width) && RESIZABLE.test(path) && (await resized(body, width));
+      return small
+        ? typed(small, "thumb.webp", "no-store", false)
+        : typed(body, path, "no-store", false);
     }
     if (path === "/catalog") return Response.redirect(`${url.origin}/catalog/${url.search}`, 302);
     if (catalogPage) {

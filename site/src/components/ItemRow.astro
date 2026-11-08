@@ -120,11 +120,16 @@ const meta = [
     <textarea id={`n-${k}`} class="form-input w-full"></textarea>
     <p class="flex flex-wrap items-center gap-2">
       {i.recommendedKeys.length > 0 && (
-        <button type="button" class="pick btn-secondary" data-v={i.recommendedKeys.join(" ")}>
+        <button
+          type="button"
+          class="pick hw-button"
+          data-variant="secondary"
+          data-v={i.recommendedKeys.join(" ")}
+        >
           Pick recommended
         </button>
       )}
-      <button type="button" class="clear btn-secondary">
+      <button type="button" class="clear hw-button" data-variant="secondary">
         Reset
       </button>
       <span class="saved text-micro text-foreground/70" aria-live="polite"></span>

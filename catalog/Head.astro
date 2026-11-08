@@ -1,8 +1,10 @@
 ---
 // Astrobook's <head> on every page of the catalog: brand's dense scale and focus ring, as
 // the admin pages set them (site/src/components/Layout.astro).
+import favicon from "@hackersandwizards/brand/logos/favicon.svg?url";
 ---
 
+<link rel="icon" type="image/svg+xml" href={favicon} />
 <script is:inline>
   document.documentElement.dataset.hwScale = "dense";
   document.documentElement.classList.add("hw-focus-ring");

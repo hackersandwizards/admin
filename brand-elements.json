@@ -16,6 +16,7 @@
   "uses": [
     "label",
     "pill",
+    "button",
     "card",
     "callout",
     "quote",
