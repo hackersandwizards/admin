@@ -67,8 +67,12 @@
       .join(",");
     const done = d.querySelector("input[value=done]:checked");
     const note = (d.querySelector("textarea")?.value || "").trim();
+    // The label goes with the answer, so a page without its row still copies it.
+    const name = option.includes(",") ? undefined : label(d, option);
     const a =
-      option || done || note ? { option, done: !!done, note, at: new Date().toISOString() } : null;
+      option || done || note
+        ? { option, label: name, done: !!done, note, at: new Date().toISOString() }
+        : null;
     if (write(d.dataset.k, a)) mark(d, a);
     state();
   }
@@ -80,13 +84,10 @@
   function block() {
     const lines = answered().map((k) => {
       const a = read(k);
+      // An answer saved before labels were stored takes its label from its row, where shown.
       const d = items.find((x) => x.dataset.k === k);
-      const one = picked(a).length === 1;
-      const choice = a.option
-        ? `${a.option}${one && d && label(d, a.option) ? ` (${label(d, a.option)})` : ""}`
-        : a.done
-          ? "done"
-          : "";
+      const name = a.label ?? (d && picked(a).length === 1 ? label(d, a.option) : undefined);
+      const choice = a.option ? `${a.option}${name ? ` (${name})` : ""}` : a.done ? "done" : "";
       return `${k}: ${[choice, (a.note || "").replace(/\s+/g, " ")].filter(Boolean).join(", ")}`;
     });
     return lines.length ? `Answers from the admin pages:\n${lines.join("\n")}` : "";
@@ -100,6 +101,9 @@
     const since = localStorage.getItem(STORE + "copied") || "";
     const open = answered().filter((k) => read(k).at > since).length;
     copy.textContent = n ? `Copy ${n} answer${n === 1 ? "" : "s"}` : "Copy answers";
+    // Once all is copied the button steps back, so it no longer reads as work left.
+    if (n && !open) copy.dataset.variant = "secondary";
+    else delete copy.dataset.variant;
     if (status)
       status.textContent = !n
         ? idle
@@ -144,10 +148,6 @@
       /* storage blocked: the copy still happened */
     }
     state();
-  });
-  addEventListener("beforeunload", (e) => {
-    const since = localStorage.getItem(STORE + "copied") || "";
-    if (answered().some((k) => read(k).at > since)) e.preventDefault();
   });
 
   const search = document.getElementById("admin-search");

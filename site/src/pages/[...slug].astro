@@ -57,6 +57,8 @@ const pins = (r: NonNullable<typeof repo>) =>
 const pin = (spec: string) => spec.match(/#(v[\w.-]+)$/)?.[1] ?? spec;
 const packages = [...new Set(d.repos.flatMap((r) => pins(r).map(([n]) => n)))].sort();
 const answersAll = page.type === "decisions" || page.type === "hub";
+// Every page with answerable rows hands its answers over from where they were given.
+const answerable = answersAll || ["dashboard", "work", "reviews"].includes(page.type);
 const leads: Partial<Record<Page["type"], string>> = {
   hub: "What waits on a person across every repository, read from each one's last commit: questions to answer and work to move, by priority and due date. Images and reports open where they sit.",
   "hub-architecture": "Which version of each h&w package every repository pins.",
@@ -82,7 +84,7 @@ const leads: Partial<Record<Page["type"], string>> = {
   provenance={page.type === "doc" ? undefined : provenance}
   answersAll={answersAll}
 >
-  {(page.type === "decisions" || page.type === "hub") && (
+  {answerable && (
     <Fragment slot="action">
       <span id="state" class="text-ui text-foreground/70" role="status">
         Answers stay in this browser.

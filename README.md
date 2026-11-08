@@ -64,8 +64,9 @@ script that starts it (`catalog` where the preset's repository has one) and says
 running now.
 `admin.designSystem` overrides it.
 
-Answers to decisions stay in the browser until "Copy answers" puts
-them on the clipboard as one `repo:id: choice, note` line each.
+Answers to decisions stay in the browser as they are typed, across reloads and with no prompt on
+leaving, until "Copy answers", on every page that lists questions, puts them on the clipboard as
+one `repo:id: choice, note` line each.
 
 ## Item files
 

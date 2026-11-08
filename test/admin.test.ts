@@ -371,6 +371,8 @@ describe("pages", () => {
     expect(repos(decisions)).toContain('href="decisions.html"');
     expect(repos(html)).toContain('href="spoke/dashboard.html"');
     expect(repos(decisions)).toContain('href="../plain/decisions.html"');
+    // Answers given on a dashboard are copied there, not on a trip back to the hub.
+    expect(readFileSync(join(out, "spoke/dashboard.html"), "utf8")).toContain('id="copy"');
     // Astro drops a line break next to a tag: the pill keeps an explicit space before its label.
     expect(decisions).toMatch(/Recommended\s*<\/span>\s+<b>/);
     for (const [from, to] of [
@@ -380,6 +382,11 @@ describe("pages", () => {
     ])
       expect(repos(readFileSync(join(out, from!), "utf8"))).toContain(to!);
   }, 60_000);
+  test("leaving a page asks nothing: every answer is stored as it is typed", () => {
+    const script = readFileSync(join(import.meta.dir, "../site/src/admin.js"), "utf8");
+    expect(script).not.toMatch(/beforeunload/);
+    expect(script).toMatch(/addEventListener\("input", \(\) => save\(d\)\)/);
+  });
 });
 
 describe("serve", () => {
