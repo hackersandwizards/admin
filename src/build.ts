@@ -12,7 +12,7 @@ import { dirname, join, relative } from "node:path";
 import { compareItems, imagesOf, type Item } from "./items.ts";
 import { fileHref, withElements, type RepoData } from "./repo.ts";
 
-const PKG = join(import.meta.dirname, "..");
+export const PKG = join(import.meta.dirname, "..");
 export const VERSION = JSON.parse(readFileSync(join(PKG, "package.json"), "utf8"))
   .version as string;
 
@@ -26,22 +26,25 @@ export type ViewItem = Item & {
   recommendedLabel?: string;
 };
 
+export const PAGE_TYPES = [
+  "hub",
+  "hub-architecture",
+  "dashboard",
+  "decisions",
+  "work",
+  "reviews",
+  "docs",
+  "doc",
+  "catalog",
+  "product",
+  "architecture",
+  "checks",
+  "log",
+] as const;
+
 export type Page = {
   path: string;
-  type:
-    | "hub"
-    | "hub-architecture"
-    | "dashboard"
-    | "decisions"
-    | "work"
-    | "reviews"
-    | "docs"
-    | "doc"
-    | "catalog"
-    | "product"
-    | "architecture"
-    | "checks"
-    | "log";
+  type: (typeof PAGE_TYPES)[number];
   repo?: string;
   doc?: string;
   product?: number;

@@ -3,7 +3,7 @@ import { item } from "../../story";
 
 export default { component: Shot };
 
-const [image] = item("pick-a-variant").optionImages.b!;
+const image = item("pick-a-variant").optionImages.b![0]!;
 export const Captioned = { args: { ...image, alt: "Variant B" } };
 export const Small = { args: { ...image, alt: "Variant B", small: true } };
-export const Bare = { args: { src: image!.src, alt: "Variant B" } };
+export const Bare = { args: { src: image.src, alt: "Variant B" } };

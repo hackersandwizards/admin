@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { peerDependenciesMeta } from "../package.json";
-import { buildSite, siteData } from "../src/build.ts";
+import { buildSite, PAGE_TYPES, siteData } from "../src/build.ts";
 import { findRepos } from "../src/hub.ts";
 import { itemDefects, parseItem, type Item } from "../src/items.ts";
 import { gitEnv, readItems, readRepo, renderMarkdown, treeSource } from "../src/repo.ts";
@@ -509,22 +509,15 @@ describe("catalog", () => {
     const components = readdirSync(join(import.meta.dir, "../site/src/components"));
     expect(components.length).toBeGreaterThan(0);
     for (const c of components) expect(storyText).toContain(`/site/src/components/${c}"`);
-    // Every member of Page's type union, read from its declaration.
-    const all = readFileSync(join(import.meta.dir, "../src/build.ts"), "utf8")
-      .match(/type:\s*([\s\S]*?);/)![1]!
-      .match(/"[\w-]+"/g)!
-      .map((t) => t.slice(1, -1));
-    expect(all).toContain("hub");
-    for (const t of all) expect(storyText).toContain(`page("${t}")`);
+    for (const t of PAGE_TYPES) expect(storyText).toContain(`page("${t}")`);
   });
 
   test("the hub serves the catalog at /catalog/ and links it", async () => {
     const hub = createHub({ root: dirname(repoFrom("spoke")) });
     const get = (path: string) => hub.fetch(new Request(`http://admin.localhost${path}`));
-    expect((await get("/")).status).toBe(200);
-    expect(await (await get("/")).text()).toMatch(
-      /<a href="\/catalog\/"[^>]*>\s*<span>Catalog<\/span>/,
-    );
+    const hubPage = await get("/");
+    expect(hubPage.status).toBe(200);
+    expect(await hubPage.text()).toMatch(/<a href="\/catalog\/"[^>]*>\s*<span>Catalog<\/span>/);
     const bare = await get("/catalog");
     expect([bare.status, bare.headers.get("location")]).toEqual([
       302,
@@ -539,7 +532,7 @@ describe("catalog", () => {
     const story = await get("/catalog/stories/Items/shot/captioned");
     expect(story.status).toBe(200);
     const src = (await story.text()).match(/<img[^>]*src="([^"]+)"/)![1]!;
-    expect(src).toStartWith("/catalog/fixture/");
+    expect(src).toStartWith("/catalog/test/fixtures/spoke/");
     expect((await get(src)).headers.get("content-type")).toContain("image/svg");
     expect((await get("/catalog/no-such-page")).status).toBe(404);
   }, 60_000);

@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
-import { buildCatalog, buildSite, filesUnder, siteData } from "./build.ts";
+import { buildCatalog, buildSite, filesUnder, PKG, siteData } from "./build.ts";
 import { findRepos } from "./hub.ts";
 import { fileHref, gitAsync, gitBytes, readRepo, type RepoData } from "./repo.ts";
 
@@ -40,20 +40,23 @@ export const csp = (origin: string) =>
 // write and no committed markup from a repository.
 const catalogCsp = "object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'";
 
-const PKG = join(import.meta.dirname, "..");
+const IMMUTABLE = "public, max-age=31536000, immutable";
 
-// The engine's catalog at /catalog/, built once per hub from the package, in a child process as the
-// pages are, and kept: it changes only with the package.
+// Runs this file as a child that builds into `out`, then reads what it wrote, keyed by path.
+async function spawnBuild(what: string, args: string[], out: string) {
+  const child = Bun.spawn([process.execPath, import.meta.path, ...args, out], {
+    stderr: "inherit",
+  });
+  if (await child.exited) throw new Error(`admin-serve: ${what} exited ${child.exitCode}`);
+  return new Map(filesUnder(out).map((f) => [relative(out, f), readFileSync(f)]));
+}
+
+// The engine's catalog at /catalog/, built once per hub from the package and kept: it changes only
+// with the package.
 async function catalogFiles() {
   const work = mkdtempSync(join(PKG, "site", ".build-"));
-  const out = join(work, "out");
   try {
-    const child = Bun.spawn([process.execPath, import.meta.path, "--catalog", out], {
-      cwd: PKG,
-      stderr: "inherit",
-    });
-    if (await child.exited) throw new Error(`admin-serve: catalog build exited ${child.exitCode}`);
-    return new Map(filesUnder(out).map((f) => [relative(out, f), readFileSync(f)]));
+    return await spawnBuild("catalog build", ["--catalog"], join(work, "out"));
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
@@ -75,23 +78,16 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const json = `${out}.json`;
     try {
       writeFileSync(json, JSON.stringify(siteData(repos)));
-      const child = Bun.spawn([process.execPath, import.meta.path, json, out], {
-        stderr: "inherit",
-      });
-      if (await child.exited) throw new Error(`admin-serve: build exited ${child.exitCode}`);
-      const files = new Map<string, Buffer>();
+      const files = await spawnBuild("build", [json], out);
       // Longest path first: a repository nested in another keeps its own prefix.
       const links = [...repos]
         .sort((a, b) => b.path.length - a.path.length)
         .map((r) => [fileHref(r.path) + "/", `/_file/${encodeURIComponent(r.key)}/`] as const);
-      for (const f of filesUnder(out)) {
-        let bytes = readFileSync(f);
-        if (f.endsWith(".html")) {
-          let html = bytes.toString("utf8");
-          for (const [from, to] of links) html = html.replaceAll(from, to);
-          bytes = Buffer.from(html);
-        }
-        files.set(relative(out, f), bytes);
+      for (const [name, bytes] of files) {
+        if (!name.endsWith(".html")) continue;
+        let html = bytes.toString("utf8");
+        for (const [from, to] of links) html = html.replaceAll(from, to);
+        files.set(name, Buffer.from(html));
       }
       site = { key, files };
       return files;
@@ -203,7 +199,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     // Hashed asset names never change, so an asset needs no check whether a repository moved, and
     // the browser keeps it.
     if (path.startsWith("/_astro/") && site?.files.has(path.slice(1)))
-      return typed(site.files.get(path.slice(1))!, path, "public, max-age=31536000, immutable");
+      return typed(site.files.get(path.slice(1))!, path, IMMUTABLE);
     if (path.startsWith("/_file/")) {
       if (!site) await pages().catch(() => undefined);
       const [repoKey, ...rest] = path.slice("/_file/".length).split("/");
@@ -225,15 +221,9 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
         );
       if (path === "/catalog") return Response.redirect(`${url.origin}/catalog/${url.search}`, 302);
       const name = path.slice("/catalog/".length).replace(/\/$/, "");
-      const at = [name, `${name}/index.html`.replace(/^\//, ""), `${name}.html`].find((n) =>
-        built.has(n),
-      );
+      const at = [name, name ? `${name}/index.html` : "index.html"].find((n) => built.has(n));
       return at
-        ? typed(
-            built.get(at)!,
-            at,
-            at.startsWith("_astro/") ? "public, max-age=31536000, immutable" : "no-store",
-          )
+        ? typed(built.get(at)!, at, at.startsWith("_astro/") ? IMMUTABLE : "no-store")
         : new Response("no such page", { status: 404 });
     }
     const files = await pages();
