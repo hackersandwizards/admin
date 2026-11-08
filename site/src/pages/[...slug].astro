@@ -328,45 +328,46 @@ const leads: Partial<Record<Page["type"], string>> = {
         const named = [...new Set(shots.map((m) => m.id))];
         const caption = (f: string) => shots.find((m) => m.src === `${r.dir}/${f}`)?.caption;
         return (
-          <details class="hw-disclosure flex flex-col gap-2" data-row open={n < 3}>
+          <details class="hw-disclosure" data-row open={n < 3}>
             <summary class="font-mono font-semibold text-heading">
               {r.dir.replace("docs/agent-work/", "")}{" "}
               <span class="font-normal text-ui text-foreground/70">{r.images.length} images</span>
             </summary>
-            {/* The details' gap stops at its summary, so the links keep their own 24 px target. */}
-            <p class="mb-2 flex flex-wrap gap-4 text-ui">
-              {r.report && (
-                <a
-                  class="chip-link"
-                  href={link(`${repo.prefix}doc/${r.report.replace(/\.md$/i, "")}`)}
-                >
-                  Report
-                </a>
-              )}
-              {named.map((id) => (
-                <a class="chip-link" href={link(`${repo.prefix}decisions`)}>
-                  {id}
-                </a>
-              ))}
-            </p>
-            <div class="grid grid-cols-2 gap-3 xl:grid-cols-3">
-              {r.images.map((f) => (
-                <a
-                  class="hw-card flex flex-col gap-1 p-2!"
-                  data-hw-exception="image-tile"
-                  href={fileHref(`${repo.path}/${r.dir}/${f}`)}
-                  target="_blank"
-                >
-                  <img
-                    loading="lazy"
-                    src={fileHref(`${repo.path}/${r.dir}/${f}`)}
-                    alt=""
-                    class="aspect-video w-full rounded-brand bg-muted object-contain"
-                  />
-                  <span class="truncate font-mono text-micro text-foreground/70">{f}</span>
-                  {caption(f) && <span class="text-micro">{caption(f)}</span>}
-                </a>
-              ))}
+            <div class="mt-2 flex flex-col gap-2">
+              <p class="flex flex-wrap gap-4 text-ui">
+                {r.report && (
+                  <a
+                    class="chip-link"
+                    href={link(`${repo.prefix}doc/${r.report.replace(/\.md$/i, "")}`)}
+                  >
+                    Report
+                  </a>
+                )}
+                {named.map((id) => (
+                  <a class="chip-link" href={link(`${repo.prefix}decisions`)}>
+                    {id}
+                  </a>
+                ))}
+              </p>
+              <div class="grid grid-cols-2 gap-3 xl:grid-cols-3">
+                {r.images.map((f) => (
+                  <a
+                    class="hw-card flex flex-col gap-1 p-2!"
+                    data-hw-exception="image-tile"
+                    href={fileHref(`${repo.path}/${r.dir}/${f}`)}
+                    target="_blank"
+                  >
+                    <img
+                      loading="lazy"
+                      src={fileHref(`${repo.path}/${r.dir}/${f}`)}
+                      alt=""
+                      class="aspect-video w-full rounded-brand bg-muted object-contain"
+                    />
+                    <span class="truncate font-mono text-micro text-foreground/70">{f}</span>
+                    {caption(f) && <span class="text-micro">{caption(f)}</span>}
+                  </a>
+                ))}
+              </div>
             </div>
           </details>
         );
