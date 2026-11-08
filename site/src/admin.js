@@ -98,13 +98,17 @@ function block() {
 const copy = document.getElementById("copy");
 const status = document.getElementById("state");
 const idle = status?.textContent.trim();
-function state() {
+// label: false leaves the button's text to brand's copy button, which says on it how the copy went.
+function state(label = true) {
   if (!copy) return;
   const keys = answered();
   const n = keys.length;
   const since = localStorage.getItem(STORE + "copied") || "";
   const open = keys.filter((k) => read(k).at > since).length;
-  copy.textContent = n ? `Copy ${n} answer${n === 1 ? "" : "s"}` : "Copy answers";
+  // brand's copy button (enhance(), data-hw-copy) copies this text and says on itself how it went.
+  copy.dataset.hwCopy = block();
+  copy.disabled = !n;
+  if (label) copy.textContent = n ? `Copy ${n} answer${n === 1 ? "" : "s"}` : "Copy answers";
   // Once all is copied the button steps back, so it no longer reads as work left.
   if (n && !open) copy.dataset.variant = "secondary";
   else delete copy.dataset.variant;
@@ -133,25 +137,13 @@ for (const d of items) {
     state();
   });
 }
-copy?.addEventListener("click", async () => {
-  const text = block();
-  if (!text) return;
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const t = document.createElement("textarea");
-    t.value = text;
-    document.body.append(t);
-    t.select();
-    document.execCommand("copy");
-    t.remove();
-  }
+copy?.addEventListener("click", () => {
   try {
     localStorage.setItem(STORE + "copied", new Date().toISOString());
   } catch {
     /* storage blocked: the copy still happened */
   }
-  state();
+  state(false);
 });
 
 const search = document.getElementById("admin-search");

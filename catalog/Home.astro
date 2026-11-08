@@ -3,12 +3,14 @@
 import Home from "@hackersandwizards/scaffolding/catalog/Home.astro";
 // The brand version the tiles name is the installed one, which brand-elements compares them with.
 import { version } from "@hackersandwizards/brand/package.json";
+import catalogs from "@hackersandwizards/brand/catalogs.json";
 import ItemGroups from "../site/src/components/ItemGroups.astro";
 import elements from "../brand-elements.json";
 import { withElements } from "../src/repo.ts";
 import { items } from "./story";
 
-const BRAND = "https://hackersandwizards.github.io/brand/";
+const brand = catalogs.find((c) => c.name === "Brand")!;
+const anchor = (name: string) => brand.portal + brand.anchors!.element.replace("<element>", name);
 const notes: Record<string, string> = {
   label: "The rail's group names.",
   pill: "The recommended option among an item's options.",
@@ -42,7 +44,7 @@ const notes: Record<string, string> = {
       <div class="flex flex-col gap-2" data-hw-tile={name} data-hw-version={version}>
         <p class="text-ui">
           from brand v{version} · <code class="hw-inline-code">hw-{name}</code> ·{" "}
-          <a class="hw-link" href={`${BRAND}#hw-${name}`}>
+          <a class="hw-link" href={anchor(name)}>
             catalog
           </a>
         </p>
