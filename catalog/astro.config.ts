@@ -59,6 +59,8 @@ export default defineConfig({
       copy: ["test/fixtures/spoke/**"],
       home: "./Home.astro",
       groupOrder: ["Pages", "Shell", "Items"],
+      // Every story is an Astro component: no story module, with its Node imports, reaches the browser.
+      serverOnly: true,
       // admin.css carries brand's header.css already.
       header: { component: "@hackersandwizards/brand/expert/components/AppHeader.astro" },
     }),
