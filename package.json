@@ -22,8 +22,7 @@
     "catalog/*.astro",
     "catalog/stories",
     "brand-elements.json",
-    "test/fixtures/spoke",
-    "scripts/repo/only-bun.cjs"
+    "test/fixtures/spoke"
   ],
   "scripts": {
     "prepare": "[ \"$(git rev-parse --show-toplevel 2>/dev/null)\" = \"$(pwd -P)\" ] && git config core.hooksPath .githooks || true",
@@ -44,8 +43,8 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.58.0",
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.3.1",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v1.64.0",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.4.0",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.5",
     "@types/bun": "1.4.4",
