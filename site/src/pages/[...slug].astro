@@ -12,6 +12,7 @@ import {
   fileHref,
   forPerson,
   href,
+  keyOf,
   openQuestions,
   repoOf,
   thumbnail,
@@ -304,7 +305,7 @@ const leads: Partial<Record<Page["type"], string>> = {
   {page.type === "work" && (
     <>
       {goals.map((g) => (
-        <details class="hw-disclosure hw-card" id={`${g.repo}:${g.id}`} data-row>
+        <details class="hw-disclosure hw-card" id={keyOf(g)} data-row>
           <summary class="font-mono font-semibold text-ui">{g.title}</summary>
           <div class="mt-3 max-w-prose text-ui [&_p]:mb-2" set:html={g.html} />
         </details>

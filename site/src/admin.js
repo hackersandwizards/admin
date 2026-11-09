@@ -172,7 +172,7 @@ try {
 } catch {
   /* a malformed hash names no item */
 }
-if (target && buttons.length)
+if (target?.dataset.who && buttons.length)
   who = buttons.some((b) => b.dataset.whoButton === target.dataset.who)
     ? target.dataset.who
     : "all";
@@ -221,6 +221,7 @@ addEventListener("storage", () => {
 });
 apply();
 state();
+// The row and every disclosure around it.
 for (let e = target; e; e = e.parentElement?.closest("details")) e.open = true;
 target?.scrollIntoView();
 // A catalog link opens only while its dev server runs: an opaque no-cors request answers

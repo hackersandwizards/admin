@@ -14,15 +14,7 @@ import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { buildCatalog, buildSite, filesUnder, firstWord, PKG, siteData } from "./build.ts";
 import { findRepos } from "./hub.ts";
-import {
-  fileHref,
-  gitAsync,
-  gitBytes,
-  gitEnv,
-  readRepo,
-  THUMB_BOXES,
-  type RepoData,
-} from "./repo.ts";
+import { fileHref, git, gitAsync, gitBytes, readRepo, THUMB_BOXES, type RepoData } from "./repo.ts";
 
 export type ServeOptions = { root: string; rescanMs?: number };
 
@@ -101,8 +93,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   // A built file is compressed once, on its first request that accepts gzip.
   const gzipped = new WeakMap<Buffer, Uint8Array<ArrayBuffer>>();
   // The hub's user is the machine's git identity, by first name as item owners write it.
-  const name = Bun.spawnSync(["git", "-C", root, "config", "user.name"], { env: gitEnv });
-  const you = firstWord(name.stdout.toString().trim()) || undefined;
+  const you = firstWord(git(root, "config", "user.name").trim()) || undefined;
 
   async function rebuild(key: string, repos: RepoData[]) {
     const out = mkdtempSync(join(tmpdir(), "admin-serve-"));

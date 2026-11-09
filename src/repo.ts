@@ -20,7 +20,7 @@ export const gitEnv = Object.fromEntries(
   Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")),
 ) as Record<string, string>;
 
-const git = (cwd: string, ...args: string[]) => {
+export const git = (cwd: string, ...args: string[]) => {
   const r = Bun.spawnSync(["git", "-C", cwd, ...args], { stderr: "ignore", env: gitEnv });
   return r.exitCode === 0 ? r.stdout.toString() : "";
 };
@@ -170,6 +170,16 @@ export type RepoData = {
 };
 
 const AGENT = /^\.claude\/agents\/[^/]+\.md$/;
+const description = (text: string) => {
+  try {
+    const front = Bun.YAML.parse(text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "") as {
+      description?: unknown;
+    } | null;
+    return typeof front?.description === "string" ? front.description : "";
+  } catch {
+    return "";
+  }
+};
 const ASTRO_CONFIG = /^([^/]+\/)?astro\.config\.(ts|mjs|js)$/;
 const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
 export const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
@@ -396,10 +406,7 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     agents: src.paths
       .filter((p) => AGENT.test(p))
       .flatMap(
-        (p) =>
-          (src.read(p) ?? "").match(
-            /^description:\s*(?:[>|][-+]?\s+)?(\p{Lu}[\p{L}-]*), who\b/mu,
-          )?.[1] ?? [],
+        (p) => description(src.read(p) ?? "").match(/^(\p{Lu}[\p{L}-]*), who\b/u)?.[1] ?? [],
       ),
     checkSteps,
     scripts,

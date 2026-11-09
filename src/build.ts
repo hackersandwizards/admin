@@ -76,31 +76,25 @@ function itemHtml(repo: RepoData, text: string) {
 
 export const firstWord = (owner = "") => owner.match(/^[\p{L}\p{N}-]+/u)?.[0] ?? owner;
 
-// `you` is the hub's user, the first person when none is named.
+// `you` is the hub's user where an item owner names them, else the first person.
 export function siteData(repos: RepoData[], you?: string): SiteData {
+  // An owner is a person unless its first word is lower-case ("an agent"), an article, "Agent" or
+  // a name an agent definition gives.
+  const agents = new Set(repos.flatMap((r) => r.agents));
+  const isPerson = (p: string) =>
+    /^\p{Lu}/u.test(p) && !/^(a|an|the|agent)$/i.test(p) && !agents.has(p);
+  const open = repos.flatMap((r) => r.items.filter((i) => i.status === "open"));
   // A person is whoever answers an open question somewhere; work they own counts as theirs. The
   // person with the most open questions comes first, and the hub's filter starts on them.
-  const asked = repos.flatMap((r) =>
-    r.items
-      .filter((i) => i.status === "open" && (i.kind === "decision" || i.kind === "review"))
-      .map((i) => firstWord(i.owner)),
-  );
+  const asked = open
+    .filter((i) => i.kind === "decision" || i.kind === "review")
+    .map((i) => firstWord(i.owner))
+    .filter(isPerson);
   const count = (p: string) => asked.filter((a) => a === p).length;
   const people = [...new Set(asked)].sort((a, b) => count(b) - count(a) || a.localeCompare(b));
-  // An owner is a person unless it starts lower-case ("an agent", "a brand session"), with "Agent",
-  // or with an agent's name.
-  const agents = new Set(repos.flatMap((r) => r.agents));
-  const others = [
-    ...new Set(
-      repos.flatMap((r) =>
-        r.items.filter((i) => i.status === "open").map((i) => firstWord(i.owner)),
-      ),
-    ),
-  ]
-    .filter(
-      (p) => /^\p{Lu}/u.test(p) && p !== "Agent" && !agents.has(p) && p !== (you ?? people[0]),
-    )
-    .sort();
+  const owners = new Set(open.map((i) => firstWord(i.owner)).filter(isPerson));
+  const me = you && owners.has(you) ? you : people[0];
+  const others = [...owners].filter((p) => p !== me).sort();
   const pages: Page[] = [
     { path: "index", type: "hub", title: "Admin hub" },
     { path: "architecture", type: "hub-architecture", title: "Packages" },

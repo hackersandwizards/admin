@@ -2,7 +2,7 @@
 // Open items that people other than the hub's user own, one group per person, the person with the
 // most urgent item first, each row linking to the item on its repo's page.
 import { compareItems } from "../../../src/items.ts";
-import { data, href, isQuestion, type ViewItem } from "../data";
+import { data, href, isQuestion, keyOf, type ViewItem } from "../data";
 
 interface Props {
   /** The page the links start from. */
@@ -13,12 +13,10 @@ const d = data();
 const waiting = d.repos
   .flatMap((r) => r.items.filter((i) => i.status === "open" && d.others.includes(i.who)))
   .sort(compareItems);
-const groups = [...new Set(waiting.map((i) => i.who))].map((who) => ({
-  who,
-  rows: waiting.filter((i) => i.who === who),
-}));
+// Insertion order: each person where their most urgent item stands.
+const groups = [...Map.groupBy(waiting, (i) => i.who)].map(([who, rows]) => ({ who, rows }));
 const to = (i: ViewItem) =>
-  `${href(from, `${i.repo}/${isQuestion(i) ? "decisions" : "work"}`)}#${i.repo}:${i.id}`;
+  `${href(from, `${i.repo}/${isQuestion(i) ? "decisions" : "work"}`)}#${keyOf(i)}`;
 ---
 
 {groups.length > 0 && (

@@ -1,7 +1,7 @@
 ---
 // Options with images are cards; options without are one dense list, so a long list of candidates
 // stays scannable.
-import { day, type ViewItem } from "../data";
+import { day, keyOf, type ViewItem } from "../data";
 import Choice from "./Choice.astro";
 import Shot from "./Shot.astro";
 
@@ -11,7 +11,7 @@ interface Props {
   open?: boolean;
 }
 const { item: i, showRepo = false, open = false } = Astro.props;
-const k = `${i.repo}:${i.id}`;
+const k = keyOf(i);
 const options = i.options ?? [];
 const shots = (key: string) => i.optionImages[key] ?? [];
 const carded = options.some((o) => shots(o.key).length);

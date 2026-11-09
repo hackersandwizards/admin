@@ -332,7 +332,7 @@ describe("pages", () => {
     const html = readFileSync(join(out, "index.html"), "utf8");
     expect(html).toContain("Which variant ships?");
     // Waiting on others links a person's item to its row; an agent's item stays off the hub.
-    const waiting = html.slice(html.indexOf("Waiting on others"));
+    const waiting = html.slice(html.indexOf("Waiting on others"), html.indexOf("Repositories"));
     expect(waiting).toContain('href="spoke/work.html#spoke:ask-the-printer"');
     expect(waiting).toContain('href="spoke/decisions.html#spoke:check-the-copy"');
     expect(html).not.toContain("Sort the sample files");
@@ -409,6 +409,16 @@ describe("pages", () => {
     // The first person stands for the hub's user when none is named.
     expect(siteData([repo]).others).toEqual(["Kim", "Sam"]);
     expect(siteData([repo], "Sam").others).toEqual(["Alex", "Kim"]);
+    // A git name no owner writes stands for nobody: the first person does.
+    expect(siteData([repo], "bstemmildt").others).toEqual(["Kim", "Sam"]);
+    const owned = (owner: string) => ({
+      ...repo.items[0]!,
+      id: owner,
+      status: "open" as const,
+      owner,
+    });
+    const more = { ...repo, items: [...repo.items, owned("An agent"), owned("The agent")] };
+    expect(siteData([more]).others).toEqual(["Kim", "Sam"]);
   });
   test("leaving a page asks nothing: answers are stored as they are typed", () => {
     const script = readFileSync(join(import.meta.dir, "../site/src/admin.js"), "utf8");

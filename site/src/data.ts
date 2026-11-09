@@ -25,6 +25,8 @@ let paths: Set<string> | undefined;
 export const hasPage = (path: string) =>
   (paths ??= new Set(data().pages.map((p) => p.path))).has(path);
 
+// An item's row id on a page, which a link to the item names after #.
+export const keyOf = (i: ViewItem) => `${i.repo}:${i.id}`;
 export const isQuestion = (i: ViewItem) => i.kind === "decision" || i.kind === "review";
 export const openQuestions = (items: ViewItem[]) =>
   items.filter((i) => i.status === "open" && isQuestion(i));
