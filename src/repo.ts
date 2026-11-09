@@ -150,7 +150,7 @@ export type RepoData = {
   reports: Report[];
   reviews: Review[];
   docs: Doc[];
-  // Every file under docs/agent-work outside the items, which an item's path links to.
+  // Every file under docs/agent-work, which a path in an item links to.
   workFiles: string[];
   pkg: {
     name?: string;
@@ -218,9 +218,11 @@ export const withElements = (html: string) =>
     .replace(/<pre>/g, '<pre class="hw-code not-prose">')
     .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');
 
-export function renderMarkdown(repo: string, path: string, text: string) {
+// `text` without front matter, as an item's body, renders whole: a leading rule stays a rule.
+export function renderMarkdown(repo: string, path: string, text: string, front = true) {
   const dir = join(repo, path, "..");
-  const html = withElements(Bun.markdown.html(text.replace(/^---\n[\s\S]*?\n---\n/, "")));
+  const body = front ? text.replace(/^---\n[\s\S]*?\n---\n/, "") : text;
+  const html = withElements(Bun.markdown.html(body));
   return html.replace(/(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"]+)"/gi, (_, attr, rel) => {
     let path = rel;
     try {
@@ -392,7 +394,7 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     reports,
     reviews,
     docs,
-    workFiles: tracking,
+    workFiles: src.paths.filter((p) => p.startsWith(`${WORK_DIR}/`)),
     pkg: {
       name: pkg.name as string | undefined,
       version: pkg.version as string | undefined,

@@ -224,6 +224,7 @@ describe("admin-check", () => {
       "Old: `git show abc~1:docs/agent-work/gone.md` in other.",
       "Own: docs/agent-work/2026-01-15-sample-topic.md, none: docs/agent-work/missing.md.",
       "[relative](../2026-01-15-sample-topic.md)",
+      "Folder: docs/agent-work/2026-01-15-sample-topic, item: docs/agent-work/items/goal.md.",
     ].join("\n\n");
     const item = parseItem(
       "x",
@@ -246,6 +247,15 @@ describe("admin-check", () => {
       new RegExp(`${at(`${spoke.path}/docs/agent-work/2026-01-15-sample-topic.md`)}>relative<`),
     );
     expect(html).not.toContain('href="../');
+    // A folder has no file to serve; an item file has.
+    expect(html).not.toContain('sample-topic"');
+    expect(html).toContain(at(`${spoke.path}/docs/agent-work/items/goal.md`));
+    // A body has no front matter: a leading rule stays, with the text after it.
+    const ruled = { ...item, id: "ruled", body: "---\nKept.\n\n---\nAfter." };
+    const unowned = { ...item, id: "unowned", owner: undefined };
+    const [r, u] = siteData([{ ...spoke, items: [ruled, unowned] }]).repos[0]!.items;
+    expect(r!.html).toContain("Kept.");
+    expect(u!.agent).toBe(false);
   });
 
   test("a stray % in a Markdown link stays as written", () => {
@@ -491,6 +501,19 @@ describe("serve", () => {
     for (const p of ["astro", "tailwindcss", "@tailwindcss/vite", "@tailwindcss/typography"])
       expect(peerDependenciesMeta).toHaveProperty([p, "optional"], true);
   });
+
+  test("rebuilds on a new day, since a due date comes within a week with no commit", async () => {
+    const hub = createHub({ root: dirname(repoFrom("spoke")) });
+    const first = await hub.pages();
+    expect(await hub.pages()).toBe(first);
+    const now = Date.now;
+    Date.now = () => now() + 864e5;
+    try {
+      expect(await hub.pages()).not.toBe(first);
+    } finally {
+      Date.now = now;
+    }
+  }, 120_000);
 
   test("serves committed pages and files, rebuilding only after a commit", async () => {
     const repo = repoFrom("spoke");

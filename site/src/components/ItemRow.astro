@@ -54,11 +54,7 @@ const soon = dueSoon(i.due);
       <span class="block text-ui text-foreground/70">{meta.join(" · ")}</span>
     </span>
     {i.due && (
-      <span
-        class="hw-pill shrink-0"
-        data-tone={soon ? undefined : "neutral"}
-        data-due={soon ? "soon" : undefined}
-      >
+      <span class="hw-pill shrink-0" data-tone={soon ? undefined : "neutral"}>
         due {day(Date.parse(i.due) / 1000)}
       </span>
     )}

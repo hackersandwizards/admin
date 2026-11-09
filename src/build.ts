@@ -58,19 +58,28 @@ export type SiteData = {
   people: string[];
   // People other than the hub's user who own an open item: its "Waiting on others".
   others: string[];
-  repos: (Omit<RepoData, "items"> & { items: ViewItem[]; prefix: string; dashboard: string })[];
+  repos: (Omit<RepoData, "items" | "workFiles"> & {
+    items: ViewItem[];
+    prefix: string;
+    dashboard: string;
+  })[];
   pages: Page[];
 };
 
 const escape = (s: string) =>
   s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-// A path under docs/agent-work links into the repository named right before it ("website
+// A file path under docs/agent-work links into the repository named right before it ("website
 // `docs/...`") or after it ("`...` in trainer-hub"), else into the item's own, and stays text where
 // that repository holds no such file. A Markdown link relative to the item file is rewritten like a
 // report's. An existing link keeps its text, so no link nests in another.
-function itemHtml(repo: RepoData, byKey: Map<string, RepoData>, text: string) {
-  const html = renderMarkdown(repo.path, `${ITEMS_DIR}/item.md`, text);
+function itemHtml(
+  repo: RepoData,
+  byKey: Map<string, RepoData>,
+  files: Map<RepoData, Set<string>>,
+  text: string,
+) {
+  const html = renderMarkdown(repo.path, `${ITEMS_DIR}/item.md`, text, false);
   const named = (before: string, after: string) =>
     [
       before.match(/([\w.-]+)\s+(?:<code[^>]*>)?$/)?.[1],
@@ -81,17 +90,13 @@ function itemHtml(repo: RepoData, byKey: Map<string, RepoData>, text: string) {
     .map((part, n) =>
       n % 2
         ? part
-        : part.replace(
-            /(?<![\w/"=])(docs\/agent-work\/[\w./äöüÄÖÜß-]*\w\/?)/g,
-            (p, _, at: number) => {
-              const key = named(part.slice(Math.max(0, at - 80), at), part.slice(at + p.length));
-              const target = key ? byKey.get(key)! : repo;
-              const dir = p.replace(/\/?$/, "/");
-              return target.workFiles.some((f) => f === p || f.startsWith(dir))
-                ? `<a class="hw-link" href="${escape(fileHref(join(target.path, p)))}">${p}</a>`
-                : p;
-            },
-          ),
+        : part.replace(/(?<![\w/"=])(docs\/agent-work\/[\w./äöüÄÖÜß-]*\w)/g, (p, _, at: number) => {
+            const key = named(part.slice(Math.max(0, at - 80), at), part.slice(at + p.length));
+            const target = key ? byKey.get(key)! : repo;
+            return files.get(target)!.has(p)
+              ? `<a class="hw-link" href="${escape(fileHref(join(target.path, p)))}">${p}</a>`
+              : p;
+          }),
     )
     .join("");
 }
@@ -122,6 +127,7 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
     { path: "architecture", type: "hub-architecture", title: "Packages" },
   ];
   const byKey = new Map(repos.map((r) => [r.key, r]));
+  const files = new Map(repos.map((r) => [r, new Set(r.workFiles)]));
   const out = repos.map((r) => {
     const prefix = `${r.key}/`;
     const items = [...r.items].sort(compareItems).map((i) => {
@@ -130,8 +136,8 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
         ...i,
         repo: r.key,
         who: firstWord(i.owner),
-        html: itemHtml(r, byKey, i.body),
-        agent: !isPerson(firstWord(i.owner)),
+        html: itemHtml(r, byKey, files, i.body),
+        agent: !!i.owner && !isPerson(firstWord(i.owner)),
         optionImages: Object.fromEntries(
           Object.entries(imagesOf(i)).map(([k, list]) => [
             k,
@@ -172,7 +178,8 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
         doc: d.path,
         title: d.title,
       });
-    return { ...r, items, prefix, dashboard };
+    const { workFiles: _, ...rest } = r;
+    return { ...rest, items, prefix, dashboard };
   });
   return { version: VERSION, people, others, repos: out, pages };
 }

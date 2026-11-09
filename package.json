@@ -84,19 +84,19 @@
     "tailwindcss": "^4.3.3"
   },
   "peerDependenciesMeta": {
-    "astro": {
-      "optional": true
-    },
     "@hackersandwizards/brand": {
-      "optional": true
-    },
-    "tailwindcss": {
       "optional": true
     },
     "@tailwindcss/typography": {
       "optional": true
     },
     "@tailwindcss/vite": {
+      "optional": true
+    },
+    "astro": {
+      "optional": true
+    },
+    "tailwindcss": {
       "optional": true
     }
   },

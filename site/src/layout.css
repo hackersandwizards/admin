@@ -54,11 +54,6 @@
     font-size: var(--text-subheading);
     line-height: 1.5;
   }
-  /* A due date a week or less away, or past, in brand's state hue for a gap to act on. */
-  .hw-pill[data-due="soon"] {
-    --hw-pill-hue: var(--color-amber-dark);
-    --hw-pill-hue-night: var(--color-amber);
-  }
   .task-list-item-checkbox {
     margin-inline-end: 0.5rem;
   }

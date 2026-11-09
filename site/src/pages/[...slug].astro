@@ -55,6 +55,7 @@ const allNeeds = d.repos.flatMap((r) => needs(r.items)).sort(compareItems);
 const agentWork = (list: typeof items) =>
   list.filter((i) => i.kind === "work" && i.status === "open" && i.agent);
 const allAgentWork = d.repos.flatMap((r) => agentWork(r.items)).sort(compareItems);
+const repoAgentWork = agentWork(items);
 const byPriority = (list: typeof items, p: number) => list.filter((i) => i.priority === p).length;
 const doc = repo && [...repo.reports, ...repo.docs].find((x) => x.path === page.doc);
 const product = repo && page.product !== undefined ? repo.products[page.product] : undefined;
@@ -268,10 +269,10 @@ const leads: Partial<Record<Page["type"], string>> = {
         </section>
       )}
       <Waiting from={page.path} repo={repo.key} />
-      {agentWork(items).length > 0 && (
+      {repoAgentWork.length > 0 && (
         <section class="flex flex-col gap-2">
           <h2 class="font-mono font-semibold text-heading">Agents on it</h2>
-          <ItemGroups items={agentWork(items)} openUpTo={0} />
+          <ItemGroups items={repoAgentWork} openUpTo={0} />
         </section>
       )}
       <div class="grid gap-8 xl:grid-cols-2">

@@ -139,7 +139,10 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     // A repository gone from the search leaves no entry for /_file/ to find under its key.
     for (const p of read.keys()) if (!current.includes(p)) read.delete(p);
     const states = await Promise.all(current.map(async (p) => [p, await stateOf(p)] as const));
-    const key = states.map(([p, s]) => `${p} ${s}`).join("\n");
+    // The day is part of the state: a due date comes within a week of it with no commit.
+    const key = [new Date(Date.now()).toDateString(), ...states.map(([p, s]) => `${p} ${s}`)].join(
+      "\n",
+    );
     if (site?.key === key) return site.files;
     // A repository that fails to read keeps its last pages, or is left out, and is read again on
     // the next request.
