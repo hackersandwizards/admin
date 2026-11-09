@@ -54,6 +54,8 @@ export type Page = {
 export type SiteData = {
   version: string;
   people: string[];
+  // People other than the hub's user who own an open item: its "Waiting on others".
+  others: string[];
   repos: (Omit<RepoData, "items"> & { items: ViewItem[]; prefix: string; dashboard: string })[];
   pages: Page[];
 };
@@ -74,7 +76,8 @@ function itemHtml(repo: RepoData, text: string) {
 
 export const firstWord = (owner = "") => owner.match(/^[\p{L}\p{N}-]+/u)?.[0] ?? owner;
 
-export function siteData(repos: RepoData[]): SiteData {
+// `you` is the hub's user, the first person when none is named.
+export function siteData(repos: RepoData[], you?: string): SiteData {
   // A person is whoever answers an open question somewhere; work they own counts as theirs. The
   // person with the most open questions comes first, and the hub's filter starts on them.
   const asked = repos.flatMap((r) =>
@@ -84,6 +87,20 @@ export function siteData(repos: RepoData[]): SiteData {
   );
   const count = (p: string) => asked.filter((a) => a === p).length;
   const people = [...new Set(asked)].sort((a, b) => count(b) - count(a) || a.localeCompare(b));
+  // An owner is a person unless it starts lower-case ("an agent", "a brand session"), with "Agent",
+  // or with an agent's name.
+  const agents = new Set(repos.flatMap((r) => r.agents));
+  const others = [
+    ...new Set(
+      repos.flatMap((r) =>
+        r.items.filter((i) => i.status === "open").map((i) => firstWord(i.owner)),
+      ),
+    ),
+  ]
+    .filter(
+      (p) => /^\p{Lu}/u.test(p) && p !== "Agent" && !agents.has(p) && p !== (you ?? people[0]),
+    )
+    .sort();
   const pages: Page[] = [
     { path: "index", type: "hub", title: "Admin hub" },
     { path: "architecture", type: "hub-architecture", title: "Packages" },
@@ -139,7 +156,7 @@ export function siteData(repos: RepoData[]): SiteData {
       });
     return { ...r, items, prefix, dashboard };
   });
-  return { version: VERSION, people, repos: out, pages };
+  return { version: VERSION, people, others, repos: out, pages };
 }
 
 // Every path is resolved, since the package may sit hoisted or nested.

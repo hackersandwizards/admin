@@ -165,6 +165,17 @@ const stored = localStorage.getItem(STORE + "who");
 let who = buttons.some((b) => b.dataset.whoButton === stored)
   ? stored
   : buttons[0]?.dataset.whoButton || "all";
+// A link to an item opens it and shows it whatever person the filter is on.
+let target = null;
+try {
+  target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+} catch {
+  /* a malformed hash names no item */
+}
+if (target && buttons.length)
+  who = buttons.some((b) => b.dataset.whoButton === target.dataset.who)
+    ? target.dataset.who
+    : "all";
 const rows = () => [...document.querySelectorAll("[data-row]")];
 function apply() {
   const term = (search?.value || "").trim().toLowerCase();
@@ -210,6 +221,8 @@ addEventListener("storage", () => {
 });
 apply();
 state();
+for (let e = target; e; e = e.parentElement?.closest("details")) e.open = true;
+target?.scrollIntoView();
 // A catalog link opens only while its dev server runs: an opaque no-cors request answers
 // when the server listens and fails when nothing does.
 for (const p of document.querySelectorAll("[data-dev]")) {

@@ -1,0 +1,63 @@
+---
+// Open items that people other than the hub's user own, one group per person, the person with the
+// most urgent item first, each row linking to the item on its repo's page.
+import { compareItems } from "../../../src/items.ts";
+import { data, href, isQuestion, type ViewItem } from "../data";
+
+interface Props {
+  /** The page the links start from. */
+  from: string;
+}
+const { from } = Astro.props;
+const d = data();
+const waiting = d.repos
+  .flatMap((r) => r.items.filter((i) => i.status === "open" && d.others.includes(i.who)))
+  .sort(compareItems);
+const groups = [...new Set(waiting.map((i) => i.who))].map((who) => ({
+  who,
+  rows: waiting.filter((i) => i.who === who),
+}));
+const to = (i: ViewItem) =>
+  `${href(from, `${i.repo}/${isQuestion(i) ? "decisions" : "work"}`)}#${i.repo}:${i.id}`;
+---
+
+{groups.length > 0 && (
+  <section class="flex flex-col gap-2">
+    <h2 class="font-mono font-semibold text-heading">Waiting on others</h2>
+    {groups.map((g) => (
+      <details class="hw-disclosure" data-group open>
+        <summary class="py-2 font-mono font-semibold text-ui">
+          {g.who}{" "}
+          <span class="ml-1 font-normal text-foreground/70" data-count>
+            {g.rows.length}
+          </span>
+        </summary>
+        <div class="hw-card p-0!" data-hw-exception="item-list">
+          {g.rows.map((i) => (
+            <div
+              class="flex items-start gap-3 border-b border-border px-3 py-2 last:border-b-0"
+              data-row
+            >
+              <span
+                class="hw-pill shrink-0 font-mono"
+                data-priority={i.priority}
+                data-variant={i.priority ? undefined : "outline"}
+                data-hw-exception="priority-pill"
+              >
+                {i.kind === "goal" ? "Goal" : `P${i.priority ?? "–"}`}
+              </span>
+              <span class="min-w-0 flex-1">
+                <a class="hw-link block font-medium text-ui" href={to(i)}>
+                  {i.title}
+                </a>
+                <span class="block text-ui text-foreground/70">
+                  {[i.repo, i.kind, i.owner !== i.who ? i.owner : ""].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </details>
+    ))}
+  </section>
+)}

@@ -49,7 +49,8 @@ export async function headSource(repo: string): Promise<Source> {
       p === "package.json" ||
       ASTRO_CONFIG.test(p) ||
       (/\.md$/i.test(p) && (p.startsWith("docs/") || !p.includes("/"))) ||
-      /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/.test(p),
+      /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/.test(p) ||
+      AGENT.test(p),
   );
   const batch = await gitBytes(
     repo,
@@ -160,12 +161,15 @@ export type RepoData = {
   designSystemDev?: { port: number; start?: string };
   products: Product[];
   links: Link[];
+  // The name each agent definition gives its colleague: "Ada, who runs ..." in its description.
+  agents: string[];
   checkSteps: string[];
   scripts: ScriptFile[];
   trackingLog: Commit[];
   log: Commit[];
 };
 
+const AGENT = /^\.claude\/agents\/[^/]+\.md$/;
 const ASTRO_CONFIG = /^([^/]+\/)?astro\.config\.(ts|mjs|js)$/;
 const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
 export const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
@@ -389,6 +393,14 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     designSystemDev,
     products: linked(admin.products).map((p) => ({ ...p, href: href(p.href) })),
     links: linked(admin.links).map((l) => ({ ...l, href: href(l.href) })),
+    agents: src.paths
+      .filter((p) => AGENT.test(p))
+      .flatMap(
+        (p) =>
+          (src.read(p) ?? "").match(
+            /^description:\s*(?:[>|][-+]?\s+)?(\p{Lu}[\p{L}-]*), who\b/mu,
+          )?.[1] ?? [],
+      ),
     checkSteps,
     scripts,
     trackingLog,

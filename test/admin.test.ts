@@ -154,6 +154,7 @@ describe("admin-check", () => {
     const { items, defects } = readItems(treeSource(join(FIX, "spoke")));
     expect(defects).toEqual([]);
     expect(items.map((i) => i.id).sort()).toEqual([
+      "ask-the-printer",
       "cache-folder",
       "check-the-copy",
       "goal",
@@ -161,6 +162,7 @@ describe("admin-check", () => {
       "pick-a-logo",
       "pick-a-variant",
       "pick-recipients",
+      "sort-the-samples",
       "work-wire-the-gate",
     ]);
   });
@@ -329,6 +331,14 @@ describe("pages", () => {
     await buildSite(siteData([await readRepo(repo), await readRepo(plain)]), out);
     const html = readFileSync(join(out, "index.html"), "utf8");
     expect(html).toContain("Which variant ships?");
+    // Waiting on others links a person's item to its row; an agent's item stays off the hub.
+    const waiting = html.slice(html.indexOf("Waiting on others"));
+    expect(waiting).toContain('href="spoke/work.html#spoke:ask-the-printer"');
+    expect(waiting).toContain('href="spoke/decisions.html#spoke:check-the-copy"');
+    expect(html).not.toContain("Sort the sample files");
+    expect(readFileSync(join(out, "spoke/work.html"), "utf8")).toContain(
+      'id="spoke:ask-the-printer"',
+    );
     const pages = readdirSync(join(out, "spoke"), { recursive: true }) as string[];
     expect(pages).toContain("decisions.html");
     expect(pages).toContain("products-1.html");
@@ -393,6 +403,13 @@ describe("pages", () => {
     ])
       expect(repos(readFileSync(join(out, from!), "utf8"))).toContain(to!);
   }, 60_000);
+  test("waiting on others: people other than the hub's user, never an agent", async () => {
+    const repo = await readRepo(join(FIX, "spoke"), treeSource(join(FIX, "spoke")));
+    expect(repo.agents).toEqual(["Ivo"]);
+    // The first person stands for the hub's user when none is named.
+    expect(siteData([repo]).others).toEqual(["Kim", "Sam"]);
+    expect(siteData([repo], "Sam").others).toEqual(["Alex", "Kim"]);
+  });
   test("leaving a page asks nothing: answers are stored as they are typed", () => {
     const script = readFileSync(join(import.meta.dir, "../site/src/admin.js"), "utf8");
     expect(script).not.toMatch(/beforeunload/);
