@@ -7,10 +7,13 @@ import { data, href, isQuestion, keyOf, type ViewItem } from "../data";
 interface Props {
   /** The page the links start from. */
   from: string;
+  /** Only this repository's items, on its dashboard. */
+  repo?: string;
 }
-const { from } = Astro.props;
+const { from, repo } = Astro.props;
 const d = data();
 const waiting = d.repos
+  .filter((r) => !repo || r.key === repo)
   .flatMap((r) => r.items.filter((i) => i.status === "open" && d.others.includes(i.who)))
   .sort(compareItems);
 // Insertion order: each person where their most urgent item stands.

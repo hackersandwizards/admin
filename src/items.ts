@@ -171,11 +171,19 @@ export function usable(item: Item): Item {
   };
 }
 
+// Within a priority `order` ranks, and a due date leads only once it is this close or past: one
+// week before it, an item tops its group, while a date further out leaves the ranking alone.
+export const DUE_SOON_DAYS = 7;
+export const dueSoon = (due: string | undefined, now = Date.now()) =>
+  !!due && Date.parse(due) - now <= DUE_SOON_DAYS * 864e5;
+
 export function compareItems(a: Item & { changed?: number }, b: Item & { changed?: number }) {
+  const soon = (i: Item) => (dueSoon(i.due) ? i.due! : "9");
   return (
     (a.priority ?? 9) - (b.priority ?? 9) ||
-    (a.due ?? "9").localeCompare(b.due ?? "9") ||
+    soon(a).localeCompare(soon(b)) ||
     (a.order ?? 1e9) - (b.order ?? 1e9) ||
+    (a.due ?? "9").localeCompare(b.due ?? "9") ||
     (b.changed ?? 0) - (a.changed ?? 0) ||
     a.id.localeCompare(b.id)
   );

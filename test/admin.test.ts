@@ -14,7 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import { peerDependenciesMeta } from "../package.json";
 import { buildSite, PAGE_TYPES, siteData } from "../src/build.ts";
 import { findRepos } from "../src/hub.ts";
-import { itemDefects, parseItem, type Item } from "../src/items.ts";
+import { compareItems, DUE_SOON_DAYS, itemDefects, parseItem, type Item } from "../src/items.ts";
 import { gitEnv, readItems, readRepo, renderMarkdown, treeSource } from "../src/repo.ts";
 import { createHub, csp } from "../src/serve.ts";
 
@@ -71,6 +71,21 @@ const valid: Item = {
 const exists = () => true;
 
 describe("item files", () => {
+  test("within a priority order ranks, and a due date leads only within a week", () => {
+    const day = 864e5;
+    const at = (n: number) => new Date(Date.now() + n * day).toISOString().slice(0, 10);
+    const ranked = { ...valid, id: "ranked", order: 10 };
+    const far = { ...valid, id: "far", order: 20, due: at(30) };
+    const near = { ...valid, id: "near", order: 30, due: at(DUE_SOON_DAYS - 1) };
+    const late = { ...valid, id: "late", order: 40, due: at(-2) };
+    expect([near, far, ranked, late].sort(compareItems).map((i) => i.id)).toEqual([
+      "late",
+      "near",
+      "ranked",
+      "far",
+    ]);
+  });
+
   test("parse reads front matter, title and body", () => {
     const text =
       "---\nkind: decision\nstatus: open\npriority: 2\nowner: Alex\nrecommended: a\noptions:\n  - key: a\n    label: A\n  - key: b\n    label: B\n---\n\n# A question?\n\nContext.\n";
@@ -202,6 +217,37 @@ describe("admin-check", () => {
     expect(readFileSync(join(out, "r/decisions.html"), "utf8")).toContain("Odd");
   });
 
+  test("an item's paths link into the repository named beside them, or stay text", async () => {
+    const spoke = await readRepo(join(FIX, "spoke"), treeSource(join(FIX, "spoke")));
+    const body = [
+      "Report: other `docs/agent-work/notes.md`.",
+      "Old: `git show abc~1:docs/agent-work/gone.md` in other.",
+      "Own: docs/agent-work/2026-01-15-sample-topic.md, none: docs/agent-work/missing.md.",
+      "[relative](../2026-01-15-sample-topic.md)",
+    ].join("\n\n");
+    const item = parseItem(
+      "x",
+      `---\nkind: work\nstatus: open\npriority: 1\nowner: A\n---\n# X\n\n${body}\n`,
+    );
+    const other = {
+      ...spoke,
+      key: "other",
+      path: "/o/other",
+      items: [],
+      workFiles: ["docs/agent-work/notes.md"],
+    };
+    const html = siteData([{ ...spoke, items: [item] }, other]).repos[0]!.items[0]!.html;
+    const at = (path: string) => `href="file://${path}"`;
+    expect(html).toContain(at("/o/other/docs/agent-work/notes.md"));
+    expect(html).not.toContain('gone.md"');
+    expect(html).toContain(at(`${spoke.path}/docs/agent-work/2026-01-15-sample-topic.md`));
+    expect(html).not.toContain('missing.md"');
+    expect(html).toMatch(
+      new RegExp(`${at(`${spoke.path}/docs/agent-work/2026-01-15-sample-topic.md`)}>relative<`),
+    );
+    expect(html).not.toContain('href="../');
+  });
+
   test("a stray % in a Markdown link stays as written", () => {
     expect(renderMarkdown("/r", "docs/a.md", "[half](50%.md)")).toContain("docs/50%25.md");
   });
@@ -331,11 +377,24 @@ describe("pages", () => {
     await buildSite(siteData([await readRepo(repo), await readRepo(plain)]), out);
     const html = readFileSync(join(out, "index.html"), "utf8");
     expect(html).toContain("Which variant ships?");
-    // Waiting on others links a person's item to its row; an agent's item stays off the hub.
-    const waiting = html.slice(html.indexOf("Waiting on others"), html.indexOf("Repositories"));
+    // Waiting on others links a person's item to its row; an agent's item shows under its own
+    // heading, collapsed, and no person filter hides it.
+    const waiting = html.slice(html.indexOf("Waiting on others"), html.indexOf("Agents on it"));
     expect(waiting).toContain('href="spoke/work.html#spoke:ask-the-printer"');
     expect(waiting).toContain('href="spoke/decisions.html#spoke:check-the-copy"');
-    expect(html).not.toContain("Sort the sample files");
+    expect(html.indexOf("Sort the sample files")).toBeGreaterThan(html.indexOf("Agents on it"));
+    const agents = html.slice(html.indexOf("Agents on it"), html.indexOf("Repositories"));
+    expect(agents).not.toMatch(/<details[^>]*data-group[^>]* open/);
+    expect(agents).toMatch(/<details[^>]*id="spoke:sort-the-samples"(?![^>]*data-who)[^>]*>/);
+    expect(readFileSync(join(out, "spoke/dashboard.html"), "utf8")).toContain(
+      "Sort the sample files",
+    );
+    // On a phone the repositories table keeps three columns; the most urgent item goes under the
+    // repository's name.
+    const table = html.slice(html.indexOf(">Repositories</h2>"));
+    expect(
+      table.slice(0, table.indexOf("</thead>")).match(/<th(?=[\s>])(?![^>]*max-sm:hidden)[^>]*>/g),
+    ).toHaveLength(3);
     expect(readFileSync(join(out, "spoke/work.html"), "utf8")).toContain(
       'id="spoke:ask-the-printer"',
     );
@@ -427,9 +486,9 @@ describe("pages", () => {
 });
 
 describe("serve", () => {
-  test("a repository that never serves the hub installs no Tailwind for it", () => {
+  test("a repository that never serves the hub installs no Tailwind or Astro for it", () => {
     // admin-serve stops and names a missing optional peer, so only a repository that serves pins it.
-    for (const p of ["tailwindcss", "@tailwindcss/vite", "@tailwindcss/typography"])
+    for (const p of ["astro", "tailwindcss", "@tailwindcss/vite", "@tailwindcss/typography"])
       expect(peerDependenciesMeta).toHaveProperty([p, "optional"], true);
   });
 

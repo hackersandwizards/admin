@@ -132,6 +132,13 @@ Dashboard, Decisions, Work, Reviews (every item with images, then each older
 Architecture (package, pins, scripts with their first comment line), Checks (the steps of
 `check:all` or `check`) and Log.
 
+Items sort by `priority`, then `order`; a `due` date seven days away or nearer, or past, leads its
+priority, and every `due` shows as a badge. Work an agent owns shows collapsed under "Agents on
+it". In an item's text a path under `docs/agent-work/` links into the repository named right
+before it (``website `docs/agent-work/…` ``) or after it (`` `…` in website ``), else into the
+item's own, and stays text where that repository holds no such file. A Markdown link relative to
+the item file resolves from `docs/agent-work/items/`.
+
 A repository configures what convention cannot find under `admin` in its `package.json`:
 
 ```json

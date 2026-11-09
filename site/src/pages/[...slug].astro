@@ -51,6 +51,10 @@ const provenance = repo
 const needs = (list: typeof items) =>
   [...openQuestions(list), ...forPerson(list)].sort(compareItems);
 const allNeeds = d.repos.flatMap((r) => needs(r.items)).sort(compareItems);
+// Open work an agent owns: no person acts on it, and it shows so that none of it goes unseen.
+const agentWork = (list: typeof items) =>
+  list.filter((i) => i.kind === "work" && i.status === "open" && i.agent);
+const allAgentWork = d.repos.flatMap((r) => agentWork(r.items)).sort(compareItems);
 const byPriority = (list: typeof items, p: number) => list.filter((i) => i.priority === p).length;
 const doc = repo && [...repo.reports, ...repo.docs].find((x) => x.path === page.doc);
 const product = repo && page.product !== undefined ? repo.products[page.product] : undefined;
@@ -62,7 +66,7 @@ const answersAll = page.type === "decisions" || page.type === "hub";
 // Every page with answerable rows hands its answers over from where they were given.
 const answerable = answersAll || ["dashboard", "work", "reviews"].includes(page.type);
 const leads: Partial<Record<Page["type"], string>> = {
-  hub: "What waits on a person across every repository, read from each one's last commit: questions to answer and work to move, by priority and due date. Images and reports open where they sit.",
+  hub: "What waits on a person across every repository, read from each one's last commit: questions to answer and work to move, by priority and rank, a due date within a week first, then the work agents carry. Images and reports open where they sit.",
   "hub-architecture": "Which version of each h&w package every repository pins.",
   dashboard:
     "What waits on a person in this repository, what the agents produced, and where its docs, catalog and checks are.",
@@ -110,6 +114,12 @@ const leads: Partial<Record<Page["type"], string>> = {
         />
       </section>
       <Waiting from={page.path} />
+      {allAgentWork.length > 0 && (
+        <section class="flex flex-col gap-2">
+          <h2 class="font-mono font-semibold text-heading">Agents on it</h2>
+          <ItemGroups items={allAgentWork} showRepo openUpTo={0} />
+        </section>
+      )}
       <section>
         <h2 class="mb-2 font-mono font-semibold text-heading">Repositories</h2>
         <table class="hw-table w-full">
@@ -117,12 +127,12 @@ const leads: Partial<Record<Page["type"], string>> = {
             <tr>
               <th>Repo</th>
               <th class="text-right">Decide P1</th>
-              <th class="text-right">P2</th>
-              <th class="text-right">P3</th>
-              <th class="text-right">Review</th>
+              <th class="text-right max-sm:hidden">P2</th>
+              <th class="text-right max-sm:hidden">P3</th>
+              <th class="text-right max-sm:hidden">Review</th>
               <th class="text-right">Work for a person</th>
-              <th class="text-right">Assumed</th>
-              <th>Most urgent</th>
+              <th class="text-right max-sm:hidden">Assumed</th>
+              <th class="max-sm:hidden">Most urgent</th>
             </tr>
           </thead>
           <tbody>
@@ -140,18 +150,23 @@ const leads: Partial<Record<Page["type"], string>> = {
                     {r.defects.length > 0 && (
                       <span class="ml-1 text-error">{r.defects.length} defects</span>
                     )}
+                    {top && <span class="block sm:hidden text-foreground/70">{top.title}</span>}
                   </td>
                   <td class="text-right tabular-nums">{byPriority(decide, 1) || ""}</td>
-                  <td class="text-right tabular-nums">{byPriority(decide, 2) || ""}</td>
-                  <td class="text-right tabular-nums">{byPriority(decide, 3) || ""}</td>
-                  <td class="text-right tabular-nums">
+                  <td class="text-right tabular-nums max-sm:hidden">
+                    {byPriority(decide, 2) || ""}
+                  </td>
+                  <td class="text-right tabular-nums max-sm:hidden">
+                    {byPriority(decide, 3) || ""}
+                  </td>
+                  <td class="text-right tabular-nums max-sm:hidden">
                     {q.filter((i) => i.kind === "review").length || ""}
                   </td>
                   <td class="text-right tabular-nums">{forPerson(r.items).length || ""}</td>
-                  <td class="text-right tabular-nums">
+                  <td class="text-right tabular-nums max-sm:hidden">
                     {r.items.filter((i) => i.status === "assumed").length || ""}
                   </td>
-                  <td class="max-w-md">{top ? top.title : ""}</td>
+                  <td class="max-w-md max-sm:hidden">{top ? top.title : ""}</td>
                 </tr>
               );
             })}
@@ -250,6 +265,13 @@ const leads: Partial<Record<Page["type"], string>> = {
                 <ItemRow item={i} />
               ))}
           </div>
+        </section>
+      )}
+      <Waiting from={page.path} repo={repo.key} />
+      {agentWork(items).length > 0 && (
+        <section class="flex flex-col gap-2">
+          <h2 class="font-mono font-semibold text-heading">Agents on it</h2>
+          <ItemGroups items={agentWork(items)} openUpTo={0} />
         </section>
       )}
       <div class="grid gap-8 xl:grid-cols-2">

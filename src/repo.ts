@@ -150,6 +150,8 @@ export type RepoData = {
   reports: Report[];
   reviews: Review[];
   docs: Doc[];
+  // Every file under docs/agent-work outside the items, which an item's path links to.
+  workFiles: string[];
   pkg: {
     name?: string;
     version?: string;
@@ -390,6 +392,7 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     reports,
     reviews,
     docs,
+    workFiles: tracking,
     pkg: {
       name: pkg.name as string | undefined,
       version: pkg.version as string | undefined,

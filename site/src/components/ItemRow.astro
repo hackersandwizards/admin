@@ -1,6 +1,7 @@
 ---
 // Options with images are cards; options without are one dense list, so a long list of candidates
 // stays scannable.
+import { dueSoon } from "../../../src/items.ts";
 import { day, keyOf, type ViewItem } from "../data";
 import Choice from "./Choice.astro";
 import Shot from "./Shot.astro";
@@ -23,15 +24,15 @@ const meta = [
   options.length ? `${options.length} options${i.multiple ? ", pick several" : ""}` : "",
   i.owner ? `for ${i.owner}` : "",
   i.recommendedLabel ? `recommended: ${i.recommendedLabel}` : "",
-  i.due ? `due ${day(Date.parse(i.due) / 1000)}` : "",
 ].filter(Boolean);
+const soon = dueSoon(i.due);
 ---
 
 <details
   class="item hw-disclosure border-b border-border last:border-b-0"
   id={k}
   data-k={k}
-  data-who={i.who}
+  data-who={i.agent ? undefined : i.who}
   data-row
   open={open}
 >
@@ -52,6 +53,15 @@ const meta = [
       <span class="block font-medium text-ui">{i.title}</span>
       <span class="block text-ui text-foreground/70">{meta.join(" · ")}</span>
     </span>
+    {i.due && (
+      <span
+        class="hw-pill shrink-0"
+        data-tone={soon ? undefined : "neutral"}
+        data-due={soon ? "soon" : undefined}
+      >
+        due {day(Date.parse(i.due) / 1000)}
+      </span>
+    )}
     <span class="mark shrink-0 text-micro text-accent"></span>
     {i.area && <span class="shrink-0 text-ui text-foreground/70">{i.area}</span>}
   </summary>

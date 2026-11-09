@@ -9,8 +9,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import { compareItems, imagesOf, type Item } from "./items.ts";
-import { fileHref, withElements, type RepoData } from "./repo.ts";
+import { compareItems, imagesOf, ITEMS_DIR, type Item } from "./items.ts";
+import { fileHref, renderMarkdown, type RepoData } from "./repo.ts";
 
 export const PKG = join(import.meta.dirname, "..");
 export const VERSION = JSON.parse(readFileSync(join(PKG, "package.json"), "utf8"))
@@ -19,6 +19,8 @@ export const VERSION = JSON.parse(readFileSync(join(PKG, "package.json"), "utf8"
 export type ViewItem = Item & {
   repo: string;
   who: string;
+  // Owned by an agent rather than a person: no person filter hides it.
+  agent: boolean;
   html: string;
   // Option key to its images, "" for the item's own, each with its file URL.
   optionImages: Record<string, { src: string; caption?: string }[]>;
@@ -63,15 +65,35 @@ export type SiteData = {
 const escape = (s: string) =>
   s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-function itemHtml(repo: RepoData, text: string) {
-  const paths = new Set(repo.reports.map((r) => r.path).concat(repo.docs.map((d) => d.path)));
-  return withElements(Bun.markdown.html(text)).replace(
-    /(?<![\w/"=])(docs\/agent-work\/[\w./äöüÄÖÜß-]*\w)/g,
-    (p) =>
-      paths.has(p) || p.endsWith("/") || /\.\w+$/.test(p)
-        ? `<a class="hw-link" href="${escape(fileHref(join(repo.path, p)))}">${p}</a>`
-        : p,
-  );
+// A path under docs/agent-work links into the repository named right before it ("website
+// `docs/...`") or after it ("`...` in trainer-hub"), else into the item's own, and stays text where
+// that repository holds no such file. A Markdown link relative to the item file is rewritten like a
+// report's. An existing link keeps its text, so no link nests in another.
+function itemHtml(repo: RepoData, byKey: Map<string, RepoData>, text: string) {
+  const html = renderMarkdown(repo.path, `${ITEMS_DIR}/item.md`, text);
+  const named = (before: string, after: string) =>
+    [
+      before.match(/([\w.-]+)\s+(?:<code[^>]*>)?$/)?.[1],
+      after.match(/^(?:<\/code>)?\s+in\s+([\w.-]+)/)?.[1],
+    ].find((k) => k && byKey.has(k));
+  return html
+    .split(/(<a\b[\s\S]*?<\/a>)/)
+    .map((part, n) =>
+      n % 2
+        ? part
+        : part.replace(
+            /(?<![\w/"=])(docs\/agent-work\/[\w./äöüÄÖÜß-]*\w\/?)/g,
+            (p, _, at: number) => {
+              const key = named(part.slice(Math.max(0, at - 80), at), part.slice(at + p.length));
+              const target = key ? byKey.get(key)! : repo;
+              const dir = p.replace(/\/?$/, "/");
+              return target.workFiles.some((f) => f === p || f.startsWith(dir))
+                ? `<a class="hw-link" href="${escape(fileHref(join(target.path, p)))}">${p}</a>`
+                : p;
+            },
+          ),
+    )
+    .join("");
 }
 
 export const firstWord = (owner = "") => owner.match(/^[\p{L}\p{N}-]+/u)?.[0] ?? owner;
@@ -99,6 +121,7 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
     { path: "index", type: "hub", title: "Admin hub" },
     { path: "architecture", type: "hub-architecture", title: "Packages" },
   ];
+  const byKey = new Map(repos.map((r) => [r.key, r]));
   const out = repos.map((r) => {
     const prefix = `${r.key}/`;
     const items = [...r.items].sort(compareItems).map((i) => {
@@ -107,7 +130,8 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
         ...i,
         repo: r.key,
         who: firstWord(i.owner),
-        html: itemHtml(r, i.body),
+        html: itemHtml(r, byKey, i.body),
+        agent: !isPerson(firstWord(i.owner)),
         optionImages: Object.fromEntries(
           Object.entries(imagesOf(i)).map(([k, list]) => [
             k,
