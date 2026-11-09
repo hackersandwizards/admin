@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { buildCatalog, buildSite, filesUnder, firstWord, PKG, siteData } from "./build.ts";
+import elements from "../brand-elements.json";
 import { findRepos } from "./hub.ts";
 import { fileHref, git, gitAsync, gitBytes, readRepo, THUMB_BOXES, type RepoData } from "./repo.ts";
 
@@ -32,13 +33,12 @@ const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
 // that markup could read every repository through /_file/. Nor may it post a form or frame a page
 // from elsewhere, which would put an outside login inside the hub; withElements in repo.ts defuses
 // the meta refresh no policy stops, and a refresh inside a frame stays under frame-src. Reports lay
-// themselves out in raw HTML, so styles and images stay free.
-export const csp = (origin: string) =>
-  `script-src ${origin}/_astro/; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'`;
-
-// The catalog is the package's own pages, with the inline scripts Astrobook and the catalog shell
-// write and no committed markup from a repository.
-const catalogCsp = "object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'";
+// themselves out in raw HTML, so styles and images stay free. The catalog is the package's own
+// pages, with the inline scripts Astrobook and the catalog shell write and no committed markup from
+// a repository, so it gets the rest without script-src: brand-elements.json "csp", which
+// brand-elements and brand-markers render the catalog under.
+const catalogCsp = elements.csp;
+export const csp = (origin: string) => `script-src ${origin}/_astro/; ${catalogCsp}`;
 
 const IMMUTABLE = "public, max-age=31536000, immutable";
 

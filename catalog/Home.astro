@@ -31,6 +31,7 @@ const notes: Record<string, string> = {
   nav: "The rail: the repository's pages, the hub's repositories, with their counts.",
   choice: "The rail's menu on a phone, one row under the search.",
   menu: "The repo switcher's list of repositories, opened from the top bar.",
+  disclosure: "A priority group, a person waited on, an item row: each opens and closes.",
 };
 ---
 
@@ -183,6 +184,12 @@ const notes: Record<string, string> = {
               plain
             </a>
           </div>
+        )}
+        {name === "disclosure" && (
+          <details class="hw-disclosure" open>
+            <summary class="py-2 font-mono font-semibold text-ui">Priority 1</summary>
+            <p class="text-ui">Two items wait on a decision.</p>
+          </details>
         )}
         {name === "code" && <pre class="hw-code">bun run check</pre>}
         {name === "prose" && (

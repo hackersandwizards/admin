@@ -32,12 +32,14 @@
     "search",
     "nav",
     "choice",
-    "menu"
+    "menu",
+    "disclosure"
   ],
   "exceptions": {
     "item-list": "A card framing a list of item rows edge to edge: no padding, since each row carries its own padding and the hairline between rows. brand's card pads its content.",
     "priority-pill": "An item's priority on brand's scale (data-priority) in the mono face, as a code the eye scans down the list. brand's pill sets Inter.",
     "image-tile": "A review folder's image as a link: a card at half the padding, so the thumbnail fills the tile in a grid of two or three. brand's card pads its content by the card padding."
   },
-  "site": "dist"
+  "site": "dist",
+  "csp": "object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'"
 }
