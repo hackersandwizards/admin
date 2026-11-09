@@ -49,7 +49,7 @@
     line-height: 1.25;
   }
   .admin-lead {
-    max-width: 48rem;
+    max-width: var(--container-measure);
     margin: 0.5rem 0 0;
     font-size: var(--text-subheading);
     line-height: 1.5;
