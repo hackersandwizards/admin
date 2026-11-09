@@ -7,5 +7,7 @@ import favicon from "@hackersandwizards/brand/logos/favicon.svg?url";
 <link rel="icon" type="image/svg+xml" href={favicon} />
 <script is:inline>
   document.documentElement.dataset.hwScale = "dense";
+  // admin.js keeps the fixture's answers apart from the hub's, whose origin the catalog may share.
+  document.documentElement.dataset.adminCatalog = "";
   document.documentElement.classList.add("hw-focus-ring");
 </script>

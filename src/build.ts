@@ -112,13 +112,16 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
     /^\p{Lu}/u.test(p) && !/^(a|an|the|agent)$/i.test(p) && !agents.has(p);
   const open = repos.flatMap((r) => r.items.filter((i) => i.status === "open"));
   // A person is whoever answers an open question somewhere; work they own counts as theirs. The
-  // person with the most open questions comes first, and the hub's filter starts on them.
+  // hub's user comes first, then the person with the most open questions; the filter starts on the
+  // first.
   const asked = open
     .filter((i) => i.kind === "decision" || i.kind === "review")
     .map((i) => firstWord(i.owner))
     .filter(isPerson);
   const count = (p: string) => asked.filter((a) => a === p).length;
-  const people = [...new Set(asked)].sort((a, b) => count(b) - count(a) || a.localeCompare(b));
+  const people = [...new Set(asked)].sort(
+    (a, b) => +(b === you) - +(a === you) || count(b) - count(a) || a.localeCompare(b),
+  );
   const owners = new Set(open.map((i) => firstWord(i.owner)).filter(isPerson));
   const me = you && owners.has(you) ? you : people[0];
   const others = [...owners].filter((p) => p !== me).sort();

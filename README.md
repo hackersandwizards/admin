@@ -24,11 +24,9 @@ outline that means unset). The versions in admin's `devDependencies` are the tes
 
 `astro`, `tailwindcss`, `@tailwindcss/vite` and `@tailwindcss/typography`, which `admin-serve`
 builds the pages with, are peer dependencies too: a repository on another version within the
-range shares its copy instead of getting a second Astro under admin. bun installs Astro where it is
-missing, and one outside the range gets bun's peer warning and builds with its own, untested
-version. The three Tailwind packages are optional, so a repository that only runs `admin-check`
-installs none of them, and `admin-serve` stops and names them when they are missing or outside
-their range.
+range shares its copy instead of getting a second Astro under admin. All four are optional, so a
+repository that only runs `admin-check` installs none of them, and `admin-serve` stops and names
+them when they are missing or outside their range.
 
 Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repositories through it.
 
@@ -134,7 +132,12 @@ Architecture (package, pins, scripts with their first comment line), Checks (the
 
 Items sort by `priority`, then `order`; a `due` date seven days away or nearer, or past, leads its
 priority, and every `due` shows as a badge. Work an agent owns shows collapsed under "Agents on
-it". In an item's text a path under `docs/agent-work/` links into the repository named right
+it". The hub and each dashboard list open items people other than the hub's user own under
+"Waiting on others"; the hub's user is the machine's git identity by first name where an owner
+writes it, else the person with the most open questions. On the hub and Decisions a row of person
+buttons, the hub's user first, filters the items by owner.
+
+In an item's text a path under `docs/agent-work/` links into the repository named right
 before it (``website `docs/agent-work/…` ``) or after it (`` `…` in website ``), else into the
 item's own, and stays text where that repository holds no such file. A Markdown link relative to
 the item file resolves from `docs/agent-work/items/`.

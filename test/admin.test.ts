@@ -14,7 +14,14 @@ import { dirname, join, resolve } from "node:path";
 import { peerDependenciesMeta } from "../package.json";
 import { buildSite, PAGE_TYPES, siteData } from "../src/build.ts";
 import { findRepos } from "../src/hub.ts";
-import { compareItems, DUE_SOON_DAYS, itemDefects, parseItem, type Item } from "../src/items.ts";
+import {
+  compareItems,
+  DUE_SOON_DAYS,
+  dueSoon,
+  itemDefects,
+  parseItem,
+  type Item,
+} from "../src/items.ts";
 import { gitEnv, readItems, readRepo, renderMarkdown, treeSource } from "../src/repo.ts";
 import { createHub, csp } from "../src/serve.ts";
 
@@ -84,6 +91,25 @@ describe("item files", () => {
       "ranked",
       "far",
     ]);
+  });
+
+  test("a due date comes within a week by local day, also just after midnight", () => {
+    // East of UTC, half past midnight is still the day before in UTC.
+    const tz = process.env.TZ;
+    process.env.TZ = "Europe/Berlin";
+    try {
+      const night = new Date();
+      night.setHours(0, 30, 0, 0);
+      const local = (n: number) => {
+        const d = new Date(night);
+        d.setDate(d.getDate() + n);
+        return d.toLocaleDateString("sv-SE");
+      };
+      expect(dueSoon(local(DUE_SOON_DAYS), night.getTime())).toBe(true);
+      expect(dueSoon(local(DUE_SOON_DAYS + 1), night.getTime())).toBe(false);
+    } finally {
+      process.env.TZ = tz;
+    }
   });
 
   test("parse reads front matter, title and body", () => {
@@ -463,6 +489,8 @@ describe("pages", () => {
     expect(bundled).toContain("[data-hw-copy]");
     // The copy time is set from brand's hw-copy event, which says whether the copy worked.
     expect(bundled).toMatch(/addEventListener\("hw-copy"[^]*?\.detail\?\.ok/);
+    // The catalog marks its pages, so its fixture answers stay apart from the hub's.
+    expect(bundled).toMatch(/"adminCatalog"\s*in\s*document\.documentElement\.dataset/);
     // Astro drops a line break next to a tag: the pill keeps an explicit space before its label.
     expect(decisions).toMatch(/Recommended\s*<\/span>\s+<b>/);
     for (const [from, to] of [
@@ -478,8 +506,10 @@ describe("pages", () => {
     // The first person stands for the hub's user when none is named.
     expect(siteData([repo]).others).toEqual(["Kim", "Sam"]);
     expect(siteData([repo], "Sam").others).toEqual(["Alex", "Kim"]);
+    // The person filter starts on the hub's user, who comes first.
+    expect(siteData([repo], "Sam").people[0]).toBe("Sam");
     // A git name no owner writes stands for nobody: the first person does.
-    expect(siteData([repo], "bstemmildt").others).toEqual(["Kim", "Sam"]);
+    expect(siteData([repo], "kimlee").others).toEqual(["Kim", "Sam"]);
     const owned = (owner: string) => ({
       ...repo.items[0]!,
       id: owner,
@@ -614,21 +644,6 @@ describe("serve", () => {
     expect(await hub.pages()).not.toBe(cached);
     expect(await (await get("/")).text()).toContain("Renamed ");
   }, 60_000);
-});
-
-describe("catalog", () => {
-  const stories = join(import.meta.dir, "../catalog/stories");
-  const storyText = (readdirSync(stories, { recursive: true }) as string[])
-    .filter((f) => f.endsWith(".stories.ts"))
-    .map((f) => readFileSync(join(stories, f), "utf8"))
-    .join("\n");
-
-  test("every component and every page type has a story", () => {
-    const components = readdirSync(join(import.meta.dir, "../site/src/components"));
-    expect(components.length).toBeGreaterThan(0);
-    for (const c of components) expect(storyText).toContain(`/site/src/components/${c}"`);
-    for (const t of PAGE_TYPES) expect(storyText).toContain(`page("${t}")`);
-  });
 
   test("the hub serves a committed image at a thumbnail's width", async () => {
     const pixel = Buffer.from(
@@ -666,6 +681,21 @@ describe("catalog", () => {
     expect(repeat.status).toBe(304);
     expect((await get("wide.png?w=960")).headers.get("etag")).not.toBe(small.headers.get("etag"));
   }, 60_000);
+});
+
+describe("catalog", () => {
+  const stories = join(import.meta.dir, "../catalog/stories");
+  const storyText = (readdirSync(stories, { recursive: true }) as string[])
+    .filter((f) => f.endsWith(".stories.ts"))
+    .map((f) => readFileSync(join(stories, f), "utf8"))
+    .join("\n");
+
+  test("every component and every page type has a story", () => {
+    const components = readdirSync(join(import.meta.dir, "../site/src/components"));
+    expect(components.length).toBeGreaterThan(0);
+    for (const c of components) expect(storyText).toContain(`/site/src/components/${c}"`);
+    for (const t of PAGE_TYPES) expect(storyText).toContain(`page("${t}")`);
+  });
 
   test("the hub serves the catalog at /catalog/ and links it", async () => {
     const hub = createHub({ root: dirname(repoFrom("spoke")) });

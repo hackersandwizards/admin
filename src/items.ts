@@ -174,8 +174,12 @@ export function usable(item: Item): Item {
 // Within a priority `order` ranks, and a due date leads only once it is this close or past: one
 // week before it, an item tops its group, while a date further out leaves the ranking alone.
 export const DUE_SOON_DAYS = 7;
-export const dueSoon = (due: string | undefined, now = Date.now()) =>
-  !!due && Date.parse(due) - now <= DUE_SOON_DAYS * 864e5;
+// Compared as local days, the days the hub rebuilds on.
+export const dueSoon = (due: string | undefined, now = Date.now()) => {
+  const last = new Date(now);
+  last.setDate(last.getDate() + DUE_SOON_DAYS);
+  return !!due && due <= last.toLocaleDateString("sv-SE");
+};
 
 export function compareItems(a: Item & { changed?: number }, b: Item & { changed?: number }) {
   const soon = (i: Item) => (dueSoon(i.due) ? i.due! : "9");

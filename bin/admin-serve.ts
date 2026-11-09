@@ -10,7 +10,7 @@ import { stylesheet } from "../src/build.ts";
 import { createHub } from "../src/serve.ts";
 
 // Stop with what to pin on a missing peer, or on an optional one outside its range: bun does not
-// check a Git pin's range, and the optional Tailwind packages are held to theirs here too.
+// check a Git pin's range, and the optional peers are held to theirs here too.
 const missing = Object.entries(peerDependencies).filter(([p, range]) => {
   try {
     const { version } = createRequire(import.meta.url)(`${p}/package.json`);

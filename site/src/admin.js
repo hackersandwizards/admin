@@ -6,7 +6,8 @@ import { enhance } from "@hackersandwizards/brand/elements/behaviour.ts";
 
 enhance();
 
-const STORE = "admin-answers:";
+const STORE =
+  "adminCatalog" in document.documentElement.dataset ? "admin-catalog:" : "admin-answers:";
 const read = (k) => {
   try {
     return JSON.parse(localStorage.getItem(STORE + k)) || null;
@@ -159,7 +160,7 @@ copy?.addEventListener("hw-copy", (e) => {
 
 const search = document.getElementById("admin-search");
 // Only a page with the person buttons filters by person: elsewhere a stored choice would hide
-// rows unseen. The filter starts on the first person, the one with the most open questions.
+// rows unseen. The filter starts on the first person, the hub's user where they answer a question.
 const buttons = [...document.querySelectorAll("[data-who-button]")];
 const stored = localStorage.getItem(STORE + "who");
 let who = buttons.some((b) => b.dataset.whoButton === stored)
