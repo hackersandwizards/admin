@@ -55,6 +55,9 @@ export default defineConfig({
       href: "/",
       lead: "Every page and component of the admin engine, rendered by the engine's own site on an invented repository. Every value comes from brand.",
       css: [join(cache, "admin.css")],
+      // As the admin pages set them (site/src/components/Layout.astro).
+      storyScale: "dense",
+      htmlClass: ["hw-focus-ring"],
       head: "./Head.astro",
       copy: ["test/fixtures/spoke/**"],
       home: "./Home.astro",
