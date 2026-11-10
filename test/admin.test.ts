@@ -435,14 +435,23 @@ describe("pages", () => {
     const html = readFileSync(join(out, "index.html"), "utf8");
     expect(html).toContain("Which variant ships?");
     // Waiting on others links a person's item to its row; an agent's item shows under its own
-    // heading, collapsed, and no person filter hides it.
+    // heading, collapsed, as a link to its row, and no person filter hides it.
     const waiting = html.slice(html.indexOf("Waiting on others"), html.indexOf("Agents on it"));
     expect(waiting).toContain('href="spoke/work.html#spoke:ask-the-printer"');
     expect(waiting).toContain('href="spoke/decisions.html#spoke:check-the-copy"');
     expect(html.indexOf("Sort the sample files")).toBeGreaterThan(html.indexOf("Agents on it"));
     const agents = html.slice(html.indexOf("Agents on it"), html.indexOf("Repositories"));
     expect(agents).not.toMatch(/<details[^>]*data-group[^>]* open/);
-    expect(agents).toMatch(/<details[^>]*id="spoke:sort-the-samples"(?![^>]*data-who)[^>]*>/);
+    expect(agents).toContain('href="spoke/work.html#spoke:sort-the-samples"');
+    expect(agents).not.toContain("<textarea");
+    expect(agents).not.toMatch(/<div[^>]*data-row[^>]*data-who/);
+    // Within a priority the hub runs each repository's rows under its name; settled items come
+    // last, after the repositories.
+    expect(html).toMatch(/Priority 1[\s\S]*?<p[^>]*>\s*spoke\s*<span[^>]*data-count/);
+    expect(html.indexOf(">Settled</h2>")).toBeGreaterThan(html.indexOf(">Repositories</h2>"));
+    expect(html.indexOf('id="spoke:name-the-command"')).toBeGreaterThan(
+      html.indexOf(">Settled</h2>"),
+    );
     expect(readFileSync(join(out, "spoke/dashboard.html"), "utf8")).toContain(
       "Sort the sample files",
     );
@@ -539,6 +548,13 @@ describe("pages", () => {
     });
     const more = { ...repo, items: [...repo.items, owned("An agent"), owned("The agent")] };
     expect(siteData([more]).others).toEqual(["Kim", "Sam"]);
+    // The person is whoever the owner names, wherever: an agent drafting first leaves the item
+    // the person's.
+    const sends = siteData([{ ...repo, items: [...repo.items, owned("Ivo drafts, Kim sends")] }]);
+    const row = sends.repos[0]!.items.find((i) => i.id === "Ivo drafts, Kim sends")!;
+    expect([row.who, row.agent]).toEqual(["Kim", false]);
+    // The filter offers every person who owns an open item, work alone included.
+    expect(siteData([repo]).people.toSorted()).toEqual(["Alex", "Kim", "Sam"]);
   });
   test("leaving a page asks nothing: answers are stored as they are typed", () => {
     const script = readFileSync(join(import.meta.dir, "../site/src/admin.js"), "utf8");

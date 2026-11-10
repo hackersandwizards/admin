@@ -4,4 +4,7 @@ import { items } from "../../story";
 export default { component: ItemGroups };
 
 export const ByPriority = { args: { items } };
-export const UnderATitle = { args: { items, title: "Assumptions and decided items" } };
+// The hub: within a priority, one run per repository under its name.
+export const ByRepository = { args: { items, showRepo: true, byRepo: true } };
+export const AsLinks = { args: { items, from: "index", openUpTo: 3 } };
+export const UnderATitle = { args: { items, title: "Assumed and decided" } };

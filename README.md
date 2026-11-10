@@ -131,11 +131,15 @@ Architecture (package, pins, scripts with their first comment line), Checks (the
 `check:all` or `check`) and Log.
 
 Items sort by `priority`, then `order`; a `due` date seven days away or nearer, or past, leads its
-priority, and every `due` shows as a badge. Work an agent owns shows collapsed under "Agents on
-it". The hub and each dashboard list open items people other than the hub's user own under
-"Waiting on others"; the hub's user is the machine's git identity by first name where an owner
-writes it, else the person with the most open questions. On the hub and Decisions a row of person
-buttons, the hub's user first, filters the items by owner.
+priority, and every `due` shows as a badge. On the hub each priority runs its rows by repository,
+the one with the most urgent row first, and assumed and decided items come last, under "Settled".
+Work an agent owns shows collapsed under "Agents on it", each row a link to its repository's
+page. An item belongs to the first person its `owner` names anywhere ("Ivo drafts, Kim sends" is
+Kim's), a person being a name that opens some open item's owner and no agent's. The hub and each
+dashboard list open items people other than the hub's user own under "Waiting on others"; the
+hub's user is the machine's git identity by first name where an owner writes it, else the person
+with the most open questions. On the hub and Decisions a row of buttons for every person who owns
+an open item, the hub's user first, filters the items by owner.
 
 In an item's text a path under `docs/agent-work/` links into the repository named right
 before it (``website `docs/agent-work/…` ``) or after it (`` `…` in website ``), else into the

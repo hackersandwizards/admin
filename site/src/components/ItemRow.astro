@@ -2,7 +2,7 @@
 // Options with images are cards; options without are one dense list, so a long list of candidates
 // stays scannable.
 import { dueSoon } from "../../../src/items.ts";
-import { day, keyOf, type ViewItem } from "../data";
+import { data, day, keyOf, type ViewItem } from "../data";
 import Choice from "./Choice.astro";
 import Shot from "./Shot.astro";
 
@@ -18,12 +18,14 @@ const shots = (key: string) => i.optionImages[key] ?? [];
 const carded = options.some((o) => shots(o.key).length);
 const score = (o: (typeof options)[number]) =>
   o.score === undefined ? "" : `${o.score}${o.noise === undefined ? "" : ` ± ${o.noise}`}`;
+// The owner shows where it is not the hub's user alone, whom the filter starts on.
 const meta = [
   showRepo ? i.repo : "",
-  i.status === "open" ? i.kind : i.status,
+  i.status !== "open"
+    ? i.status
+    : { decision: "to decide", review: "to review", work: "to do" }[i.kind],
   options.length ? `${options.length} options${i.multiple ? ", pick several" : ""}` : "",
-  i.owner ? `for ${i.owner}` : "",
-  i.recommendedLabel ? `recommended: ${i.recommendedLabel}` : "",
+  i.owner && i.owner !== data().people[0] ? `for ${i.owner}` : "",
 ].filter(Boolean);
 const soon = dueSoon(i.due);
 ---
@@ -37,8 +39,8 @@ const soon = dueSoon(i.due);
   open={open}
 >
   <summary class="flex items-start gap-3 px-3 py-2">
-    {i.kind === "goal" ? (
-      <span class="hw-label shrink-0">Goal</span>
+    {i.kind === "goal" || i.status !== "open" ? (
+      <span class="hw-label shrink-0">{i.kind === "goal" ? "Goal" : i.status}</span>
     ) : (
       <span
         class="hw-pill shrink-0"
@@ -51,6 +53,7 @@ const soon = dueSoon(i.due);
     <span class="min-w-0 flex-1 sm:contents">
       <span class="block sm:min-w-0 sm:flex-1">
         <span class="block font-medium text-ui">{i.title}</span>
+        {i.recommendedLabel && <span class="block text-ui">Recommended: {i.recommendedLabel}</span>}
         <span class="block text-ui text-foreground/70">{meta.join(" · ")}</span>
       </span>
       <span class="flex flex-wrap items-center gap-x-3 gap-y-1 has-[:not(:empty)]:mt-1 sm:contents">

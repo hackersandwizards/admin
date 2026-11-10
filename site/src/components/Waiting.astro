@@ -2,7 +2,8 @@
 // Open items that people other than the hub's user own, one group per person, the person with the
 // most urgent item first, each row linking to the item on its repo's page.
 import { compareItems } from "../../../src/items.ts";
-import { data, href, isQuestion, keyOf, type ViewItem } from "../data";
+import { data } from "../data";
+import LinkRow from "./LinkRow.astro";
 
 interface Props {
   /** The page the links start from. */
@@ -18,8 +19,6 @@ const waiting = d.repos
   .sort(compareItems);
 // Insertion order: each person where their most urgent item stands.
 const groups = [...Map.groupBy(waiting, (i) => i.who)].map(([who, rows]) => ({ who, rows }));
-const to = (i: ViewItem) =>
-  `${href(from, `${i.repo}/${isQuestion(i) ? "decisions" : "work"}`)}#${keyOf(i)}`;
 ---
 
 {groups.length > 0 && (
@@ -35,26 +34,7 @@ const to = (i: ViewItem) =>
         </summary>
         <div class="hw-card p-0!" data-hw-exception="item-list">
           {g.rows.map((i) => (
-            <div
-              class="flex items-start gap-3 border-b border-border px-3 py-2 last:border-b-0"
-              data-row
-            >
-              <span
-                class="hw-pill shrink-0"
-                data-priority={i.priority}
-                data-variant={i.priority ? undefined : "outline"}
-              >
-                {i.kind === "goal" ? "Goal" : `P${i.priority ?? "–"}`}
-              </span>
-              <span class="min-w-0 flex-1">
-                <a class="hw-link block font-medium text-ui" href={to(i)}>
-                  {i.title}
-                </a>
-                <span class="block text-ui text-foreground/70">
-                  {[i.repo, i.kind, i.owner !== i.who ? i.owner : ""].filter(Boolean).join(" · ")}
-                </span>
-              </span>
-            </div>
+            <LinkRow item={i} from={from} />
           ))}
         </div>
       </details>

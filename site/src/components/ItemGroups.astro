@@ -1,16 +1,21 @@
 ---
 import ItemRow from "./ItemRow.astro";
+import LinkRow from "./LinkRow.astro";
 import type { ViewItem } from "../data";
 
 interface Props {
   items: ViewItem[];
   showRepo?: boolean;
+  /** Within a priority, one run of rows per repository, the one with the most urgent first. */
+  byRepo?: boolean;
+  /** Rows as links to the item on its repository's page, which `from` starts from. */
+  from?: string;
   /** Priorities whose group starts open. */
   openUpTo?: number;
   /** One group under this title instead of groups by priority. */
   title?: string;
 }
-const { items, showRepo = false, openUpTo = 2, title } = Astro.props;
+const { items, showRepo = false, byRepo = false, from, openUpTo = 2, title } = Astro.props;
 const groups = title
   ? [{ label: title, rows: items, open: false }]
   : [1, 2, 3, undefined].map((p) => ({
@@ -18,6 +23,9 @@ const groups = title
       rows: items.filter((i) => i.priority === p),
       open: (p ?? 9) <= openUpTo,
     }));
+// Insertion order: each repository where its most urgent row stands.
+const runs = (rows: ViewItem[]) =>
+  byRepo ? [...Map.groupBy(rows, (i) => i.repo)] : [["", rows] as const];
 ---
 
 {groups
@@ -30,9 +38,27 @@ const groups = title
           {g.rows.length}
         </span>
       </summary>
-      <div class="hw-card p-0!" data-hw-exception="item-list">
-        {g.rows.map((i) => (
-          <ItemRow item={i} showRepo={showRepo} />
+      <div class="flex flex-col gap-2">
+        {runs(g.rows).map(([repo, rows]) => (
+          <div data-group>
+            {repo && (
+              <p class="px-3 pb-1 font-mono font-medium text-ui">
+                {repo}{" "}
+                <span class="ml-1 font-normal text-foreground/70" data-count>
+                  {rows.length}
+                </span>
+              </p>
+            )}
+            <div class="hw-card p-0!" data-hw-exception="item-list">
+              {rows.map((i) =>
+                from ? (
+                  <LinkRow item={i} from={from} />
+                ) : (
+                  <ItemRow item={i} showRepo={showRepo && !byRepo} />
+                ),
+              )}
+            </div>
+          </div>
         ))}
       </div>
     </details>

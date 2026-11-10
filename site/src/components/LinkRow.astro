@@ -1,0 +1,31 @@
+---
+// An item as one line linking to its full row on its repository's page, for a list the person
+// reads but does not answer on this page.
+import { href, isQuestion, keyOf, type ViewItem } from "../data";
+
+interface Props {
+  item: ViewItem;
+  /** The page the link starts from. */
+  from: string;
+}
+const { item: i, from } = Astro.props;
+const to = `${href(from, `${i.repo}/${isQuestion(i) ? "decisions" : "work"}`)}#${keyOf(i)}`;
+---
+
+<div class="flex items-start gap-3 border-b border-border px-3 py-2 last:border-b-0" data-row>
+  <span
+    class="hw-pill shrink-0"
+    data-priority={i.priority}
+    data-variant={i.priority ? undefined : "outline"}
+  >
+    {i.kind === "goal" ? "Goal" : `P${i.priority ?? "–"}`}
+  </span>
+  <span class="min-w-0 flex-1">
+    <a class="hw-link block font-medium text-ui" href={to}>
+      {i.title}
+    </a>
+    <span class="block text-ui text-foreground/70">
+      {[i.repo, i.kind, i.owner !== i.who ? i.owner : ""].filter(Boolean).join(" · ")}
+    </span>
+  </span>
+</div>

@@ -105,26 +105,35 @@ export const firstWord = (owner = "") => owner.match(/^[\p{L}\p{N}-]+/u)?.[0] ??
 
 // `you` is the hub's user where an item owner names them, else the first person.
 export function siteData(repos: RepoData[], you?: string): SiteData {
-  // An owner is a person unless its first word is lower-case ("an agent"), an article, "Agent" or
-  // a name an agent definition gives.
+  // A person is a name that opens some open item's owner, unless lower-case ("an agent"), an
+  // article, "Agent" or a name an agent definition gives. An item is the first such person's its
+  // owner names anywhere, so "Ivo drafts, Kim sends" is Kim's; with none it is its first word's.
   const agents = new Set(repos.flatMap((r) => r.agents));
   const isPerson = (p: string) =>
     /^\p{Lu}/u.test(p) && !/^(a|an|the|agent)$/i.test(p) && !agents.has(p);
   const open = repos.flatMap((r) => r.items.filter((i) => i.status === "open"));
-  // A person is whoever answers an open question somewhere; work they own counts as theirs. The
-  // hub's user comes first, then the person with the most open questions; the filter starts on the
-  // first.
-  const asked = open
-    .filter((i) => i.kind === "decision" || i.kind === "review")
-    .map((i) => firstWord(i.owner))
-    .filter(isPerson);
-  const count = (p: string) => asked.filter((a) => a === p).length;
-  const people = [...new Set(asked)].sort(
-    (a, b) => +(b === you) - +(a === you) || count(b) - count(a) || a.localeCompare(b),
+  const names = [...new Set(open.map((i) => firstWord(i.owner)).filter(isPerson))];
+  const named = (owner = "") =>
+    names
+      .map((p) => ({ p, at: owner.search(new RegExp(`(?<![\\p{L}])${p}(?![\\p{L}])`, "u")) }))
+      .filter((x) => x.at >= 0)
+      .sort((a, b) => a.at - b.at)[0]?.p ?? firstWord(owner);
+  // The filter offers every person who owns an open item: the hub's user first, then whoever owns
+  // the most open questions, then the most items; it starts on the first.
+  const whos = open.map((i) => ({
+    who: named(i.owner),
+    q: i.kind === "decision" || i.kind === "review",
+  }));
+  const count = (p: string, q: boolean) => whos.filter((w) => w.who === p && (w.q || !q)).length;
+  const people = [...new Set(whos.map((w) => w.who).filter(isPerson))].sort(
+    (a, b) =>
+      +(b === you) - +(a === you) ||
+      count(b, true) - count(a, true) ||
+      count(b, false) - count(a, false) ||
+      a.localeCompare(b),
   );
-  const owners = new Set(open.map((i) => firstWord(i.owner)).filter(isPerson));
-  const me = you && owners.has(you) ? you : people[0];
-  const others = [...owners].filter((p) => p !== me).sort();
+  const me = you && people.includes(you) ? you : people[0];
+  const others = people.filter((p) => p !== me).sort();
   const pages: Page[] = [
     { path: "index", type: "hub", title: "Admin hub" },
     { path: "architecture", type: "hub-architecture", title: "Packages" },
@@ -138,9 +147,9 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
       return {
         ...i,
         repo: r.key,
-        who: firstWord(i.owner),
+        who: named(i.owner),
         html: itemHtml(r, byKey, files, i.body),
-        agent: !!i.owner && !isPerson(firstWord(i.owner)),
+        agent: !!i.owner && !isPerson(named(i.owner)),
         optionImages: Object.fromEntries(
           Object.entries(imagesOf(i)).map(([k, list]) => [
             k,

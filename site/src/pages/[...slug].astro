@@ -55,6 +55,9 @@ const allNeeds = d.repos.flatMap((r) => needs(r.items)).sort(compareItems);
 const agentWork = (list: typeof items) =>
   list.filter((i) => i.kind === "work" && i.status === "open" && i.agent);
 const allAgentWork = d.repos.flatMap((r) => agentWork(r.items)).sort(compareItems);
+const settled = d.repos
+  .flatMap((r) => r.items.filter((i) => i.status !== "open"))
+  .sort(compareItems);
 const repoAgentWork = agentWork(items);
 const byPriority = (list: typeof items, p: number) => list.filter((i) => i.priority === p).length;
 const doc = repo && [...repo.reports, ...repo.docs].find((x) => x.path === page.doc);
@@ -67,7 +70,7 @@ const answersAll = page.type === "decisions" || page.type === "hub";
 // Every page with answerable rows hands its answers over from where they were given.
 const answerable = answersAll || ["dashboard", "work", "reviews"].includes(page.type);
 const leads: Partial<Record<Page["type"], string>> = {
-  hub: "What waits on a person across every repository, read from each one's last commit: questions to answer and work to move, by priority and rank, a due date within a week first, then the work agents carry. Images and reports open where they sit.",
+  hub: "What waits on you across every repository, most urgent first.",
   "hub-architecture": "Which version of each h&w package every repository pins.",
   dashboard:
     "What waits on a person in this repository, what the agents produced, and where its docs, catalog and checks are.",
@@ -107,18 +110,13 @@ const leads: Partial<Record<Page["type"], string>> = {
       <section class="flex flex-col gap-2">
         <h2 class="font-mono font-semibold text-heading">Needs you</h2>
         <WhoFilter />
-        <ItemGroups items={allNeeds} showRepo openUpTo={1} />
-        <ItemGroups
-          items={d.repos.flatMap((r) => r.items.filter((i) => i.status !== "open"))}
-          showRepo
-          title="Assumptions and decided items"
-        />
+        <ItemGroups items={allNeeds} showRepo byRepo openUpTo={1} />
       </section>
       <Waiting from={page.path} />
       {allAgentWork.length > 0 && (
         <section class="flex flex-col gap-2">
           <h2 class="font-mono font-semibold text-heading">Agents on it</h2>
-          <ItemGroups items={allAgentWork} showRepo openUpTo={0} />
+          <ItemGroups items={allAgentWork} from={page.path} openUpTo={0} />
         </section>
       )}
       <section>
@@ -186,6 +184,16 @@ const leads: Partial<Record<Page["type"], string>> = {
               )),
             )}
           </ul>
+        </section>
+      )}
+      {settled.length > 0 && (
+        <section class="flex flex-col gap-2">
+          <h2 class="font-mono font-semibold text-heading">Settled</h2>
+          <p class="text-ui text-foreground/70">
+            Assumptions agents made, which you may still veto, and decisions waiting for the work
+            that carries them out.
+          </p>
+          <ItemGroups items={settled} showRepo title="Assumed and decided" />
         </section>
       )}
     </>
