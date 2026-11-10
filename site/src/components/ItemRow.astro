@@ -16,6 +16,8 @@ const k = keyOf(i);
 const options = i.options ?? [];
 const shots = (key: string) => i.optionImages[key] ?? [];
 const carded = options.some((o) => shots(o.key).length);
+// The item's own images: above the answer where it has no options, else after the context.
+const loose = shots("");
 const score = (o: (typeof options)[number]) =>
   o.score === undefined ? "" : `${o.score}${o.noise === undefined ? "" : ` ± ${o.noise}`}`;
 // A row without "for <owner>" is the hub's user's alone.
@@ -99,6 +101,11 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
           </span>
         )}
         <span class="mark shrink-0 text-micro text-accent empty:hidden"></span>
+        {i.status === "open" && i.recommendedKeys.length > 0 && (
+          <button type="button" class="take hw-button shrink-0" data-variant="secondary">
+            Take recommended
+          </button>
+        )}
         {i.area && (
           <span class="hw-pill shrink-0" data-variant="outline" title="area">
             {i.area}
@@ -120,8 +127,32 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
       </p>
     )}
     {lead && <div class={body} set:html={lead} />}
+    {i.status === "assumed" && (
+      <div class="hw-card p-0!" data-hw-exception="option-list">
+        {[
+          ["agree", "Agree", "The assumption stands."],
+          [
+            "veto",
+            "Veto",
+            options.length
+              ? "Undo it: pick another option below, or say why in the note."
+              : "Undo it: say why in the note.",
+          ],
+        ].map(([key, label, detail]) => (
+          <label class="flex cursor-pointer border-b border-border px-3 py-1.5 last:border-b-0 has-checked:bg-muted">
+            <span class="flex w-full items-start gap-2">
+              <input type="radio" name={`${k}-stance`} value={key} data-stance class="hw-check" />
+              <span class="min-w-0 flex-1">
+                <b>{label}</b>
+                <span class="block text-foreground/70">{detail}</span>
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+    )}
     <p class="flex flex-wrap items-center gap-2">
-      {i.recommendedKeys.length > 0 && (
+      {i.recommendedKeys.length > 0 && i.status !== "assumed" && (
         <button
           type="button"
           class="pick hw-button"
@@ -168,9 +199,9 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
         ))}
       </div>
     )}
-    {!options.length && shots("").length > 0 && (
+    {!options.length && loose.length > 0 && (
       <div class="grid grid-cols-2 gap-3 xl:grid-cols-3">
-        {shots("").map((m) => (
+        {loose.map((m) => (
           <Shot {...m} alt={m.caption ?? i.title} />
         ))}
       </div>
@@ -180,11 +211,17 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
         <input type="checkbox" class="hw-check" value="done" /> done
       </label>
     )}
+    {i.status === "open" && (
+      <label class="flex items-start gap-2">
+        <input type="checkbox" class="hw-check" value="later" /> Decide later: ask me again on my
+        next visit
+      </label>
+    )}
     <label class="text-micro text-foreground/70" for={`n-${k}`}>
       {options.length ? "Note or your own answer" : "Answer, such as “fine” or what to change"}
     </label>
     <textarea id={`n-${k}`} class="form-input w-full"></textarea>
-    {(context || i.evidence || (options.length > 0 && shots("").length > 0)) && (
+    {(context || i.evidence || (options.length > 0 && loose.length > 0)) && (
       <>
         <p class="hw-label" data-tone="muted">
           Context
@@ -200,9 +237,9 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
             Evidence: <Fragment set:html={inline(i.evidence)} />
           </p>
         )}
-        {options.length > 0 && shots("").length > 0 && (
+        {options.length > 0 && loose.length > 0 && (
           <div class="grid grid-cols-2 gap-3 xl:grid-cols-3">
-            {shots("").map((m) => (
+            {loose.map((m) => (
               <Shot {...m} alt={m.caption ?? i.title} />
             ))}
           </div>

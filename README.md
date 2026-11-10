@@ -75,7 +75,10 @@ answered: `repo:id: a (Label A), b (Label B), note`. A copy holds the answers no
 all of them again once none is new. An answer keeps the item's title and options it answered: where
 they changed since, its row shows the pick as given and asks for a new answer, and its line ends
 `; answered <time>, before the question or its options changed`, which the agent checks against
-the item before it acts.
+the item before it acts. "Take recommended" on a closed row picks the recommendation without
+opening it. An assumption is answered "Agree" or "Veto", which leads its line:
+`repo:id: veto, b (Label B), note`. "Decide later" puts a question off: it stays out of the copy,
+and the next visit, a page view more than an hour after the last, asks it again.
 
 ## Item files
 

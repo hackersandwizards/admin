@@ -7,3 +7,8 @@ assumption: The build writes to node_modules/.cache, so no repo needs a new igno
 ---
 
 # Where the build writes its pages
+
+The build checked both:
+
+- [x] no repository ignores the folder yet
+- [ ] a cache outside the checkout

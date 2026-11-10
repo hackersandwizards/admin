@@ -703,10 +703,13 @@ describe("pages", () => {
     expect(inline("use `a-b` & <i>, see http://127.0.0.1:4329/x.")).toBe(
       'use <code class="hw-inline-code">a-b</code> &amp; &lt;i&gt;, see <a class="hw-link" href="http://127.0.0.1:4329/x">http://127.0.0.1:4329/x</a>.',
     );
-    // An address already withLinks, or inside a tag, stays as it is.
+    // An address already linked, inside a tag or inside code stays as it is; quotes end one.
     const html =
-      '<p><a href="http://a.example/">http://a.example/</a> <img src="http://b.example/i.png"></p>';
+      '<p><a href="http://a.example/">http://a.example/</a> <img src="http://b.example/i.png"> <code>curl http://c.example/y</code></p>';
     expect(withLinks(html)).toBe(html);
+    expect(inline(`see "https://d.example/a" or 'https://d.example/b'`)).toBe(
+      'see &quot;<a class="hw-link" href="https://d.example/a">https://d.example/a</a>&quot; or &#x27;<a class="hw-link" href="https://d.example/b">https://d.example/b</a>&#x27;',
+    );
   });
 
   test("waiting on others: people other than the hub's user, never an agent", async () => {
@@ -807,6 +810,58 @@ describe("admin.js", () => {
     ).toMatchObject({ option: "b", label: ["Variant B"] });
     expect(row.querySelector(".mark")!.textContent).toBe("✓ Variant B");
     expect(page.document.getElementById("copy")!.textContent).toBe("Copy 1 answer");
+  });
+
+  test("a closed row takes its recommendation, an assumption takes agree or veto, and a question put off copies nothing until the next visit", () => {
+    const page = open("spoke/decisions", {});
+    const row = (k: string) => page.document.getElementById(k) as unknown as DomElement;
+    const variant = row("spoke:pick-a-variant");
+    const take = variant.querySelector(".take") as DomElement;
+    take.click();
+    expect(variant.hasAttribute("open")).toBe(false);
+    expect(variant.querySelector(".mark")!.textContent).toBe("✓ Variant A");
+    expect(take.style.display).toBe("none");
+    // An assumption has no recommendation to pick: Agree and Veto answer it.
+    const cache = row("spoke:cache-folder");
+    expect(cache.querySelector(".pick")).toBeNull();
+    const veto = cache.querySelector("input[data-stance][value=veto]") as DomInput;
+    veto.checked = true;
+    cache.dispatchEvent(new page.Event("change"));
+    (cache.querySelector("textarea") as unknown as HTMLTextAreaElement).value = "keep a line";
+    cache.querySelector("textarea")!.dispatchEvent(new page.Event("input"));
+    expect(cache.querySelector(".mark")!.textContent).toBe("✓ veto");
+    // The item's own task list keeps its ticks.
+    expect(
+      [...cache.querySelectorAll(".task-list-item-checkbox")].map((b) => (b as DomInput).checked),
+    ).toEqual([true, false]);
+    // Putting a question off clears its pick, and the copy leaves it out.
+    const logo = row("spoke:pick-a-logo");
+    (logo.querySelector(".pick") as DomElement).click();
+    const later = logo.querySelector("input[value=later]") as DomInput;
+    later.checked = true;
+    later.dispatchEvent(new page.Event("change", { bubbles: true }));
+    expect(logo.querySelectorAll("input[data-option]:checked").length).toBe(0);
+    expect(logo.querySelector(".mark")!.textContent).toBe("later");
+    const text = (page.document.getElementById("copy") as DomElement).dataset.hwCopy;
+    expect(text).toContain("spoke:pick-a-variant: a (Variant A)");
+    expect(text).toContain("spoke:cache-folder: veto, keep a line");
+    expect(text).not.toContain("pick-a-logo");
+    // The next visit asks it again; the answers stay.
+    const back = open("spoke/decisions", {
+      ...stored(page),
+      "admin-answers:seen": String(Date.now() - 2 * 36e5),
+    });
+    expect(back.localStorage.getItem("admin-answers:spoke:pick-a-logo")).toBeNull();
+    // A note is an answer: it takes a question put off up again.
+    later.checked = true;
+    later.dispatchEvent(new page.Event("change", { bubbles: true }));
+    (logo.querySelector("textarea") as unknown as HTMLTextAreaElement).value = "ask the printer";
+    logo.querySelector("textarea")!.dispatchEvent(new page.Event("input"));
+    expect(later.checked).toBe(false);
+    expect((page.document.getElementById("copy") as DomElement).dataset.hwCopy).toContain(
+      "spoke:pick-a-logo: ask the printer",
+    );
+    expect(back.localStorage.getItem("admin-answers:spoke:cache-folder")).not.toBeNull();
   });
 
   test("an answer given before its question or options changed is no current pick and copies as given", () => {
@@ -948,15 +1003,36 @@ describe("admin.js", () => {
     expect(visible()).toEqual([]);
     expect(doc.getElementById("admin-nohit")!.hasAttribute("hidden")).toBe(false);
     expect(doc.getElementById("admin-nohit")!.textContent).toContain("“updated since”");
-    // Every section without a row to show steps aside.
+    // Every section without a row to show steps aside, but the one holding the filters.
+    const filters = button("data-who-button", "all").closest("section");
+    const left = [...doc.querySelectorAll("main section")].filter((x) => !x.hasAttribute("hidden"));
+    expect(left.length === 1 && (left[0] as unknown) === filters).toBe(true);
+    search.value = "";
+    search.dispatchEvent(new page.Event("input"));
     expect(
-      [...doc.querySelectorAll("main section")].filter((x) => !x.hasAttribute("hidden")),
-    ).toEqual([]);
-    // A row of another person found by the search is named.
+      [...doc.querySelectorAll("main section")].filter((x) => x.hasAttribute("hidden")).length,
+    ).toBe(0);
+    // Another person's row the search finds shows under "Waiting on others".
     button("data-who-button", first).click();
     search.value = "printer";
     search.dispatchEvent(new page.Event("input"));
-    expect(doc.getElementById("admin-nohit")!.textContent).toContain("1 row of other people does");
+    expect(visible().length).toBeGreaterThan(0);
+    expect(doc.getElementById("admin-nohit")!.hasAttribute("hidden")).toBe(true);
+    // Where no other list shows it, a row of another person the search finds is named.
+    const decisions = open("spoke/decisions", { "admin-answers:who": first });
+    const find = decisions.document.getElementById("admin-search") as DomInput;
+    find.value = "monthly";
+    find.dispatchEvent(new decisions.Event("input"));
+    expect(decisions.document.getElementById("admin-nohit")!.textContent).toContain(
+      "1 row of other people does",
+    );
+    // A link followed on the page shows its row whatever person the filter is on.
+    search.value = "";
+    search.dispatchEvent(new page.Event("input"));
+    const other = openRows.find((r) => r.dataset.who && r.dataset.who !== first)!;
+    page.location.hash = `#${other.id}`;
+    page.dispatchEvent(new page.Event("hashchange"));
+    expect(!!other.closest("[hidden]")).toBe(false);
   });
 
   test("a new visit starts on the hub's user; a link to an item gone says so", () => {

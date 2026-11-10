@@ -75,10 +75,11 @@ export function dueOf(due: string, now = Date.now()) {
   return { text: `due ${date}`, tone: dueSoon(due, now) ? "soon" : "later" };
 }
 
-// A bare web address in rendered text becomes a link; one already in a link, or inside a tag, stays.
+// A bare web address in rendered text becomes a link; one already in a link, in code or inside a
+// tag stays, and an escaped quote or bracket ends it.
 export const withLinks = (html: string) =>
   html.replace(
-    /(<a\b[\s\S]*?<\/a>|<[^>]*>)|\bhttps?:\/\/[^\s<>"']*[^\s<>"'.,;:!?)\]]/g,
+    /(<(a|code|pre)\b[\s\S]*?<\/\2>|<[^>]*>)|\bhttps?:\/\/(?:(?!&(?:quot|#x27|#39|lt|gt);)[^\s<>"'])*[^\s<>"'.,;:!?)\]&]/g,
     (whole, tag?: string) => tag ?? `<a class="hw-link" href="${whole}">${whole}</a>`,
   );
 

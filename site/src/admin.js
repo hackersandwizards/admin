@@ -58,6 +58,9 @@ try {
     localStorage.setItem(STORE + "visit", String(seen));
     localStorage.setItem(STORE + "before", JSON.stringify(versions));
     localStorage.removeItem(STORE + "who");
+    // A question put off is asked again: its row stands unanswered.
+    for (const k of Object.keys(localStorage))
+      if (isAnswer(k) && read(k.slice(STORE.length))?.later) localStorage.removeItem(k);
   }
   localStorage.setItem(STORE + "seen", String(now));
   const since = Number(localStorage.getItem(STORE + "visit")) || 0;
@@ -124,20 +127,22 @@ function mark(d, a) {
   const n = picked(a).length;
   const text = !a
     ? ""
-    : old
-      ? "! answered before the question changed"
-      : `✓ ${
-          n > 1
-            ? `${n} picked`
-            : a.option
-              ? label(d, a.option) || a.option
-              : a.done
-                ? "done"
-                : a.note
-                  ? "note"
-                  : ""
-        }`;
-  const sent = !!a && !old && a.at <= copiedAt();
+    : a.later
+      ? "later"
+      : old
+        ? "! answered before the question changed"
+        : `✓ ${
+            [
+              a.stance,
+              n > 1 ? `${n} picked` : a.option ? label(d, a.option) || a.option : "",
+              a.done ? "done" : "",
+            ]
+              .filter(Boolean)
+              .join(", ") || "note"
+          }`;
+  const sent = !!a && !old && !a.later && a.at <= copiedAt();
+  const take = d.querySelector(".take");
+  if (take) take.style.display = a && !old ? "none" : "";
   const m = d.querySelector(".mark");
   if (m) {
     m.textContent = text + (sent ? " · copied" : "");
@@ -155,19 +160,30 @@ function mark(d, a) {
             .map((l) => `“${l}”`)
             .join(", ") || a.option
         }`
-      : a?.done
-        ? "You marked this done"
-        : "You wrote your note";
+      : a?.stance
+        ? `You chose “${a.stance}”`
+        : a?.done
+          ? "You marked this done"
+          : "You wrote your note";
     notice.textContent = old
       ? `${what} on ${moment(a.at)}. The question or its options changed since: read them again and answer again.`
       : "";
   }
 }
+// The inputs an answer sets, beside read-only boxes an item's own text may hold.
+const ANSWER = "input[data-option], input[data-stance], input[value=done], input[value=later]";
 function load(d) {
   const a = read(d.dataset.k);
   const old = stale(d.dataset.k, a);
-  for (const i of d.querySelectorAll("input[data-option], input[value=done]"))
-    i.checked = !!a && !old && ("option" in i.dataset ? picked(a).includes(i.value) : !!a.done);
+  for (const i of d.querySelectorAll(ANSWER))
+    i.checked =
+      !!a &&
+      !old &&
+      ("option" in i.dataset
+        ? picked(a).includes(i.value)
+        : "stance" in i.dataset
+          ? a.stance === i.value
+          : !!a[i.value]);
   const t = d.querySelector("textarea");
   if (t) t.value = a ? a.note || "" : "";
   mark(d, a);
@@ -175,12 +191,16 @@ function load(d) {
 function save(d) {
   const keys = [...d.querySelectorAll("input[data-option]:checked")].map((i) => i.value);
   const done = d.querySelector("input[value=done]:checked");
+  const later = !!d.querySelector("input[value=later]:checked");
+  const stance = d.querySelector("input[data-stance]:checked")?.value || "";
   const note = (d.querySelector("textarea")?.value || "").trim();
   // The labels and the question go with the answer, so a page without its row still copies it as
   // given, and a changed question shows.
   const a =
-    keys.length || done || note
+    keys.length || done || later || stance || note
       ? {
+          later,
+          stance,
           option: keys.join(","),
           label: keys.map((k) => label(d, k)),
           asked: d.dataset.asked,
@@ -199,12 +219,16 @@ const answered = () => {
   return Object.keys(localStorage)
     .filter(isAnswer)
     .map((k) => k.slice(STORE.length))
-    .filter((k) => read(k))
+    .filter((k) => read(k) && !read(k).later)
     .sort((a, b) => at(a) - at(b));
 };
 function line(k) {
   const a = read(k);
-  const said = [choiceOf(k, a) || (a.done ? "done" : ""), (a.note || "").replace(/\s+/g, " ")];
+  const said = [
+    a.stance,
+    choiceOf(k, a) || (a.done ? "done" : ""),
+    (a.note || "").replace(/\s+/g, " "),
+  ];
   const old = stale(k, a)
     ? `; answered ${moment(a.at)}, before the question or its options changed`
     : "";
@@ -254,15 +278,34 @@ function state(relabel = true) {
 }
 for (const d of items) {
   load(d);
-  d.addEventListener("change", () => save(d));
-  d.querySelector("textarea")?.addEventListener("input", () => save(d));
+  // A question put off holds no answer, and an answer takes it up again.
+  d.addEventListener("change", (e) => {
+    const later = e.target.value === "later";
+    if (e.target.checked)
+      for (const i of d.querySelectorAll(ANSWER))
+        if (later !== (i.value === "later")) i.checked = false;
+    save(d);
+  });
+  d.querySelector("textarea")?.addEventListener("input", () => {
+    const off = d.querySelector("input[value=later]");
+    if (off) off.checked = false;
+    save(d);
+  });
   const pick = d.querySelector(".pick");
   pick?.addEventListener("click", () => {
+    const off = d.querySelector("input[value=later]");
+    if (off) off.checked = false;
     for (const v of pick.dataset.v.split(" ")) {
       const r = d.querySelector(`input[data-option][value="${CSS.escape(v)}"]`);
       if (r) r.checked = true;
     }
     save(d);
+  });
+  // The recommendation taken from the closed row, which stays closed.
+  d.querySelector(".take")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    d.querySelector(".pick")?.click();
   });
   d.querySelector(".clear")?.addEventListener("click", () => {
     write(d.dataset.k, null);
@@ -308,11 +351,10 @@ const named = () => {
     return ""; // a malformed hash names no item
   }
 };
+const whoFor = (t) =>
+  buttons.some((b) => b.dataset.whoButton === t.dataset.who) ? t.dataset.who : "all";
 let target = document.getElementById(named());
-if (target?.dataset.who && buttons.length)
-  who = buttons.some((b) => b.dataset.whoButton === target.dataset.who)
-    ? target.dataset.who
-    : "all";
+if (target?.dataset.who && buttons.length) who = whoFor(target);
 const rows = () => [...document.querySelectorAll("[data-row]")];
 // What a row says, without the marks this script writes or shows on it.
 const said = new Map();
@@ -347,14 +389,16 @@ function apply(picked = false) {
     const n = g.querySelectorAll("[data-row]:not([hidden])").length;
     // The selected person's own rows stand under "Needs you", not again under "Waiting on others".
     g.hidden = !n || (filtered && g.dataset.whoGroup === who);
-    const c = g.querySelector(":scope > summary [data-count]") || g.querySelector("[data-count]");
+    const c = g.querySelector(":scope > summary [data-count]");
     if (c) c.textContent = n;
-    if (term && n && g.tagName === "DETAILS") g.open = true;
+    if (term && n) g.open = true;
   }
-  // A section left without a row to show steps aside.
+  // A section left without a row to show steps aside, but the one holding the filters.
   for (const sec of document.querySelectorAll("main section"))
-    if (sec.querySelector("[data-row]"))
-      sec.hidden = ![...sec.querySelectorAll("[data-row]")].some((r) => !r.hidden && shown(r));
+    if (sec.querySelector("[data-row]") && !sec.contains(buttons[0] ?? null))
+      sec.hidden = ![...sec.querySelectorAll("[data-row]")].some(
+        (r) => !r.hidden && !r.closest("[data-group]")?.hidden,
+      );
   // After a choice of person or kind, the first group with rows opens where none is open.
   if (picked && scope) {
     const groups = [...scope.querySelectorAll("details[data-group]")].filter(shown);
@@ -443,6 +487,13 @@ state();
 // says so.
 function reveal() {
   target = document.getElementById(named());
+  // A link followed on the page shows its row whatever the filters hid.
+  if (target?.closest("[hidden]")) {
+    if (target.dataset.who && buttons.length) who = whoFor(target);
+    kind = "all";
+    if (search) search.value = "";
+    apply();
+  }
   for (let e = target; e; e = e.parentElement?.closest("details")) e.open = true;
   target?.scrollIntoView();
   const gone = document.getElementById("admin-gone");
