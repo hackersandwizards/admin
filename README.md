@@ -19,8 +19,8 @@ bun add -d "git+https://github.com/hackersandwizards/admin.git#v<version>"
 copy, so no second copy lands under `node_modules/@hackersandwizards/admin/`. It is marked optional,
 so bun never looks it up on the npm registry, where the package does not exist. `admin-check` does
 not need it; `admin-serve` stops and names what to pin when it is missing or older than its peer
-range, which bun does not check for a Git pin (older brand breaks a rail count onto two lines and
-lacks the focus ring's room the rail is laid out by). The versions in admin's `devDependencies` are
+range, which bun does not check for a Git pin (older brand breaks a rail count onto two lines,
+lacks the focus ring's room the rail is laid out by, and shows the skip link at all times). The versions in admin's `devDependencies` are
 the tested set.
 
 `astro`, `tailwindcss`, `@tailwindcss/vite` and `@tailwindcss/typography`, which `admin-serve`
