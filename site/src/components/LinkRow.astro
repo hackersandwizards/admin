@@ -1,7 +1,8 @@
 ---
 // An item as one line linking to its full row on its repository's page, for a list the person
 // reads but does not answer on this page.
-import { href, isQuestion, keyOf, type ViewItem } from "../data";
+import { dueSoon } from "../../../src/items.ts";
+import { day, href, isQuestion, keyOf, type ViewItem } from "../data";
 
 interface Props {
   item: ViewItem;
@@ -25,7 +26,12 @@ const to = `${href(from, `${i.repo}/${isQuestion(i) ? "decisions" : "work"}`)}#$
       {i.title}
     </a>
     <span class="block text-ui text-foreground/70">
-      {[i.repo, i.kind, i.owner !== i.who ? i.owner : ""].filter(Boolean).join(" · ")}
+      {[i.repo, i.kind, i.agent || i.owner !== i.who ? i.owner : ""].filter(Boolean).join(" · ")}
     </span>
   </span>
+  {i.due && (
+    <span class="hw-pill shrink-0" data-tone={dueSoon(i.due) ? undefined : "neutral"}>
+      due {day(Date.parse(i.due) / 1000)}
+    </span>
+  )}
 </div>

@@ -553,6 +553,14 @@ describe("pages", () => {
     const sends = siteData([{ ...repo, items: [...repo.items, owned("Ivo drafts, Kim sends")] }]);
     const row = sends.repos[0]!.items.find((i) => i.id === "Ivo drafts, Kim sends")!;
     expect([row.who, row.agent]).toEqual(["Kim", false]);
+    // A name is whole: Kim never stands for Kim-Lee.
+    const pair = siteData([{ ...repo, items: [owned("Kim"), owned("Kim-Lee")] }]);
+    expect(pair.repos[0]!.items.map((i) => i.who)).toEqual(["Kim", "Kim-Lee"]);
+    // The hub's user counts as a person where only a later word of an owner names them.
+    expect(
+      siteData([{ ...repo, items: [owned("Ivo drafts, Zoe sends")] }], "Zoe").repos[0]!.items[0]!
+        .who,
+    ).toBe("Zoe");
     // The filter offers every person who owns an open item, work alone included.
     expect(siteData([repo]).people.toSorted()).toEqual(["Alex", "Kim", "Sam"]);
   });

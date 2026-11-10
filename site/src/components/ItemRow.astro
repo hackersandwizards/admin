@@ -18,11 +18,11 @@ const shots = (key: string) => i.optionImages[key] ?? [];
 const carded = options.some((o) => shots(o.key).length);
 const score = (o: (typeof options)[number]) =>
   o.score === undefined ? "" : `${o.score}${o.noise === undefined ? "" : ` ± ${o.noise}`}`;
-// The owner shows where it is not the hub's user alone, whom the filter starts on.
+// A row without "for <owner>" is the hub's user's alone.
 const meta = [
   showRepo ? i.repo : "",
   i.status !== "open"
-    ? i.status
+    ? `${i.kind}${i.priority ? `, P${i.priority}` : ""}`
     : { decision: "to decide", review: "to review", work: "to do" }[i.kind],
   options.length ? `${options.length} options${i.multiple ? ", pick several" : ""}` : "",
   i.owner && i.owner !== data().people[0] ? `for ${i.owner}` : "",

@@ -70,7 +70,7 @@ const answersAll = page.type === "decisions" || page.type === "hub";
 // Every page with answerable rows hands its answers over from where they were given.
 const answerable = answersAll || ["dashboard", "work", "reviews"].includes(page.type);
 const leads: Partial<Record<Page["type"], string>> = {
-  hub: "What waits on you across every repository, most urgent first.",
+  hub: "What waits on you across every repository, most urgent first; then what other people and agents carry, and what is settled.",
   "hub-architecture": "Which version of each h&w package every repository pins.",
   dashboard:
     "What waits on a person in this repository, what the agents produced, and where its docs, catalog and checks are.",
@@ -110,7 +110,7 @@ const leads: Partial<Record<Page["type"], string>> = {
       <section class="flex flex-col gap-2">
         <h2 class="font-mono font-semibold text-heading">Needs you</h2>
         <WhoFilter />
-        <ItemGroups items={allNeeds} showRepo byRepo openUpTo={1} />
+        <ItemGroups items={allNeeds} byRepo openUpTo={1} />
       </section>
       <Waiting from={page.path} />
       {allAgentWork.length > 0 && (
