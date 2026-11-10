@@ -3,5 +3,9 @@
     "type": "command",
     "command": "bash .claude/statusline-command.sh"
   },
-  "advisorModel": "claude-fable-5-2"
+  "advisorModel": "claude-fable-5-2",
+  "claudeMdExcludes": [
+    "/Users/*/.claude/rules/**",
+    "/home/*/.claude/rules/**"
+  ]
 }

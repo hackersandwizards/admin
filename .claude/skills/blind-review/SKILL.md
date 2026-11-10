@@ -97,7 +97,7 @@ can merge `origin/main` and reinstall: start reviewers from a directory outside 
 review, or read `git reflog -3` afterwards and rebuild a before baseline whose `HEAD` moved.
 
 ```bash
-claude -p --model opus --strict-mcp-config --no-session-persistence --allowedTools=Read "<prompt>"
+claude -p --model opus --effort medium --strict-mcp-config --no-session-persistence --allowedTools=Read "<prompt>"
 codex exec -m gpt-6.1-sol -c model_reasoning_effort="high" --skip-git-repo-check --ephemeral -s read-only "<prompt>" < /dev/null
 ```
 
