@@ -6,17 +6,16 @@ import type { ViewItem } from "../data";
 interface Props {
   items: ViewItem[];
   showRepo?: boolean;
-  /** Within a priority, one run of rows per repository under its name, the one with the most
-   * urgent row first. */
-  byRepo?: boolean;
   /** Rows as links to the item on its repository's page, which `from` starts from. */
   from?: string;
   /** Priorities whose group starts open. */
   openUpTo?: number;
   /** One group under this title instead of groups by priority. */
   title?: string;
+  /** The titled group's id, which a link to it names after #. */
+  id?: string;
 }
-const { items, showRepo = false, byRepo = false, from, openUpTo = 2, title } = Astro.props;
+const { items, showRepo = false, from, openUpTo = 2, title, id } = Astro.props;
 const groups = title
   ? [{ label: title, rows: items, open: false }]
   : [1, 2, 3, undefined].map((p) => ({
@@ -24,37 +23,23 @@ const groups = title
       rows: items.filter((i) => i.priority === p),
       open: (p ?? 9) <= openUpTo,
     }));
-// Insertion order: each repository where its most urgent row stands.
-const runs = (rows: ViewItem[]) =>
-  byRepo ? [...Map.groupBy(rows, (i) => i.repo)] : [["", rows] as const];
 ---
 
 {groups
   .filter((g) => g.rows.length)
   .map((g) => (
-    <details class="hw-disclosure" data-group open={g.open}>
+    <details class="hw-disclosure" id={title ? id : undefined} data-group open={g.open}>
       <summary class="py-2 font-mono font-semibold text-ui">
         {g.label}{" "}
         <span class="ml-1 font-normal text-foreground/70" data-count>
           {g.rows.length}
         </span>
+        <span class="ml-1 font-normal text-accent" data-updated-count hidden></span>
       </summary>
-      {runs(g.rows).map(([repo, rows]) => (
-        <div class={repo ? "mb-2" : undefined} data-group={repo ? "" : undefined}>
-          {repo && (
-            <p class="px-3 pb-1 font-mono font-medium text-ui">
-              {repo}{" "}
-              <span class="ml-1 font-normal text-foreground/70" data-count>
-                {rows.length}
-              </span>
-            </p>
-          )}
-          <div class="hw-card p-0!" data-hw-exception="item-list">
-            {rows.map((i) =>
-              from ? <LinkRow item={i} from={from} /> : <ItemRow item={i} showRepo={showRepo} />,
-            )}
-          </div>
-        </div>
-      ))}
+      <div class="hw-card p-0!" data-hw-exception="item-list">
+        {g.rows.map((i) =>
+          from ? <LinkRow item={i} from={from} /> : <ItemRow item={i} showRepo={showRepo} />,
+        )}
+      </div>
     </details>
   ))}

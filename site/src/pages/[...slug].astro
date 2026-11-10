@@ -16,6 +16,7 @@ import {
   keyOf,
   openQuestions,
   repoOf,
+  reviewsOf,
   thumbnail,
   type Page,
   when,
@@ -37,6 +38,7 @@ const questions = openQuestions(items);
 const assumed = items.filter((i) => i.status === "assumed");
 const decided = items.filter((i) => i.status === "decided");
 const work = items.filter((i) => i.kind === "work");
+const reviewItems = reviewsOf(items);
 const goals = items.filter((i) => i.kind === "goal");
 const behind =
   repo?.behind === undefined
@@ -50,12 +52,23 @@ const provenance = repo
         ? `${behind}, fetched ${when(repo.fetched)}`
         : "origin never fetched in this checkout, commits behind unknown"
     }`
-  : `@hackersandwizards/admin v${d.version} · ${d.repos.length} checkouts · ${
-      d.repos.filter((r) => r.behind).length
-    } behind origin, ${d.repos.filter((r) => !r.fetched).length} never fetched · ${d.repos.reduce(
-      (n, r) => n + r.items.length,
-      0,
-    )} item files`;
+  : (() => {
+      const behindNames = d.repos.filter((r) => r.behind).map((r) => r.key);
+      const never = d.repos.filter((r) => !r.fetched).map((r) => r.key);
+      const items = d.repos.reduce((n, r) => n + r.items.length, 0);
+      return [
+        `@hackersandwizards/admin v${d.version}`,
+        `${d.repos.length} checkouts`,
+        behindNames.length
+          ? `${behindNames.length} behind origin: ${behindNames.join(", ")}`
+          : "none behind origin",
+        never.length ? `never fetched: ${never.join(", ")}` : "",
+        `${items} item files`,
+        `as of ${when(Date.now())}`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    })();
 const needs = (list: typeof items) =>
   [...openQuestions(list), ...forPerson(list)].sort(compareItems);
 // The hub's lists of every repository, built on the hub alone.
@@ -94,7 +107,7 @@ const leads: Partial<Record<Page["type"], string>> = {
     "Questions only a person can answer, review requests, and the assumptions agents made. Rows are closed; open one for its context and options.",
   work: "Open work, by priority, and the goal it serves.",
   reviews:
-    "Every item carrying images, open for its options side by side, then each older review folder in docs/agent-work with its images, its report and the items that name it.",
+    "Open review requests, and open decisions between images, then each review folder in docs/agent-work with its images, its report and the items that name it.",
   docs: "Reports in docs/agent-work, newest first, and the repository's other documents.",
   catalog: "The building blocks: the repository's component catalog in Astrobook.",
   architecture:
@@ -112,12 +125,17 @@ const leads: Partial<Record<Page["type"], string>> = {
 >
   {answerable && (
     <Fragment slot="action">
-      <span id="state" class="text-ui text-foreground/70" role="status">
-        Answers stay in this browser.
-      </span>
       <button id="copy" type="button" class="hw-button" data-hw-copy="">
         Copy answers
       </button>
+      <p class="text-ui">
+        <span id="state" role="status">
+          Your answers stay in this browser until you copy them.
+        </span>
+        <span class="block text-foreground/70">
+          Paste them into a chat with an agent, which writes each into its repository.
+        </span>
+      </p>
     </Fragment>
   )}
 
@@ -125,8 +143,8 @@ const leads: Partial<Record<Page["type"], string>> = {
     <>
       <section class="flex flex-col gap-2">
         <h2 class="font-mono font-semibold text-heading">Needs you</h2>
-        <WhoFilter />
-        <ItemGroups items={allNeeds} byRepo openUpTo={1} />
+        <WhoFilter assumed={settled.length ? "settled" : undefined} />
+        <ItemGroups items={allNeeds} showRepo openUpTo={1} />
       </section>
       <Waiting from={page.path} />
       {allAgentWork.length > 0 && (
@@ -142,8 +160,8 @@ const leads: Partial<Record<Page["type"], string>> = {
             <tr>
               <th>Repo</th>
               <th class="text-right">Decide P1</th>
-              <th class="text-right max-sm:hidden">P2</th>
-              <th class="text-right max-sm:hidden">P3</th>
+              <th class="text-right max-sm:hidden">Decide P2</th>
+              <th class="text-right max-sm:hidden">Decide P3</th>
               <th class="text-right max-sm:hidden">Review</th>
               <th class="text-right">Work for a person</th>
               <th class="text-right max-sm:hidden">Assumed</th>
@@ -161,7 +179,11 @@ const leads: Partial<Record<Page["type"], string>> = {
                     <a class="hw-link" href={link(r.dashboard)}>
                       {r.key}
                     </a>
-                    {!!r.behind && <span class="ml-1 text-error">{r.behind} behind</span>}
+                    {!!r.behind && (
+                      <span class="ml-1 text-error">
+                        {r.behind} commit{r.behind === 1 ? "" : "s"} behind
+                      </span>
+                    )}
                     {r.defects.length > 0 && (
                       <span class="ml-1 text-error">{r.defects.length} defects</span>
                     )}
@@ -209,7 +231,7 @@ const leads: Partial<Record<Page["type"], string>> = {
             Assumptions agents made, which you may still veto, and decisions waiting for the work
             that carries them out.
           </p>
-          <ItemGroups items={settled} showRepo title="Assumed and decided" />
+          <ItemGroups items={settled} showRepo title="Assumed and decided" id="settled" />
         </section>
       )}
     </>
@@ -340,12 +362,12 @@ const leads: Partial<Record<Page["type"], string>> = {
 
   {page.type === "decisions" && (
     <>
-      <WhoFilter />
+      <WhoFilter assumed={assumed.length ? "assumptions" : undefined} />
       {questions.length ? <ItemGroups items={questions} /> : <p class="text-ui">Nothing open.</p>}
       {decided.length > 0 && (
         <ItemGroups items={decided} title="Decided, the file leaves with the work" />
       )}
-      {assumed.length > 0 && <ItemGroups items={assumed} title="Assumptions" />}
+      {assumed.length > 0 && <ItemGroups items={assumed} title="Assumptions" id="assumptions" />}
     </>
   )}
 
@@ -370,8 +392,13 @@ const leads: Partial<Record<Page["type"], string>> = {
 
   {page.type === "reviews" && repo && (
     <>
-      {items.some((i) => i.images) && (
-        <ItemGroups items={items.filter((i) => i.images)} title="Items with images" />
+      {reviewItems.length ? (
+        <ItemGroups items={reviewItems} />
+      ) : (
+        <p class="text-ui">No open review request.</p>
+      )}
+      {repo.reviews.length > 0 && (
+        <h2 class="font-mono font-semibold text-heading">Review folders</h2>
       )}
       {!repo.reviews.length && <p class="text-ui">No review folders in docs/agent-work.</p>}
       {repo.reviews.map((r, n) => {

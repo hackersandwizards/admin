@@ -1,5 +1,5 @@
 ---
-import type { ViewItem } from "../data";
+import { inline, type ViewItem } from "../data";
 
 interface Props {
   item: ViewItem;
@@ -26,7 +26,9 @@ const { item, option: o, name, score } = Astro.props;
       </span>
     )}{" "}
     <b>{o.label}</b>
-    {o.detail && <span class="block max-w-measure text-foreground/70">{o.detail}</span>}
+    {o.detail && (
+      <span class="block max-w-measure text-foreground/70" set:html={inline(o.detail)} />
+    )}
   </span>
   {score && (
     <span class="shrink-0 font-mono font-semibold" title="blind-review score">

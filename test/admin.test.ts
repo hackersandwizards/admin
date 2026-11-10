@@ -8,12 +8,17 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { peerDependenciesMeta } from "../package.json";
-import { Window, type HTMLInputElement as DomInput } from "happy-dom";
+import {
+  Window,
+  type HTMLElement as DomElement,
+  type HTMLInputElement as DomInput,
+} from "happy-dom";
 import { buildSite, PAGE_TYPES, script, siteData } from "../src/build.ts";
 import { findRepos } from "../src/hub.ts";
 import {
@@ -25,8 +30,17 @@ import {
   usable,
   type Item,
 } from "../src/items.ts";
-import { fetchedAt, gitEnv, readItems, readRepo, renderMarkdown, treeSource } from "../src/repo.ts";
+import {
+  fetchedAt,
+  gitEnv,
+  readItems,
+  readRepo,
+  renderMarkdown,
+  treeSource,
+  when,
+} from "../src/repo.ts";
 import { createHub, csp, linker } from "../src/serve.ts";
+import { dueOf, inline, withLinks } from "../site/src/data.ts";
 
 const FIX = join(import.meta.dir, "fixtures");
 const made: string[] = [];
@@ -551,9 +565,7 @@ describe("pages", () => {
     expect(agents).toContain('href="spoke/work.html#spoke:sort-the-samples"');
     expect(agents).not.toContain("<textarea");
     expect(agents).not.toMatch(/<div[^>]*data-row[^>]*data-who/);
-    // Within a priority the hub runs each repository's rows under its name; settled items come
-    // last, after the repositories.
-    expect(html).toMatch(/Priority 1[\s\S]*?<p[^>]*>\s*spoke\s*<span[^>]*data-count/);
+    // Settled items come last, after the repositories.
     expect(html.indexOf(">Settled</h2>")).toBeGreaterThan(html.indexOf(">Repositories</h2>"));
     expect(html.indexOf('id="spoke:name-the-command"')).toBeGreaterThan(
       html.indexOf(">Settled</h2>"),
@@ -645,6 +657,58 @@ describe("pages", () => {
     ])
       expect(repos(readFileSync(join(out, from!), "utf8"))).toContain(to!);
   }, 60_000);
+  test("the hub ranks every repository's rows in one order; Reviews lists review requests", async () => {
+    const spoke = await readRepo(repoFrom("spoke"));
+    const base = spoke.items.find((i) => i.id === "ask-the-printer")!;
+    const late = { ...base, id: "late", owner: "Alex", order: 80 };
+    const other = {
+      ...spoke,
+      key: "other",
+      path: `${spoke.path}-other`,
+      items: [{ ...base, id: "early", owner: "Alex", order: 20 }],
+    };
+    const out = join(scratch(), "out");
+    await buildSite(siteData([{ ...spoke, items: [...spoke.items, late] }, other]), out);
+    const html = readFileSync(join(out, "index.html"), "utf8");
+    expect(html.indexOf('id="other:early"')).toBeLessThan(html.indexOf('id="spoke:late"'));
+    // Each row names its repository.
+    expect(html).toMatch(/id="other:early"[\s\S]*?<\/summary>/);
+    expect(html.match(/id="other:early"[\s\S]*?<\/summary>/)![0]).toContain("other · to do");
+    const reviews = readFileSync(join(out, "spoke/reviews.html"), "utf8");
+    for (const id of ["check-the-copy", "pick-recipients", "pick-a-variant"])
+      expect(reviews).toContain(`id="spoke:${id}"`);
+    for (const id of ["goal", "ask-the-printer"]) expect(reviews).not.toContain(`id="spoke:${id}"`);
+    // A settled row says what was assumed or decided, never what was recommended.
+    const settled = (id: string) =>
+      html.match(new RegExp(`id="spoke:${id}"[\\s\\S]*?</summary>`))![0];
+    expect(settled("cache-folder")).toContain("Assumed: The build writes to node_modules/.cache");
+    expect(settled("name-the-command")).toContain("Decided by Alex: Keep the short name");
+    expect(settled("name-the-command")).not.toContain("Recommended");
+    // An opened decision shows its options before its context.
+    const variant = html.match(/id="spoke:pick-a-variant"[\s\S]*?<\/details>/)![0];
+    expect(variant.indexOf('value="a"')).toBeLessThan(variant.indexOf(">Context<"));
+    expect(variant.indexOf("Pick recommended")).toBeLessThan(variant.indexOf(">Context<"));
+    // The hub's provenance names the checkouts behind and says when it is from.
+    expect(html).toMatch(/class="admin-provenance[^>]*>[^<]*· as of \d/);
+    expect(html).toContain("Decide P2");
+  }, 60_000);
+
+  test("a due date says today or overdue, and a one-line field renders its code and links", () => {
+    const now = new Date(2026, 10, 10, 12).getTime();
+    expect(dueOf("2026-11-10", now)).toEqual({ text: "due today", tone: "today" });
+    expect(dueOf("2026-11-03", now).tone).toBe("overdue");
+    expect(dueOf("2026-11-03", now).text).toStartWith("was due 3 Nov");
+    expect(dueOf("2026-11-13", now).tone).toBe("soon");
+    expect(dueOf("2026-12-13", now).tone).toBe("later");
+    expect(inline("use `a-b` & <i>, see http://127.0.0.1:4329/x.")).toBe(
+      'use <code class="hw-inline-code">a-b</code> &amp; &lt;i&gt;, see <a class="hw-link" href="http://127.0.0.1:4329/x">http://127.0.0.1:4329/x</a>.',
+    );
+    // An address already withLinks, or inside a tag, stays as it is.
+    const html =
+      '<p><a href="http://a.example/">http://a.example/</a> <img src="http://b.example/i.png"></p>';
+    expect(withLinks(html)).toBe(html);
+  });
+
   test("waiting on others: people other than the hub's user, never an agent", async () => {
     const repo = await readRepo(join(FIX, "spoke"), treeSource(join(FIX, "spoke")));
     expect(repo.agents).toEqual(["Ivo"]);
@@ -740,9 +804,182 @@ describe("admin.js", () => {
     row.dispatchEvent(new page.Event("change"));
     expect(
       JSON.parse(page.localStorage.getItem("admin-answers:spoke:pick-a-variant")!),
-    ).toMatchObject({ option: "b", label: "Variant B" });
+    ).toMatchObject({ option: "b", label: ["Variant B"] });
     expect(row.querySelector(".mark")!.textContent).toBe("✓ Variant B");
     expect(page.document.getElementById("copy")!.textContent).toBe("Copy 1 answer");
+  });
+
+  test("an answer given before its question or options changed is no current pick and copies as given", () => {
+    const at = new Date(Date.UTC(2026, 0, 1, 9)).toISOString();
+    const first = open("spoke/decisions", {});
+    const asked = (k: string) =>
+      (first.document.getElementById(k) as unknown as HTMLElement).dataset.asked!;
+    const page = open("spoke/decisions", {
+      // A label the item no longer carries for its key.
+      "admin-answers:spoke:pick-a-variant": JSON.stringify({
+        option: "a",
+        label: ["The old label"],
+        asked: "older",
+        note: "go",
+        at,
+      }),
+      // Stored before answers carried their question: compared by the label they copied.
+      "admin-answers:spoke:name-the-command": JSON.stringify({
+        option: "short",
+        label: "A short name",
+        at,
+      }),
+      "admin-answers:spoke:pick-a-logo": JSON.stringify({ option: "v02", label: "Variant 2", at }),
+      // Several picks copy each label.
+      "admin-answers:spoke:pick-recipients": JSON.stringify({
+        option: "ben-sample,ada-example",
+        asked: asked("spoke:pick-recipients"),
+        label: ["Ben Sample", "Ada Example"],
+        at,
+      }),
+    });
+    const row = (k: string) => page.document.getElementById(k)!;
+    const checked = (k: string) =>
+      [...row(k).querySelectorAll("input[data-option]:checked")].map((i) => (i as DomInput).value);
+    expect(checked("spoke:pick-a-variant")).toEqual([]);
+    expect(checked("spoke:name-the-command")).toEqual([]);
+    expect(checked("spoke:pick-a-logo")).toEqual(["v02"]);
+    expect(checked("spoke:pick-recipients").sort()).toEqual(["ada-example", "ben-sample"]);
+    expect(row("spoke:pick-a-variant").querySelector(".mark")!.textContent).not.toContain("✓");
+    const notice = row("spoke:pick-a-variant").querySelector("[data-stale]")!;
+    expect(notice.hasAttribute("hidden")).toBe(false);
+    expect(notice.textContent).toContain("The old label");
+    expect(row("spoke:pick-a-logo").querySelector("[data-stale]")!.hasAttribute("hidden")).toBe(
+      true,
+    );
+    const block = (page.document.getElementById("copy") as DomElement).dataset.hwCopy!;
+    expect(block).toContain("spoke:pick-a-variant: a (The old label), go; answered ");
+    expect(block).toMatch(/spoke:name-the-command: short \(A short name\); answered .*changed/);
+    expect(block).toContain(
+      "spoke:pick-recipients: ben-sample (Ben Sample), ada-example (Ada Example)\n",
+    );
+    // Lines follow the page.
+    const order = [...block.matchAll(/^spoke:([\w-]+):/gm)].map((m) => m[1]);
+    const onPage = [...page.document.querySelectorAll("details.item[data-k]")]
+      .map((d) => (d as unknown as HTMLElement).dataset.k!.slice("spoke:".length))
+      .filter((k) => order.includes(k));
+    expect(order).toEqual(onPage);
+    // Picking again is the answer to the question as it stands now.
+    const pick = row("spoke:pick-a-variant").querySelector('input[value="b"]') as DomInput;
+    pick.checked = true;
+    row("spoke:pick-a-variant").dispatchEvent(new page.Event("change"));
+    expect(
+      JSON.parse(page.localStorage.getItem("admin-answers:spoke:pick-a-variant")!),
+    ).toMatchObject({ option: "b", label: ["Variant B"], asked: asked("spoke:pick-a-variant") });
+    expect(row("spoke:pick-a-variant").querySelector("[data-stale]")!.hasAttribute("hidden")).toBe(
+      true,
+    );
+  });
+
+  test("a copy holds what was not copied yet, and everything again once nothing is new", () => {
+    const at = (h: number) => new Date(Date.UTC(2026, 0, 1, h)).toISOString();
+    const page = open("spoke/decisions", {
+      "admin-answers:copied": at(12),
+      "admin-answers:spoke:pick-a-logo": JSON.stringify({
+        option: "v02",
+        label: "Variant 2",
+        at: at(10),
+      }),
+      "admin-answers:spoke:check-the-copy": JSON.stringify({ note: "fine", at: at(13) }),
+    });
+    const copy = page.document.getElementById("copy") as DomElement;
+    expect(copy.dataset.hwCopy).toContain("spoke:check-the-copy: fine");
+    expect(copy.dataset.hwCopy).not.toContain("pick-a-logo");
+    expect(copy.textContent).toBe("Copy 1 answer");
+    expect(page.document.getElementById("state")!.textContent).toContain("1 not copied yet");
+    const done = open("spoke/decisions", { ...stored(page), "admin-answers:copied": at(14) });
+    const again = done.document.getElementById("copy") as DomElement;
+    expect(again.dataset.hwCopy).toContain("pick-a-logo");
+    expect(again.dataset.hwCopy).toContain("check-the-copy");
+    expect(again.textContent).toBe("Copy 2 answers again");
+    // The row says it went out.
+    expect(
+      done.document.getElementById("spoke:pick-a-logo")!.querySelector(".mark")!.textContent,
+    ).toContain("copied");
+  });
+
+  test("the filters: kinds counted per person, own rows once, the first fold opens, a search finds what a row says", () => {
+    const page = open("index", {});
+    const doc = page.document;
+    const button = (attr: string, v: string) =>
+      doc.querySelector(`[${attr}="${v}"]`) as unknown as HTMLButtonElement;
+    const count = (k: string) =>
+      button("data-kind-button", k).querySelector("[data-kind-count]")!.textContent;
+    const visible = () =>
+      [...doc.querySelectorAll("[data-row]")].filter(
+        (r) => !r.closest("[hidden]"),
+      ) as unknown as HTMLElement[];
+    const openRows = [
+      ...doc.querySelectorAll("details.item[data-status=open]"),
+    ] as unknown as HTMLElement[];
+    const first = (doc.querySelector("[data-who-button]") as unknown as HTMLElement).dataset
+      .whoButton!;
+    const mine = openRows.filter((r) => !r.dataset.who || r.dataset.who === first);
+    expect(Number(count("all"))).toBe(mine.length);
+    expect(Number(count("decision"))).toBe(
+      mine.filter((r) => r.dataset.kind === "decision").length,
+    );
+    // A kind filters the rows.
+    button("data-kind-button", "decision").click();
+    expect(visible().filter((r) => r.dataset.kind && r.dataset.kind !== "decision")).toEqual([]);
+    button("data-kind-button", "all").click();
+    // Kim's rows show under "Needs you", not a second time under "Waiting on others".
+    button("data-who-button", "Kim").click();
+    const kim = doc.querySelector('[data-who-group="Kim"]')!;
+    expect(kim.closest("[hidden]")).not.toBeNull();
+    expect(Number(count("all"))).toBeGreaterThan(0);
+    // Kim has no Priority 2 or 3 row open by default: a fold with rows opens.
+    const needs = doc.querySelector("[data-who-button]")!.closest("section")!;
+    expect(
+      [...needs.querySelectorAll("details[data-group]")].some(
+        (g) => !g.closest("[hidden]") && (g as unknown as HTMLDetailsElement).open,
+      ),
+    ).toBe(true);
+    button("data-who-button", "all").click();
+    // The hidden "updated" mark is no text a search finds.
+    const search = doc.getElementById("admin-search") as DomInput;
+    search.value = "updated since";
+    search.dispatchEvent(new page.Event("input"));
+    expect(visible()).toEqual([]);
+    expect(doc.getElementById("admin-nohit")!.hasAttribute("hidden")).toBe(false);
+    expect(doc.getElementById("admin-nohit")!.textContent).toContain("“updated since”");
+    // Every section without a row to show steps aside.
+    expect(
+      [...doc.querySelectorAll("main section")].filter((x) => !x.hasAttribute("hidden")),
+    ).toEqual([]);
+    // A row of another person found by the search is named.
+    button("data-who-button", first).click();
+    search.value = "printer";
+    search.dispatchEvent(new page.Event("input"));
+    expect(doc.getElementById("admin-nohit")!.textContent).toContain("1 row of other people does");
+  });
+
+  test("a new visit starts on the hub's user; a link to an item gone says so", () => {
+    const hours = (h: number) => String(Date.now() - h * 36e5);
+    const pressed = (w: Window) =>
+      (w.document.querySelector('[data-who-button][aria-pressed="true"]') as unknown as HTMLElement)
+        .dataset.whoButton;
+    const later = open("index", { "admin-answers:who": "Kim", "admin-answers:seen": hours(0.5) });
+    expect(pressed(later)).toBe("Kim");
+    const back = open("index", { "admin-answers:who": "Kim", "admin-answers:seen": hours(30) });
+    expect(pressed(back)).not.toBe("Kim");
+    const window = new Window({ url: "http://admin.localhost/spoke/decisions#spoke:gone-item" });
+    opened.push(window);
+    window.document.write(
+      readFileSync(join(out, "spoke/decisions.html"), "utf8").replace(
+        /<script[^>]*><\/script>/g,
+        "",
+      ),
+    );
+    window.eval(code);
+    const gone = window.document.getElementById("admin-gone")!;
+    expect(gone.hasAttribute("hidden")).toBe(false);
+    expect(gone.textContent).toContain("spoke:gone-item is no longer open");
   });
 
   test("an item changed since the visit before says so; a first visit marks nothing", () => {
@@ -756,6 +993,14 @@ describe("admin.js", () => {
     expect(Number(stored(back)["admin-answers:visit"])).toBeLessThan(Date.now() - 36e5);
     // A page view within the hour belongs to the same visit, and keeps its marks.
     expect(shown(open("spoke/work", stored(back)))).toBeGreaterThan(0);
+    // Each fold that holds a marked row counts it, and the page says how many changed.
+    const fold = back.document.querySelector(
+      "details[data-group] [data-updated-count]:not([hidden])",
+    )!;
+    expect(fold.textContent).toMatch(/\d+ updated/);
+    expect(back.document.getElementById("admin-since")!.textContent).toContain(
+      "changed since your last visit",
+    );
   });
 
   test("a row shown on the visit before compares its file, not its commit time", () => {
@@ -773,6 +1018,24 @@ describe("admin.js", () => {
     expect([...new Set(marked.map((r) => (r as unknown as HTMLElement).dataset.k))]).toEqual([
       changed,
     ]);
+    // A stored question that differs says the question changed; the file alone, that it was edited.
+    const [file] = versions[changed!].split(" ");
+    const asked = open("index", {
+      "admin-answers:seen": String(Date.now() - 2 * 36e5),
+      "admin-answers:versions": JSON.stringify({ ...versions, [changed!]: "older older" }),
+    });
+    const mark = (w: Window) =>
+      w.document.querySelector(`[data-k="${changed}"] [data-updated]`)!.textContent;
+    expect(mark(asked)).toContain("question or options changed");
+    const edited = open("index", {
+      "admin-answers:seen": String(Date.now() - 2 * 36e5),
+      "admin-answers:versions": JSON.stringify({
+        ...versions,
+        [changed!]: `older ${versions[changed!].split(" ")[1]}`,
+      }),
+    });
+    expect(mark(edited)).toContain("edited since");
+    expect(file).toBeString();
   });
 });
 
@@ -794,6 +1057,33 @@ describe("serve", () => {
     } finally {
       Date.now = now;
     }
+  }, 120_000);
+
+  test("a fetch that moves no ref rebuilds nothing, and the pages print its time", async () => {
+    const repo = repoFrom("spoke");
+    const hub = createHub({ root: dirname(repo) });
+    const get = async (path: string) =>
+      (await hub.fetch(new Request(`http://admin.localhost${path}`))).text();
+    await hub.pages();
+    const head = join(repo, ".git/FETCH_HEAD");
+    writeFileSync(head, "");
+    utimesSync(head, new Date(2026, 0, 2, 9, 5), new Date(2026, 0, 2, 9, 5));
+    // A first fetch changes what the pages say: fetched or never.
+    const fetched = await hub.pages();
+    // The build runs in a child, whose time zone the test runner does not set.
+    const at = (page: string) => page.match(/fetched ([^<]+)</)?.[1];
+    const before = at(await get("/spoke/dashboard"));
+    expect(before).toBeString();
+    utimesSync(head, new Date(2026, 0, 3, 10, 7), new Date(2026, 0, 3, 10, 7));
+    expect(await hub.pages()).toBe(fetched);
+    const after = at(await get("/spoke/dashboard"));
+    expect(after).not.toBe(before);
+    // As a build from scratch prints it.
+    const fresh = createHub({ root: dirname(repo) });
+    const control = await (
+      await fresh.fetch(new Request("http://admin.localhost/spoke/dashboard"))
+    ).text();
+    expect(after).toBe(at(control));
   }, 120_000);
 
   test("serves committed pages and files, rebuilding only after a commit", async () => {
@@ -846,7 +1136,15 @@ describe("serve", () => {
         `http://admin.localhost/spoke/dashboard${bare.slice(6).replace(/^\//, "")}`,
       ]);
     }
-    expect((await get("/nosuchrepo/")).status).toBe(404);
+    const none = await get("/nosuchrepo/");
+    expect(none.status).toBe(404);
+    // In the hub's styles, with the way back.
+    const lost = await none.text();
+    expect(lost).toContain('href="/">Open the hub</a>');
+    expect(lost).toMatch(/<link rel="stylesheet" href="\/_astro\/[^"]+\.css">/);
+    expect(lost).toContain('<code class="hw-inline-code">/nosuchrepo/</code>');
+    // The hub says it is current as of the request.
+    expect(first).toContain(`· as of ${when(Date.now())}`);
     // Every script, on the hub and on a nested page, resolves under the one path the policy runs.
     const nested = await decisions.text();
     // A page travels gzipped where the browser takes it, and a hashed asset stays in its cache.
@@ -1002,7 +1300,7 @@ describe("serve", () => {
       expect(home).toContain(`>${key}<`);
     expect(home).toContain("key web names another checkout too: its pages are under b-web");
     expect(await get("/b-web/doc/README")).toContain("Only in b");
-    expect(await get("/a-web/doc/README")).toContain("no such page");
+    expect(await get("/a-web/doc/README")).toContain("<h1>No such page</h1>");
   }, 120_000);
 
   test("serves each doc page from its depth's shell, as a full build renders it", async () => {

@@ -4,7 +4,7 @@ import { items } from "../../story";
 export default { component: ItemGroups };
 
 export const ByPriority = { args: { items } };
-// The hub: within a priority, one run per repository under its name.
-export const ByRepository = { args: { items, byRepo: true } };
+// The hub: every repository's rows in one order, each naming its repository.
+export const AcrossRepositories = { args: { items, showRepo: true } };
 export const AsLinks = { args: { items, from: "index", openUpTo: 3 } };
 export const UnderATitle = { args: { items, title: "Assumed and decided" } };

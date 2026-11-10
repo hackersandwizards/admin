@@ -31,18 +31,25 @@ const items = [...document.querySelectorAll("details.item[data-k]")];
 // A page that names every item of its repositories knows which answers lost their item.
 const live = new Set(document.body.dataset.answers?.split(" ").filter(Boolean));
 const liveRepos = new Set([...live].map((k) => k.split(":")[0]));
-const copiedAt = localStorage.getItem(STORE + "copied") || "";
+const copied = localStorage.getItem(STORE + "copied") || "";
 for (let i = localStorage.length - 1; i >= 0; i--) {
   const k = localStorage.key(i);
   if (!isAnswer(k)) continue;
   const id = k.slice(STORE.length);
   const a = read(id);
   if (liveRepos.has(id.split(":")[0]) && !live.has(id))
-    if (!a || !a.at || a.at <= copiedAt) localStorage.removeItem(k);
+    if (!a || !a.at || a.at <= copied) localStorage.removeItem(k);
 }
 // A visit is a run of page views under an hour apart: an item whose file changed since the one
-// before says so on its row. A row this browser showed then compares the file's text, since a
-// change fetched later carries its older commit time; any other row compares that time.
+// before says so on its row, and what changed: its question or options, or the rest of its file.
+// A row this browser showed then compares the file's text, since a change fetched later carries
+// its older commit time; any other row compares that time. A new visit starts the person filter
+// on the hub's user again.
+const MARKS = {
+  asked: "question or options changed since your last visit",
+  edited: "edited since your last visit",
+};
+let updatedSince = 0;
 try {
   const now = Date.now();
   const seen = Number(localStorage.getItem(STORE + "seen")) || 0;
@@ -50,15 +57,24 @@ try {
   if (now - seen > 36e5) {
     localStorage.setItem(STORE + "visit", String(seen));
     localStorage.setItem(STORE + "before", JSON.stringify(versions));
+    localStorage.removeItem(STORE + "who");
   }
   localStorage.setItem(STORE + "seen", String(now));
   const since = Number(localStorage.getItem(STORE + "visit")) || 0;
   const before = JSON.parse(localStorage.getItem(STORE + "before") || "{}");
   for (const r of document.querySelectorAll("[data-k][data-version]")) {
-    const was = before[r.dataset.k];
-    if (since && (was ? was !== r.dataset.version : Number(r.dataset.changed) * 1000 > since))
-      r.querySelector("[data-updated]")?.removeAttribute("hidden");
-    versions[r.dataset.k] = r.dataset.version;
+    // A version stored before v1.24.0 holds the file's hash alone.
+    const [file, asked] = (before[r.dataset.k] || "").split(" ");
+    const mark = r.querySelector("[data-updated]");
+    if (since && (file ? file !== r.dataset.version : Number(r.dataset.changed) * 1000 > since)) {
+      if (mark) {
+        mark.hidden = false;
+        if (file)
+          mark.textContent = `${MARKS[asked && asked !== r.dataset.asked ? "asked" : "edited"]} ·`;
+      }
+      updatedSince = since;
+    }
+    versions[r.dataset.k] = `${r.dataset.version} ${r.dataset.asked || ""}`;
   }
   for (const k of Object.keys(versions))
     if (liveRepos.has(k.split(":")[0]) && !live.has(k)) delete versions[k];
@@ -68,87 +84,173 @@ try {
 }
 const hhmm = (iso) =>
   new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-const label = (d, key) => d.querySelector(`input[value="${CSS.escape(key)}"]`)?.dataset.label;
+const moment = (iso) =>
+  new Date(iso).toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+const copiedAt = () => localStorage.getItem(STORE + "copied") || "";
+const label = (d, key) =>
+  d?.querySelector(`input[data-option][value="${CSS.escape(key)}"]`)?.dataset.label;
 const picked = (a) => (a?.option ? a.option.split(",") : []);
+const rowOf = (k) => items.find((x) => x.dataset.k === k);
+// The labels as answered, one per pick: a single text in an answer stored before v1.24.0.
+const labelsOf = (a) => [a.label ?? []].flat();
+// An answer given before its item's question or options changed: by the question it stored, or,
+// stored before answers carried one, by the label it copied.
+function stale(k, a) {
+  if (!a) return false;
+  const shown = document.querySelector(`[data-k="${CSS.escape(k)}"][data-asked]`);
+  if (!shown) return false;
+  if (a.asked) return a.asked !== shown.dataset.asked;
+  const d = rowOf(k);
+  return (
+    !!d && picked(a).length === 1 && typeof a.label === "string" && label(d, a.option) !== a.label
+  );
+}
+const choiceOf = (k, a) => {
+  const names = labelsOf(a);
+  return picked(a)
+    .map((key, n) => {
+      const name = names[n] ?? label(rowOf(k), key);
+      return name ? `${key} (${name})` : key;
+    })
+    .join(", ");
+};
 function mark(d, a) {
+  const old = stale(d.dataset.k, a);
   const n = picked(a).length;
-  const text =
-    a &&
-    (n > 1
-      ? `${n} picked`
-      : a.option
-        ? label(d, a.option) || a.option
-        : a.done
-          ? "done"
-          : a.note
-            ? "note"
-            : "");
+  const text = !a
+    ? ""
+    : old
+      ? "! answered before the question changed"
+      : `✓ ${
+          n > 1
+            ? `${n} picked`
+            : a.option
+              ? label(d, a.option) || a.option
+              : a.done
+                ? "done"
+                : a.note
+                  ? "note"
+                  : ""
+        }`;
+  const sent = !!a && !old && a.at <= copiedAt();
   const m = d.querySelector(".mark");
-  if (m) m.textContent = text ? `✓ ${text}` : "";
+  if (m) {
+    m.textContent = text + (sent ? " · copied" : "");
+    m.classList.toggle("text-error", old);
+  }
   const s = d.querySelector(".saved");
-  if (s) s.textContent = a ? `saved ${hhmm(a.at)}` : "";
+  if (s)
+    s.textContent = a ? `saved ${hhmm(a.at)}${sent ? `, copied ${hhmm(copiedAt())}` : ""}` : "";
+  const notice = d.querySelector("[data-stale]");
+  if (notice) {
+    notice.hidden = !old;
+    const what = a?.option
+      ? `You picked ${
+          labelsOf(a)
+            .map((l) => `“${l}”`)
+            .join(", ") || a.option
+        }`
+      : a?.done
+        ? "You marked this done"
+        : "You wrote your note";
+    notice.textContent = old
+      ? `${what} on ${moment(a.at)}. The question or its options changed since: read them again and answer again.`
+      : "";
+  }
 }
 function load(d) {
   const a = read(d.dataset.k);
+  const old = stale(d.dataset.k, a);
   for (const i of d.querySelectorAll("input[data-option], input[value=done]"))
-    i.checked = !!a && ("option" in i.dataset ? picked(a).includes(i.value) : !!a.done);
+    i.checked = !!a && !old && ("option" in i.dataset ? picked(a).includes(i.value) : !!a.done);
   const t = d.querySelector("textarea");
   if (t) t.value = a ? a.note || "" : "";
   mark(d, a);
 }
 function save(d) {
-  const option = [...d.querySelectorAll("input[data-option]:checked")]
-    .map((i) => i.value)
-    .join(",");
+  const keys = [...d.querySelectorAll("input[data-option]:checked")].map((i) => i.value);
   const done = d.querySelector("input[value=done]:checked");
   const note = (d.querySelector("textarea")?.value || "").trim();
-  // The label goes with the answer, so a page without its row still copies it.
+  // The labels and the question go with the answer, so a page without its row still copies it as
+  // given, and a changed question shows.
   const a =
-    option || done || note
-      ? { option, label: label(d, option), done: !!done, note, at: new Date().toISOString() }
+    keys.length || done || note
+      ? {
+          option: keys.join(","),
+          label: keys.map((k) => label(d, k)),
+          asked: d.dataset.asked,
+          done: !!done,
+          note,
+          at: new Date().toISOString(),
+        }
       : null;
   if (write(d.dataset.k, a)) mark(d, a);
   state();
 }
-const answered = () =>
-  Object.keys(localStorage)
+// In page order, then the answers to items not on this page.
+const answered = () => {
+  const order = [...new Set([...document.querySelectorAll("[data-k]")].map((r) => r.dataset.k))];
+  const at = (k) => (order.includes(k) ? order.indexOf(k) : order.length);
+  return Object.keys(localStorage)
     .filter(isAnswer)
     .map((k) => k.slice(STORE.length))
-    .filter((k) => read(k));
-function block() {
-  const lines = answered().map((k) => {
-    const a = read(k);
-    // A shown row's label is current; the stored one serves where the row is not on the page.
-    const d = items.find((x) => x.dataset.k === k);
-    const name = (d && label(d, a.option)) || a.label;
-    const choice = a.option ? `${a.option}${name ? ` (${name})` : ""}` : a.done ? "done" : "";
-    return `${k}: ${[choice, (a.note || "").replace(/\s+/g, " ")].filter(Boolean).join(", ")}`;
-  });
-  return lines.length ? `Answers from the admin pages:\n${lines.join("\n")}` : "";
+    .filter((k) => read(k))
+    .sort((a, b) => at(a) - at(b));
+};
+function line(k) {
+  const a = read(k);
+  const said = [choiceOf(k, a) || (a.done ? "done" : ""), (a.note || "").replace(/\s+/g, " ")];
+  const old = stale(k, a)
+    ? `; answered ${moment(a.at)}, before the question or its options changed`
+    : "";
+  return `${k}: ${said.filter(Boolean).join(", ")}${old}`;
 }
+const block = (keys) =>
+  keys.length ? `Answers from the admin pages:\n${keys.map(line).join("\n")}` : "";
 const copy = document.getElementById("copy");
 const status = document.getElementById("state");
 const idle = status?.textContent.trim();
 // brand's copy button (enhance(), data-hw-copy) copies the block and says on itself how it went:
-// a copy passes relabel false, so that label stays.
+// a copy passes relabel false, so that label stays. A copy holds what was not copied yet, and
+// every answer again once nothing is new.
 function state(relabel = true) {
   if (!copy) return;
   const keys = answered();
-  const n = keys.length;
-  const since = localStorage.getItem(STORE + "copied") || "";
-  const open = keys.filter((k) => read(k).at > since).length;
-  copy.dataset.hwCopy = block();
-  copy.disabled = !n;
-  if (relabel) copy.textContent = n ? `Copy ${n} answer${n === 1 ? "" : "s"}` : "Copy answers";
+  const since = copiedAt();
+  const old = keys.filter((k) => stale(k, read(k)));
+  const fresh = keys.filter((k) => read(k).at > since && !old.includes(k));
+  const send =
+    fresh.length || old.length ? keys.filter((k) => fresh.includes(k) || old.includes(k)) : keys;
+  copy.dataset.hwCopy = block(send);
+  copy.disabled = !keys.length;
+  const s = (n) => (n === 1 ? "" : "s");
+  if (relabel)
+    copy.textContent = !keys.length
+      ? "Copy answers"
+      : send === keys && !fresh.length && !old.length
+        ? `Copy ${keys.length} answer${s(keys.length)} again`
+        : `Copy ${send.length} answer${s(send.length)}`;
   // Once all is copied the button steps back, so it no longer reads as work left.
-  if (n && !open) copy.dataset.variant = "secondary";
+  if (keys.length && !fresh.length && !old.length) copy.dataset.variant = "secondary";
   else delete copy.dataset.variant;
   if (status)
-    status.textContent = !n
+    status.textContent = !keys.length
       ? idle
-      : open
-        ? `${open} not copied yet.`
-        : `All copied at ${hhmm(since)}.`;
+      : fresh.length || old.length
+        ? [
+            fresh.length ? `${fresh.length} not copied yet` : "",
+            old.length
+              ? `${old.length} given before ${old.length === 1 ? "its question" : "their questions"} changed`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(", ") + "."
+        : `All ${keys.length} copied at ${hhmm(since)}.`;
 }
 for (const d of items) {
   load(d);
@@ -180,11 +282,11 @@ copy?.addEventListener("hw-copy", (e) => {
   pending = Math.max(0, pending - 1);
   if (!e.detail?.ok) return;
   try {
-    if (pressedAt > (localStorage.getItem(STORE + "copied") || ""))
-      localStorage.setItem(STORE + "copied", pressedAt);
+    if (pressedAt > copiedAt()) localStorage.setItem(STORE + "copied", pressedAt);
   } catch {
     /* storage blocked: the copy still happened */
   }
+  for (const d of items) mark(d, read(d.dataset.k));
   state(false);
 });
 
@@ -192,41 +294,102 @@ const search = document.getElementById("admin-search");
 // Only a page with the person buttons filters by person: elsewhere a stored choice would hide
 // rows unseen. The filter starts on the first person, the hub's user where they answer a question.
 const buttons = [...document.querySelectorAll("[data-who-button]")];
+const kinds = [...document.querySelectorAll("[data-kind-button]")];
 const stored = localStorage.getItem(STORE + "who");
 let who = buttons.some((b) => b.dataset.whoButton === stored)
   ? stored
   : buttons[0]?.dataset.whoButton || "all";
+let kind = "all";
 // A link to an item opens it and shows it whatever person the filter is on.
-let target = null;
-try {
-  target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
-} catch {
-  /* a malformed hash names no item */
-}
+const named = () => {
+  try {
+    return decodeURIComponent(location.hash.slice(1));
+  } catch {
+    return ""; // a malformed hash names no item
+  }
+};
+let target = document.getElementById(named());
 if (target?.dataset.who && buttons.length)
   who = buttons.some((b) => b.dataset.whoButton === target.dataset.who)
     ? target.dataset.who
     : "all";
 const rows = () => [...document.querySelectorAll("[data-row]")];
-function apply() {
+// What a row says, without the marks this script writes or shows on it.
+const said = new Map();
+const textOf = (r) => {
+  if (!said.has(r)) {
+    const copy = r.cloneNode(true);
+    for (const x of copy.querySelectorAll("[data-updated], .mark, .saved, [data-stale]"))
+      x.remove();
+    said.set(r, copy.textContent.toLowerCase());
+  }
+  return said.get(r);
+};
+const shown = (el) => !el.closest("[hidden]");
+const scope = buttons[0]?.closest("section, main");
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+function apply(picked = false) {
   const term = (search?.value || "").trim().toLowerCase();
-  const hit = (el) => !!term && el.textContent.toLowerCase().includes(term);
+  const filtered = buttons.length > 0 && who !== "all";
+  const mine = (r) => !filtered || !r.dataset.who || r.dataset.who === who;
+  let elsewhere = 0;
   for (const r of rows()) {
-    const byWho = buttons.length > 0 && who !== "all" && r.dataset.who && r.dataset.who !== who;
-    r.hidden = byWho || (!!term && !hit(r));
+    const hit = !term || textOf(r).includes(term);
+    const ofKind = kind === "all" || !r.dataset.kind || r.dataset.kind === kind;
+    r.hidden = !mine(r) || !ofKind || !hit;
+    if (term && hit && ofKind && !mine(r)) elsewhere++;
     // Options narrow only where one matches: a row found by its title keeps all of them.
     const options = [...r.querySelectorAll("[data-option-row]")];
-    const hits = options.map(hit);
+    const hits = options.map((o) => !!term && o.textContent.toLowerCase().includes(term));
     options.forEach((o, n) => (o.hidden = hits.includes(true) && !hits[n]));
   }
   for (const g of document.querySelectorAll("[data-group]")) {
-    const shown = g.querySelectorAll("[data-row]:not([hidden])").length;
-    g.hidden = !shown;
-    const c = g.querySelector("[data-count]");
-    if (c) c.textContent = shown;
-    if (term && shown && g.tagName === "DETAILS") g.open = true;
+    const n = g.querySelectorAll("[data-row]:not([hidden])").length;
+    // The selected person's own rows stand under "Needs you", not again under "Waiting on others".
+    g.hidden = !n || (filtered && g.dataset.whoGroup === who);
+    const c = g.querySelector(":scope > summary [data-count]") || g.querySelector("[data-count]");
+    if (c) c.textContent = n;
+    if (term && n && g.tagName === "DETAILS") g.open = true;
+  }
+  // A section left without a row to show steps aside.
+  for (const sec of document.querySelectorAll("main section"))
+    if (sec.querySelector("[data-row]"))
+      sec.hidden = ![...sec.querySelectorAll("[data-row]")].some((r) => !r.hidden && shown(r));
+  // After a choice of person or kind, the first group with rows opens where none is open.
+  if (picked && scope) {
+    const groups = [...scope.querySelectorAll("details[data-group]")].filter(shown);
+    if (groups.length && !groups.some((g) => g.open)) groups[0].open = true;
   }
   for (const b of buttons) b.setAttribute("aria-pressed", String(b.dataset.whoButton === who));
+  for (const b of kinds) b.setAttribute("aria-pressed", String(b.dataset.kindButton === kind));
+  // Each kind's open rows for the person, and the assumptions they may veto.
+  const open = [...document.querySelectorAll("details.item[data-status=open]")].filter(mine);
+  for (const b of kinds) {
+    const n = open.filter(
+      (r) => b.dataset.kindButton === "all" || r.dataset.kind === b.dataset.kindButton,
+    ).length;
+    b.querySelector("[data-kind-count]").textContent = n;
+    b.hidden = !n && b.dataset.kindButton !== "all" && b.dataset.kindButton !== kind;
+  }
+  const veto = document.querySelector("[data-assumed]");
+  if (veto) {
+    const n = [...document.querySelectorAll("[data-row][data-status=assumed]")].filter(mine).length;
+    veto.hidden = !n;
+    veto.querySelector("[data-assumed-count]").textContent =
+      `${plural(n, "assumption")} agents made`;
+  }
+  const none = document.getElementById("admin-nohit");
+  if (none) {
+    const empty = !!term && !rows().some((r) => !r.hidden && shown(r));
+    none.hidden = !empty;
+    none.textContent = empty
+      ? `No row ${filtered ? `for ${who} ` : ""}on this page matches “${term}”${
+          elsewhere
+            ? `; ${plural(elsewhere, "row")} of other people ${elsewhere === 1 ? "does" : "do"}: choose All to see ${elsewhere === 1 ? "it" : "them"}`
+            : ""
+        }.`
+      : "";
+  }
 }
 for (const b of buttons)
   b.addEventListener("click", () => {
@@ -236,9 +399,14 @@ for (const b of buttons)
     } catch {
       /* storage blocked: the filter still applies on this page */
     }
-    apply();
+    apply(true);
   });
-search?.addEventListener("input", apply);
+for (const b of kinds)
+  b.addEventListener("click", () => {
+    kind = b.dataset.kindButton;
+    apply(true);
+  });
+search?.addEventListener("input", () => apply());
 addEventListener("keydown", (e) => {
   if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && !e.metaKey) {
     if (document.activeElement?.tagName === "TEXTAREA") return;
@@ -250,11 +418,55 @@ addEventListener("storage", () => {
   for (const d of items) load(d);
   state();
 });
+// Each fold says how many of its rows changed since the last visit, and the page how many in all.
+for (const g of document.querySelectorAll("details[data-group]")) {
+  const n = g.querySelectorAll("[data-updated]:not([hidden])").length;
+  const c = g.querySelector(":scope > summary [data-updated-count]");
+  if (c && n) {
+    c.hidden = false;
+    c.textContent = `· ${n} updated`;
+  }
+}
+const since = document.getElementById("admin-since");
+const marked = new Set(
+  [...document.querySelectorAll("[data-updated]:not([hidden])")].map(
+    (m) => m.closest("[data-k]").dataset.k,
+  ),
+).size;
+if (since && marked) {
+  since.hidden = false;
+  since.textContent = `${plural(marked, "item")} on this page changed since your last visit, ${moment(updatedSince)}.`;
+}
 apply();
 state();
-// The row and every disclosure around it.
-for (let e = target; e; e = e.parentElement?.closest("details")) e.open = true;
-target?.scrollIntoView();
+// A link to a row opens it and every disclosure around it; one to an item no page lists any more
+// says so.
+function reveal() {
+  target = document.getElementById(named());
+  for (let e = target; e; e = e.parentElement?.closest("details")) e.open = true;
+  target?.scrollIntoView();
+  const gone = document.getElementById("admin-gone");
+  const [repo, id] = named().split(":");
+  if (gone) {
+    gone.hidden = !!target || !id;
+    gone.textContent =
+      target || !id
+        ? ""
+        : `${repo}:${id} is no longer open: it was settled or finished, and its file is gone. Its history: git log --all -- docs/agent-work/items/${id}.md in ${repo}.`;
+  }
+}
+reveal();
+addEventListener("hashchange", reveal);
+// A page left open says once it is over an hour old, since it shows the state it was loaded in.
+const loaded = Date.now();
+const age = document.getElementById("admin-age");
+const aged = () => {
+  if (!age || Date.now() - loaded < 36e5) return;
+  age.hidden = false;
+  age.textContent = `This page shows the state of ${moment(new Date(loaded).toISOString())}. Reload it before you answer: items may have changed or closed since.`;
+};
+setInterval(aged, 6e4);
+addEventListener("visibilitychange", aged);
 // A catalog link opens only while its dev server runs: an opaque no-cors request answers
 // when the server listens and fails when nothing does.
 for (const p of document.querySelectorAll("[data-dev]")) {

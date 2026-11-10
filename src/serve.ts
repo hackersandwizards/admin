@@ -43,13 +43,14 @@ import {
 
 export type ServeOptions = { root: string; rescanMs?: number };
 
-// The pages show when each repository was last fetched, so a fetch that moves no ref counts too.
+// A fetch that moves no ref changes no page but the fetch time it prints, which each request
+// fills in (stamp below), so only whether it was ever fetched is part of the state.
 export async function stateOf(repo: string) {
   const [refs, fetched] = await Promise.all([
     gitAsync(repo, ["show-ref", "--head"]),
     fetchedAt(repo),
   ]);
-  return refs + (fetched ?? 0);
+  return { state: refs + (fetched ? "fetched" : ""), fetched };
 }
 
 const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
@@ -81,7 +82,12 @@ const IMMUTABLE = "public, max-age=31536000, immutable";
 
 // Runs this file as a child that builds into `out`, then reads what it wrote, keyed by path.
 async function spawnBuild(what: string, args: string[], out: string) {
-  const child = Bun.spawn([process.execPath, import.meta.path, ...args, out], { stderr: "pipe" });
+  // In this process's time zone, which stamp() writes its times in.
+  const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const child = Bun.spawn([process.execPath, import.meta.path, ...args, out], {
+    stderr: "pipe",
+    env: { ...process.env, TZ },
+  });
   const err = await new Response(child.stderr).text();
   process.stderr.write(err);
   if (await child.exited) {
@@ -176,6 +182,8 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   let scanned = 0;
   let scanning: Promise<string[]> | undefined;
   const read = new Map<string, { state: string; data: RepoData }>();
+  // Each repository's fetch time as the latest request found it.
+  const fetchedNow = new Map<string, number | undefined>();
   // A repository that failed to read at a state, and a build that failed for a key, say on every
   // page what went wrong.
   const unread = new Map<string, { state: string; at: number; message: string }>();
@@ -277,6 +285,37 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     return page;
   };
 
+  // Every request checks each repository first, so a page is current when it is served: the hub's
+  // provenance line says so with the request's time, and a repository page's line prints the fetch
+  // time this request found, once a fetch that moved no ref left the page unbuilt. The line comes
+  // before any item or doc text.
+  const stamped = new WeakMap<Buffer, { key: string; page: Buffer }>();
+  const stamp = (html: Buffer, page: string) => {
+    const repo = site?.repos.find((r) => page.startsWith(`${r.key}/`));
+    const at = repo && newerFetch(repo);
+    const now = page === "index.html" ? when(Date.now()) : "";
+    const key = `${at ?? ""}|${now}`;
+    if (key === "|") return html;
+    const done = stamped.get(html);
+    if (done?.key === key) return done.page;
+    const fetched = (ms: number) => `fetched ${Bun.escapeHTML(when(ms))}`;
+    let text = html.toString("utf8");
+    if (at) text = text.replace(fetched(repo.fetched!), () => fetched(at));
+    if (now)
+      text = text.replace(
+        /(class="admin-provenance[^"]*">[^<]*· as of )[^<]*/,
+        (_, before: string) => before + Bun.escapeHTML(now),
+      );
+    const next = Buffer.from(text);
+    stamped.set(html, { key, page: next });
+    return next;
+  };
+  // A fetch time this request found that differs from the one its pages print.
+  const newerFetch = (repo: RepoData) => {
+    const at = fetchedNow.get(repo.path);
+    return repo.fetched && at && at !== repo.fetched ? at : undefined;
+  };
+
   // Requests that arrive while one checks, reads or builds share its answer.
   const pages = () =>
     (refreshing ??= refresh().finally(() => {
@@ -302,7 +341,14 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     // A repository gone from the search leaves no entry for /_file/ to find under its key.
     for (const p of read.keys()) if (!current.includes(p)) read.delete(p);
     for (const p of unread.keys()) if (!current.includes(p)) unread.delete(p);
-    const states = await Promise.all(current.map(async (p) => [p, await stateOf(p)] as const));
+    for (const p of fetchedNow.keys()) if (!current.includes(p)) fetchedNow.delete(p);
+    const states = await Promise.all(
+      current.map(async (p) => {
+        const { state, fetched } = await stateOf(p);
+        fetchedNow.set(p, fetched);
+        return [p, state] as const;
+      }),
+    );
     // The day is part of the state: a due date comes within a week of it with no commit.
     const key = [new Date(Date.now()).toDateString(), ...states.map(([p, s]) => `${p} ${s}`)].join(
       "\n",
@@ -449,6 +495,22 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
         ? typed(built.get(at)!, at, at.startsWith("_astro/") ? IMMUTABLE : "no-store")
         : new Response("no such page", { status: 404 });
     }
+    // An address no page answers: a page in the hub's own styles with the way back.
+    function missing(built: Site, path: string) {
+      // The hub's stylesheet and theme script, from its head.
+      const hub = built.files.get("index.html")?.toString("utf8").split("</head>")[0] ?? "";
+      const assets = [
+        ...hub.matchAll(/<(?:link rel="stylesheet" href|script src)="\.\/(_astro\/[^"]+)"/g),
+      ]
+        .map(
+          ([tag, file]) =>
+            `${tag.replace(`"./${file}"`, `"/${file}"`)}>${tag.startsWith("<script") ? "</script>" : ""}`,
+        )
+        .join("");
+      const page = `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>No such page · Admin</title>${assets}</head><body class="bg-background text-foreground" data-hw-scale="dense"><main class="admin-main hw-container flex flex-col gap-3 pb-16"><h1>No such page</h1><p class="text-ui">Nothing on the hub answers at <code class="hw-inline-code">${Bun.escapeHTML(path)}</code>: the page moved, or its repository left the hub.</p><p class="text-ui"><a class="hw-link" href="/">Open the hub</a>, which lists every repository and what waits on whom.</p></main></body></html>`;
+      const r = typed(Buffer.from(page), "404.html");
+      return new Response(r.body, { status: 404, headers: r.headers });
+    }
     const built = await pages().catch((e: Error) => e);
     if (built instanceof Error)
       return new Response(
@@ -464,7 +526,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const hit = files.get(name) ?? files.get(`${name}.html`);
     if (hit) {
       const at = files.has(name) ? name : `${name}.html`;
-      return typed(at.endsWith(".html") ? withNotice(hit) : hit, at);
+      return typed(at.endsWith(".html") ? withNotice(stamp(hit, at)) : hit, at);
     }
     // A doc's slug may end in .html itself, as for x.html.md.
     const doc = docPage(name) ?? docPage(name.replace(/\.html$/, ""));
@@ -475,7 +537,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
         `${url.origin}${url.pathname.replace(/\/$/, "")}/dashboard${url.search}`,
         302,
       );
-    return new Response("no such page", { status: 404 });
+    return missing(built, url.pathname);
   }
 
   return { fetch, pages };

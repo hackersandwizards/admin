@@ -33,6 +33,7 @@ const notes: Record<string, string> = {
   choice: "The rail's menu on a phone, one row under the search.",
   menu: "The repo switcher's list of repositories, opened from the top bar.",
   disclosure: "A priority group, a person waited on, an item row: each opens and closes.",
+  status: "An answer given before its question changed, and a page left open for long.",
 };
 ---
 
@@ -193,6 +194,11 @@ const notes: Record<string, string> = {
           </details>
         )}
         {name === "code" && <pre class="hw-code">bun run check</pre>}
+        {name === "status" && (
+          <p class="hw-status text-ui" data-tone="warning">
+            You picked “Variant A” on 2 Jan, 09:05. The question or its options changed since.
+          </p>
+        )}
         {name === "prose" && (
           <article
             class="prose hw-prose"

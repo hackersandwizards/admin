@@ -1,14 +1,45 @@
 ---
-// admin.js reads data-who-button.
+// admin.js reads data-who-button and data-kind-button, and counts each kind of open row for the
+// selected person.
 import { data } from "../data";
+
+interface Props {
+  /** The id of the fold that lists assumptions, which their count links to. */
+  assumed?: string;
+}
+const { assumed } = Astro.props;
+const kinds = [
+  ["all", "All"],
+  ["decision", "To decide"],
+  ["review", "To review"],
+  ["work", "To do"],
+];
 ---
 
-<div class="admin-who flex self-start overflow-x-auto">
-  <div class="hw-segmented" role="group" aria-label="For whom">
-    {[...data().people, "all"].map((p) => (
-      <button type="button" data-who-button={p} aria-pressed="false">
-        {p === "all" ? "All" : p}
-      </button>
-    ))}
+<div class="flex flex-col gap-2">
+  <div class="admin-who flex self-start overflow-x-auto">
+    <div class="hw-segmented" role="group" aria-label="For whom">
+      {[...data().people, "all"].map((p) => (
+        <button type="button" data-who-button={p} aria-pressed="false">
+          {p === "all" ? "All" : p}
+        </button>
+      ))}
+    </div>
   </div>
+  <div class="admin-who flex self-start overflow-x-auto">
+    <div class="hw-segmented" role="group" aria-label="Which kind">
+      {kinds.map(([k, label]) => (
+        <button type="button" data-kind-button={k} aria-pressed={String(k === "all")}>
+          {label}
+          <span class="ml-1 tabular-nums" data-kind-count />
+        </button>
+      ))}
+    </div>
+  </div>
+  {assumed && (
+    <p class="text-ui" data-assumed hidden>
+      <a class="hw-link" href={`#${assumed}`} data-assumed-count></a>{" "}
+      <span>you may still veto.</span>
+    </p>
+  )}
 </div>

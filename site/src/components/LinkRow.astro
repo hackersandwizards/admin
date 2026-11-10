@@ -1,8 +1,7 @@
 ---
 // An item as one line linking to its full row on its repository's page, for a list the person
 // reads but does not answer on this page.
-import { dueSoon } from "../../../src/items.ts";
-import { day, itemHref, keyOf, UPDATED, type ViewItem } from "../data";
+import { askedOf, dueOf, itemHref, keyOf, UPDATED, type ViewItem } from "../data";
 
 interface Props {
   item: ViewItem;
@@ -13,6 +12,7 @@ const { item: i, from } = Astro.props;
 const meta = [i.repo, i.kind, i.agent || i.owner !== i.who ? i.owner : ""]
   .filter(Boolean)
   .join(" · ");
+const due = i.due ? dueOf(i.due) : undefined;
 ---
 
 <div
@@ -20,6 +20,8 @@ const meta = [i.repo, i.kind, i.agent || i.owner !== i.who ? i.owner : ""]
   data-k={keyOf(i)}
   data-changed={i.changed}
   data-version={i.version}
+  data-asked={askedOf(i)}
+  data-kind={i.kind}
   data-row
 >
   <span
@@ -34,17 +36,18 @@ const meta = [i.repo, i.kind, i.agent || i.owner !== i.who ? i.owner : ""]
       {i.title}
     </a>
     <span class="block text-ui text-foreground/70">
-      {[
-        <span class="text-accent" data-updated hidden>
-          {UPDATED}
-        </span>,
-        meta,
-      ]}
+      <span class="text-accent" data-updated hidden>
+        {UPDATED} ·
+      </span>{" "}
+      {meta}
     </span>
   </span>
-  {i.due && (
-    <span class="hw-pill shrink-0" data-tone={dueSoon(i.due) ? undefined : "neutral"}>
-      due {day(Date.parse(i.due) / 1000)}
+  {due && (
+    <span
+      class:list={["hw-pill shrink-0", `admin-due-${due.tone}`]}
+      data-tone={due.tone === "later" ? "neutral" : undefined}
+    >
+      {due.text}
     </span>
   )}
 </div>

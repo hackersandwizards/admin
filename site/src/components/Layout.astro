@@ -13,6 +13,7 @@ import {
   NOTICE,
   openQuestions,
   repoOf,
+  reviewsOf,
   type Page,
 } from "../data";
 
@@ -23,8 +24,10 @@ interface Props {
   /** The page names every item of its repositories, so a copied answer to an item gone from them
    * was done. */
   answersAll?: boolean;
+  /** What went wrong, where admin-serve fills it in on each page: the catalog shows it here. */
+  notice?: string;
 }
-const { page, lead, provenance, answersAll = false } = Astro.props;
+const { page, lead, provenance, answersAll = false, notice = NOTICE } = Astro.props;
 const d = data();
 const repo = repoOf(page.repo);
 type Repo = NonNullable<typeof repo>;
@@ -39,7 +42,7 @@ const menu = repo
         count: openQuestions(repo.items).length,
       },
       { to: "work", label: "Work", count: repo.items.filter((i) => i.kind === "work").length },
-      { to: "reviews", label: "Reviews", count: repo.reviews.length },
+      { to: "reviews", label: "Reviews", count: reviewsOf(repo.items).length },
       { to: "docs", label: "Docs", count: repo.reports.length + repo.docs.length },
       ...(repo.designSystem ? [{ to: "catalog", label: "Catalog" }] : []),
       ...repo.products.map((p, n) => ({ to: `products-${n + 1}`, label: p.label })),
@@ -90,6 +93,11 @@ const entries = [
         : undefined
     }
   >
+    <div class="sr-only focus-within:not-sr-only">
+      <a class="hw-button" href="#admin-content">
+        Skip to the content
+      </a>
+    </div>
     <AppHeader product="Admin" href={at("index")}>
       <nav class="hw-breadcrumb admin-where ml-auto" aria-label="Where">
         <ol>
@@ -184,21 +192,25 @@ const entries = [
         </nav>
       </aside>
       <main class="admin-main pb-16">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <h1>{page.title}</h1>
-          <div class="flex items-center gap-3">
-            <slot name="action" />
-          </div>
-        </div>
+        <h1>{page.title}</h1>
         {lead && <p class="admin-lead">{lead}</p>}
         {provenance && <p class="admin-provenance text-foreground/70">{provenance}</p>}
+        {Astro.slots.has("action") && (
+          <div class="admin-action bg-background">
+            <slot name="action" />
+          </div>
+        )}
         <div
           id="admin-problem"
           class="hw-callout mt-3 flex flex-col gap-1 text-ui empty:hidden"
           role="status"
-          set:html={NOTICE}
+          set:html={notice}
         />
-        <div class="mt-6 flex flex-col gap-8">
+        <p id="admin-age" class="hw-status mt-3 text-ui" data-tone="warning" hidden></p>
+        <p id="admin-gone" class="hw-status mt-3 text-ui" data-tone="info" hidden></p>
+        <p id="admin-since" class="mt-3 text-ui text-accent" hidden></p>
+        <p id="admin-nohit" class="mt-3 text-ui" role="status" hidden></p>
+        <div id="admin-content" class="mt-6 flex flex-col gap-8" tabindex="-1">
           <slot />
         </div>
       </main>

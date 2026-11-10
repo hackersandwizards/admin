@@ -33,7 +33,8 @@
     "nav",
     "choice",
     "menu",
-    "disclosure"
+    "disclosure",
+    "status"
   ],
   "exceptions": {
     "item-list": "A card framing a list of item rows edge to edge: no padding, since each row carries its own padding and the hairline between rows. brand's card pads its content.",

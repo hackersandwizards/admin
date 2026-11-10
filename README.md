@@ -70,7 +70,12 @@ running now.
 
 Answers to decisions stay in the browser as they are typed, across reloads and with no prompt on
 leaving, until "Copy answers", on every page that lists questions, puts them on the clipboard as
-one `repo:id: choice, note` line each.
+one `repo:id: choice, note` line each, in the page's order, each picked key with its label as
+answered: `repo:id: a (Label A), b (Label B), note`. A copy holds the answers not copied yet, and
+all of them again once none is new. An answer keeps the item's title and options it answered: where
+they changed since, its row shows the pick as given and asks for a new answer, and its line ends
+`; answered <time>, before the question or its options changed`, which the agent checks against
+the item before it acts.
 
 ## Item files
 
@@ -133,14 +138,15 @@ The question's context, in Markdown.
 
 ## The admin area
 
-Dashboard, Decisions, Work, Reviews (every item with images, then each older
-`docs/agent-work/<date>-<topic>/` folder with its images and report), Docs (reports and the rest of `docs/`, a fold per folder, open where it holds ten docs or fewer), Catalog, the repository's products,
+Dashboard, Decisions, Work, Reviews (open review requests and open decisions between images, then
+each `docs/agent-work/<date>-<topic>/` folder with its images and report), Docs (reports and the rest of `docs/`, a fold per folder, open where it holds ten docs or fewer), Catalog, the repository's products,
 Architecture (package, pins, scripts with their first comment line), Checks (the steps of
 `check:all` or `check`) and Log.
 
 Items sort by `priority`, then `order`; a `due` date seven days away or nearer, or past, leads its
-priority, and every `due` shows as a badge. On the hub each priority runs its rows by repository,
-the one with the most urgent row first, and assumed and decided items come last, under "Settled".
+priority, and every `due` shows as a badge: "was due" in red once past, "due today" in amber. On
+the hub every repository's rows run in this one order, each naming its repository, and assumed and
+decided items come last, under "Settled", each saying what was assumed or decided.
 Work an agent owns shows collapsed under "Agents on it", each row a link to its repository's
 page. An item belongs to the first person its `owner` names anywhere ("Ivo drafts, Kim sends" is
 Kim's), a person being the hub's user or a name that opens some open item's owner, and never an
@@ -148,12 +154,17 @@ agent's name, one an agent definition gives or Claude or Codex; a name matches o
 dashboard list open items people other than the hub's user own under "Waiting on others"; the
 hub's user is the machine's git identity by first name where an owner writes it, else the person
 with the most open questions. On the hub and Decisions a row of buttons for every person who owns
-an open item, the hub's user first, filters the items by owner. A row whose item file changed
-since the visit before, a run of page views under an hour apart in this browser, says so.
+an open item, the hub's user first, filters the items by owner, and a second row by kind, each
+with its count of open items for that person; a new visit starts on the hub's user again. A row
+whose item file changed since the visit before, a run of page views under an hour apart in this
+browser, says so, and whether its question or options changed; each fold counts such rows. An
+opened question shows its first paragraph, its options and its buttons before the rest of its
+text. A page left open over an hour says so.
 
 When a build fails or a repository cannot be read at its HEAD, every page says so above its
 content, keeps the last pages it built, and the hub tries again a minute later, or once a
-repository changes. A
+repository changes. A fetch that moves no ref builds nothing: the page prints the new fetch time
+as it is served. A
 relative link from one doc to another opens that doc's page.
 
 In an item's text a path under `docs/agent-work/` links into the repository named right

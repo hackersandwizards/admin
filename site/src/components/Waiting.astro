@@ -1,6 +1,7 @@
 ---
 // Open items that people other than the hub's user own, one group per person, the person with the
-// most urgent item first, each row linking to the item on its repo's page.
+// most urgent item first, each row linking to the item on its repo's page. A person the filter
+// selects has their rows under "Needs you", so their group here hides (admin.js).
 import { compareItems } from "../../../src/items.ts";
 import { data } from "../data";
 import LinkRow from "./LinkRow.astro";
@@ -25,7 +26,7 @@ const groups = [...Map.groupBy(waiting, (i) => i.who)].map(([who, rows]) => ({ w
   <section class="flex flex-col gap-2">
     <h2 class="font-mono font-semibold text-heading">Waiting on others</h2>
     {groups.map((g) => (
-      <details class="hw-disclosure" data-group open>
+      <details class="hw-disclosure" data-group data-who-group={g.who} open>
         <summary class="py-2 font-mono font-semibold text-ui">
           {g.who}{" "}
           <span class="ml-1 font-normal text-foreground/70" data-count>

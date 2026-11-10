@@ -61,11 +61,37 @@
     font-size: var(--text-page);
     line-height: 1.25;
   }
+  /* Copy answers stays in view under the header while the page scrolls. */
+  .admin-action {
+    position: sticky;
+    top: var(--spacing-app-header);
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    margin-top: 0.75rem;
+    padding-block: 0.5rem;
+    border-bottom: var(--hw-hairline, 1px) solid var(--color-border);
+  }
+  /* A row a link opens stops below the header and the copy bar. */
+  .admin-main :is(details[id], section[id]) {
+    scroll-margin-top: calc(var(--spacing-app-header) + 6rem);
+  }
   .admin-lead {
     max-width: var(--container-measure);
     margin: 0.5rem 0 0;
     font-size: var(--text-subheading);
     line-height: 1.5;
+  }
+  /* A due date in the state hues brand's pill names: past red, today amber. */
+  .admin-due-overdue {
+    --hw-pill-hue: var(--color-red);
+    --hw-pill-hue-night: var(--color-red-night);
+  }
+  .admin-due-today {
+    --hw-pill-hue: var(--color-amber);
+    --hw-pill-hue-night: var(--color-amber);
   }
   .task-list-item-checkbox {
     margin-inline-end: 0.5rem;
