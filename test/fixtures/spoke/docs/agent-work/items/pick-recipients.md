@@ -14,7 +14,7 @@ recommended:
 options:
   - key: ada-example
     label: Ada Example
-    detail: Example Ltd · de · last mail 2026-04-19
+    detail: Example Ltd · de · last mail 2026-04-19 · asked in that mail for the slides of the spring talk and for a date for a follow-up call in the second half of the month
   - key: ben-sample
     label: Ben Sample
     detail: Example Ltd · de · last mail 2026-09-12
