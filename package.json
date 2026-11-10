@@ -35,6 +35,7 @@
     "check:fixture": "bun bin/admin-check.ts test/fixtures/spoke",
     "check:colours": "brand-colours",
     "check:copies": "brand-copies",
+    "check:scan": "brand-scan",
     "check:elements": "brand-elements",
     "check:markers": "brand-markers --site dist /catalog/stories/Pages/doc/default/ /catalog/stories/Pages/decisions/default/",
     "check:retired": "brand-retired dist",
@@ -65,7 +66,8 @@
       "check:values",
       [
         "check:colours",
-        "check:copies"
+        "check:copies",
+        "check:scan"
       ],
       "check:fixture",
       "check:elements",

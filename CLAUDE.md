@@ -40,8 +40,8 @@ sits only where the text it answers is on screen: in the opened row, never on a 
 ## Checks
 
 `bun run check` is the gate, `scaffolding check` from `@hackersandwizards/scaffolding`: the shared
-steps, then `check:values` (no design value here), `check:colours` and `check:copies` (brand's
-colour and copy scans), `check:fixture` (admin-check on the fixture), `check:elements`
+steps, then `check:values` (no design value here), `check:colours`, `check:copies` and
+`check:scan` (brand's colour, copy and expert-component scans), `check:fixture` (admin-check on the fixture), `check:elements`
 (brand-elements over the built catalog, `dist` served so its pages answer at `/catalog/` as on the
 hub), `check:markers` (brand-markers on the built doc and decisions pages, served the same way) and
 `check:retired` (brand-retired over the built catalog).
