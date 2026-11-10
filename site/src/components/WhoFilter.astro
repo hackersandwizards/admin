@@ -3,10 +3,12 @@
 import { data } from "../data";
 ---
 
-<div class="hw-segmented max-w-full self-start overflow-x-auto" role="group" aria-label="For whom">
-  {[...data().people, "all"].map((p) => (
-    <button type="button" data-who-button={p} aria-pressed="false">
-      {p === "all" ? "All" : p}
-    </button>
-  ))}
+<div class="admin-who flex max-w-full self-start overflow-x-auto">
+  <div class="hw-segmented" role="group" aria-label="For whom">
+    {[...data().people, "all"].map((p) => (
+      <button type="button" data-who-button={p} aria-pressed="false">
+        {p === "all" ? "All" : p}
+      </button>
+    ))}
+  </div>
 </div>
