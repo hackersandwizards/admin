@@ -32,15 +32,17 @@ Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repos
 
 ## Commands
 
-| Command                                   | What it does                                                                                                                                       |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `admin-serve [--root <dir>] [--port <n>]` | Serves the hub at `http://admin.localhost:4329` for the repositories under `~/dev`, each from its HEAD and rebuilt when one moves. Writes no file. |
-| `admin-check [<repo>...]`                 | Checks the item files in the working tree, default the current directory. Exit 1 on a defect. Belongs in every repository's gate.                  |
+| Command                                   | What it does                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `admin-serve [--root <dir>] [--port <n>]` | Serves the hub at `http://admin.localhost:4329` for the repositories under `~/dev`, each from its HEAD and rebuilt when one moves. Writes nothing into the repositories it reads: it builds in a `site/.build-*` folder inside the package, which a killed hub leaves behind, and keeps the catalog's cache in the package's `node_modules/.cache/admin-catalog`. |
+| `admin-check [<repo>...]`                 | Checks the item files in the working tree, default the current directory. Exit 1 on a defect. Belongs in every repository's gate.                                                                                                                                                                                                                                 |
 
 `bun run dev` in this checkout runs `admin-serve`, the one hub: open `http://admin.localhost:4329`.
 One repository's own pages open at `http://admin.localhost:4329/<repo>`, such as `/website`,
 which leads to its dashboard with only its items. `<repo>` is the folder name, or `admin.name` in
-its `package.json`. The hub's rail and its Repositories table link every repository's dashboard.
+its `package.json`; where two checkouts share it, or it names a page of the hub (`index`,
+`architecture`, `catalog`), the parent folder's name goes before it and the repository shows a
+defect. The hub's rail and its Repositories table link every repository's dashboard.
 The engine's own catalog, every page and component on an invented repository, opens at
 `http://admin.localhost:4329/catalog/`, linked in the hub's rail. `admin-serve` builds it from the
 package on its first request, which needs `astrobook` and `@hackersandwizards/scaffolding`
@@ -119,18 +121,20 @@ The question's context, in Markdown.
 - An image is a file name in the item's folder, or `{src, caption}`; a value with a slash is read
   from the repository root, as items written before the folder did. Every image exists, and an
   image folder whose item is gone is a defect.
+- An option's `key` is one word, without a comma or space. `label`, `detail`, `area`, `owner`,
+  `assumption`, `decision`, `by`, `quote` and `evidence` are text.
 - `score` and `noise` are numbers; `noise` needs a `score`.
 - An `assumed` item states `assumption` or `recommended`. A `decided` item states `decision` and
   `by`, and may quote the person in `quote`.
 - Work and goals are only ever `open`.
-- `due` is an ISO date. `order` and `evidence` are optional.
+- `due` is a calendar day as an ISO date. `order` and `evidence` are optional.
 - A table, such as scores per criterion, goes in the body as Markdown.
 - No `GOAL.md` or `docs/tracking/decisions/items.js` remains.
 
 ## The admin area
 
 Dashboard, Decisions, Work, Reviews (every item with images, then each older
-`docs/agent-work/<date>-<topic>/` folder with its images and report), Docs (reports and the rest of `docs/`), Catalog, the repository's products,
+`docs/agent-work/<date>-<topic>/` folder with its images and report), Docs (reports and the rest of `docs/`, a fold per folder, open where it holds ten docs or fewer), Catalog, the repository's products,
 Architecture (package, pins, scripts with their first comment line), Checks (the steps of
 `check:all` or `check`) and Log.
 
@@ -140,11 +144,16 @@ the one with the most urgent row first, and assumed and decided items come last,
 Work an agent owns shows collapsed under "Agents on it", each row a link to its repository's
 page. An item belongs to the first person its `owner` names anywhere ("Ivo drafts, Kim sends" is
 Kim's), a person being the hub's user or a name that opens some open item's owner, and never an
-agent's name; a name matches only whole. The hub and each
+agent's name, one an agent definition gives or Claude or Codex; a name matches only whole. The hub and each
 dashboard list open items people other than the hub's user own under "Waiting on others"; the
 hub's user is the machine's git identity by first name where an owner writes it, else the person
 with the most open questions. On the hub and Decisions a row of buttons for every person who owns
-an open item, the hub's user first, filters the items by owner.
+an open item, the hub's user first, filters the items by owner. A row whose item file changed
+since the visit before, a run of page views under an hour apart in this browser, says so.
+
+When a build fails or a repository cannot be read at its HEAD, every page says so above its
+content, keeps the last pages it built, and the hub tries again once a repository changes. A
+relative link from one doc to another opens that doc's page.
 
 In an item's text a path under `docs/agent-work/` links into the repository named right
 before it (``website `docs/agent-work/…` ``) or after it (`` `…` in website ``), else into the

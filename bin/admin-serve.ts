@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-// Serves the hub over HTTP from every repository's HEAD, rebuilt when one moves; writes no file.
+// Serves the hub over HTTP from every repository's HEAD, rebuilt when one moves; writes nothing
+// into the repositories it reads.
 // Usage: admin-serve [--root <dir>] [--port <n>]
 import { createRequire } from "node:module";
 import { homedir } from "node:os";

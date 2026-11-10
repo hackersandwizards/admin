@@ -33,7 +33,6 @@
   }
   .admin-provenance {
     margin: 0.5rem 0 0;
-    color: color-mix(in srgb, var(--foreground) 70%, transparent);
     font-family: var(--font-mono);
     font-size: var(--text-micro);
   }

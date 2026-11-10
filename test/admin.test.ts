@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, spyOn, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import {
   cpSync,
   existsSync,
@@ -11,9 +11,10 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { peerDependenciesMeta } from "../package.json";
-import { buildSite, PAGE_TYPES, siteData } from "../src/build.ts";
+import { Window, type HTMLInputElement as DomInput } from "happy-dom";
+import { buildSite, PAGE_TYPES, script, siteData } from "../src/build.ts";
 import { findRepos } from "../src/hub.ts";
 import {
   compareItems,
@@ -21,6 +22,7 @@ import {
   dueSoon,
   itemDefects,
   parseItem,
+  usable,
   type Item,
 } from "../src/items.ts";
 import { gitEnv, readItems, readRepo, renderMarkdown, treeSource } from "../src/repo.ts";
@@ -183,6 +185,53 @@ describe("item files", () => {
     ).toThrow("unknown field page");
   });
 
+  test("a field the pages print as text, a day and an option key are checked as such", () => {
+    const defects = (more: object) => itemDefects({ ...valid, ...more } as Item, exists);
+    expect(defects({ due: "2026-13-45" })).toContain("due 2026-13-45 not ISO");
+    expect(defects({ due: "2028-02-29" })).toEqual([]);
+    expect(defects({ area: { a: 1 } })).toContain("area is not text");
+    const options = (a: object) => ({
+      options: [
+        { key: "a", label: "A", ...a },
+        { key: "b", label: "B" },
+      ],
+    });
+    expect(defects(options({ label: { l: 1 } }))).toContain("option a label or detail is not text");
+    expect(defects({ ...options({ key: "a,b" }), recommended: "b" })).toContain(
+      'option 1 key "a,b" is not one word',
+    );
+    // A numeric key is the key an images mapping names, 0 included.
+    const numbered = {
+      options: [
+        { key: 0, label: "Zero" },
+        { key: 1, label: "One" },
+      ],
+      recommended: 1,
+    };
+    expect(defects({ ...numbered, images: { 0: "a.png", 1: "b.png" } })).toEqual([]);
+    const shown = usable({
+      ...valid,
+      ...numbered,
+      area: { a: 1 },
+      due: "2026-13-45",
+    } as unknown as Item);
+    expect([shown.area, shown.due, shown.options!.map((o) => o.key), shown.recommended]).toEqual([
+      undefined,
+      undefined,
+      ["0", "1"],
+      ["1"],
+    ]);
+    // An image names a file: a folder of that name is no image.
+    const { defects: found } = readItems({
+      paths: ["docs/agent-work/items/shot.md", "docs/agent-work/2026-01-01-r/a.png"],
+      read: () =>
+        "---\nkind: review\nstatus: open\npriority: 2\nowner: Alex\nimages: [docs/agent-work/2026-01-01-r]\n---\n# Shot\n",
+    });
+    expect(found).toEqual([
+      "docs/agent-work/items/shot.md: image docs/agent-work/2026-01-01-r not found",
+    ]);
+  });
+
   test("parse rejects an unknown field and a missing title", () => {
     expect(() => parseItem("x", "---\nkind: review\ncolour: red\n---\n\n# T\n")).toThrow(
       "unknown field colour",
@@ -252,6 +301,7 @@ describe("admin-check", () => {
       "Own: docs/agent-work/2026-01-15-sample-topic.md, none: docs/agent-work/missing.md.",
       "[relative](../2026-01-15-sample-topic.md)",
       "Folder: docs/agent-work/2026-01-15-sample-topic, item: docs/agent-work/items/goal.md.",
+      "![shot of docs/agent-work/2026-01-15-sample-topic.md](a.png)",
     ].join("\n\n");
     const item = parseItem(
       "x",
@@ -277,6 +327,8 @@ describe("admin-check", () => {
     // A folder has no file to serve; an item file has.
     expect(html).not.toContain('sample-topic"');
     expect(html).toContain(at(`${spoke.path}/docs/agent-work/items/goal.md`));
+    // A path inside an attribute stays text, so the tag holds.
+    expect(html).toContain('alt="shot of docs/agent-work/2026-01-15-sample-topic.md"');
     // A body has no front matter: a leading rule stays, with the text after it.
     const ruled = { ...item, id: "ruled", body: "---\nKept.\n\n---\nAfter." };
     const unowned = { ...item, id: "unowned", owner: undefined };
@@ -414,6 +466,25 @@ describe("hub", () => {
     expect(by["docs/image.md"]!.title).toBe("docs/image.md");
     expect(by["docs/image.md"]!.html).toContain("<h1><img");
     for (const d of ["fenced", "setext"]) expect(by[`docs/${d}.md`]!.html).not.toContain("<h1");
+  });
+
+  test("reads a worktree's fetch, and a checkout without upstream as commits behind unknown", async () => {
+    const repo = repoFrom("spoke");
+    const tree = join(dirname(repo), "tree");
+    sh(repo, "git", "worktree", "add", "-q", "--detach", tree);
+    writeFileSync(
+      resolve(tree, sh(tree, "git", "rev-parse", "--git-path", "FETCH_HEAD").trim()),
+      "",
+    );
+    const read = await readRepo(tree);
+    expect(read.fetched).toBeNumber();
+    expect(read.behind).toBeUndefined();
+  });
+
+  test("front matter is a leading YAML mapping; a leading rule stays in the doc", () => {
+    const html = (text: string) => renderMarkdown("/r", "docs/a.md", text);
+    expect(html("---\n\nintro\n\n---\n\nrest\n")).toContain("intro");
+    expect(html("---\ntitle: x\n---\n\nrest\n")).not.toContain("title");
   });
 
   test("reads at HEAD, not the working tree", async () => {
@@ -583,6 +654,78 @@ describe("pages", () => {
   test("leaving a page asks nothing: answers are stored as they are typed", () => {
     const script = readFileSync(join(import.meta.dir, "../site/src/admin.js"), "utf8");
     expect(script).not.toMatch(/beforeunload/);
+  });
+});
+
+describe("admin.js", () => {
+  // Built pages with the bundled script run in a DOM of their own, one browser's storage shared.
+  let out = "";
+  let code = "";
+  const opened: Window[] = [];
+  afterAll(() => Promise.all(opened.map((w) => w.happyDOM.close())));
+  const open = (page: string, storage: Record<string, string>) => {
+    const window = new Window({ url: `http://admin.localhost/${page}` });
+    opened.push(window);
+    for (const [k, v] of Object.entries(storage)) window.localStorage.setItem(k, v);
+    window.document.write(
+      readFileSync(join(out, `${page}.html`), "utf8").replace(/<script[^>]*><\/script>/g, ""),
+    );
+    window.eval(code);
+    return window;
+  };
+  const stored = (w: Window) => ({ ...w.localStorage }) as Record<string, string>;
+
+  beforeAll(async () => {
+    out = join(scratch(), "out");
+    await buildSite(siteData([await readRepo(repoFrom("spoke"))]), out);
+    code = await script();
+  }, 60_000);
+
+  test("a copied answer leaves with its item, never while the item stays", () => {
+    const at = (h: number) => new Date(Date.UTC(2026, 0, 1, h)).toISOString();
+    const answer = (h: number) => JSON.stringify({ done: true, note: "x", at: at(h) });
+    const page = open("spoke/decisions", {
+      "admin-answers:copied": at(12),
+      // A work item lists on the work page, not here, and stays.
+      "admin-answers:spoke:ask-the-printer": answer(10),
+      "admin-answers:spoke:gone": answer(10),
+      "admin-answers:spoke:gone-uncopied": answer(13),
+      "admin-answers:other:gone": answer(10),
+    });
+    expect(Object.keys(stored(page)).sort()).toEqual([
+      "admin-answers:copied",
+      "admin-answers:other:gone",
+      "admin-answers:seen",
+      "admin-answers:spoke:ask-the-printer",
+      "admin-answers:spoke:gone-uncopied",
+      "admin-answers:visit",
+    ]);
+  });
+
+  test("an answer is stored as it is given, and the copy button counts it", () => {
+    const page = open("spoke/decisions", {});
+    const row = page.document.getElementById("spoke:pick-a-variant")!;
+    const pick = row.querySelector('input[data-option][value="b"]') as DomInput;
+    pick.checked = true;
+    row.dispatchEvent(new page.Event("change"));
+    expect(
+      JSON.parse(page.localStorage.getItem("admin-answers:spoke:pick-a-variant")!),
+    ).toMatchObject({ option: "b", label: "Variant B" });
+    expect(row.querySelector(".mark")!.textContent).toBe("✓ Variant B");
+    expect(page.document.getElementById("copy")!.textContent).toBe("Copy 1 answer");
+  });
+
+  test("an item changed since the visit before says so; a first visit marks nothing", () => {
+    const shown = (w: Window) =>
+      w.document.querySelectorAll("[data-row] [data-updated]:not([hidden])").length;
+    expect(shown(open("index", {}))).toBe(0);
+    const hours = (h: number) => String(Date.now() - h * 36e5);
+    // Two hours away: every item of the fixture's one commit is newer than the last visit.
+    const back = open("index", { "admin-answers:seen": hours(2) });
+    expect(shown(back)).toBeGreaterThan(0);
+    expect(Number(stored(back)["admin-answers:visit"])).toBeLessThan(Date.now() - 36e5);
+    // A page view within the hour belongs to the same visit, and keeps its marks.
+    expect(shown(open("spoke/work", stored(back)))).toBeGreaterThan(0);
   });
 });
 
@@ -774,6 +917,24 @@ describe("serve", () => {
     expect(await hub.pages()).not.toBe(first);
     expect(notice(await get("/"))).not.toContain("The build stopped");
     expect(await get("/")).toContain("second could not be read");
+  }, 120_000);
+
+  test("two checkouts with one key, or a key the hub's pages take, each keep their own pages", async () => {
+    const repo = repoFrom("spoke", "catalog");
+    const root = dirname(repo);
+    for (const at of ["a", "b"]) cpSync(repo, join(root, at, "web"), { recursive: true });
+    writeFileSync(join(root, "b/web/README.md"), "# Only in b\n");
+    sh(join(root, "b/web"), "git", "add", "README.md");
+    commit(join(root, "b/web"), "b");
+    const hub = createHub({ root });
+    const get = async (path: string) =>
+      (await hub.fetch(new Request(`http://admin.localhost${path}`))).text();
+    const home = await get("/");
+    for (const key of ["a-web", "b-web", `${basename(root)}-catalog`])
+      expect(home).toContain(`>${key}<`);
+    expect(home).toContain("key web names another checkout too: its pages are under b-web");
+    expect(await get("/b-web/doc/README")).toContain("Only in b");
+    expect(await get("/a-web/doc/README")).toContain("no such page");
   }, 120_000);
 
   test("serves each doc page from its depth's shell, as a full build renders it", async () => {

@@ -12,6 +12,7 @@ import {
   fileHref,
   forPerson,
   href,
+  isQuestion,
   keyOf,
   openQuestions,
   repoOf,
@@ -41,7 +42,7 @@ const provenance = repo
   ? `@hackersandwizards/admin v${d.version} · ${repo.key} HEAD ${repo.head} · ${items.length} item files · ${
       !repo.fetched
         ? "origin never fetched in this checkout, commits behind unknown"
-        : `${repo.behind ? `${repo.behind} commits behind origin` : "up to date with origin"}, fetched ${when(repo.fetched)}`
+        : `${repo.behind === undefined ? "no upstream, commits behind unknown" : repo.behind ? `${repo.behind} commits behind origin` : "up to date with origin"}, fetched ${when(repo.fetched)}`
     }`
   : `@hackersandwizards/admin v${d.version} · ${d.repos.length} checkouts · ${
       d.repos.filter((r) => r.behind).length
@@ -51,14 +52,16 @@ const provenance = repo
     )} item files`;
 const needs = (list: typeof items) =>
   [...openQuestions(list), ...forPerson(list)].sort(compareItems);
-const allNeeds = d.repos.flatMap((r) => needs(r.items)).sort(compareItems);
+// The hub's lists of every repository, built on the hub alone.
+const hub = page.type === "hub";
+const allNeeds = hub ? d.repos.flatMap((r) => needs(r.items)).sort(compareItems) : [];
 // Open work an agent owns: no person acts on it, and it shows so that none of it goes unseen.
 const agentWork = (list: typeof items) =>
   list.filter((i) => i.kind === "work" && i.status === "open" && i.agent);
-const allAgentWork = d.repos.flatMap((r) => agentWork(r.items)).sort(compareItems);
-const settled = d.repos
-  .flatMap((r) => r.items.filter((i) => i.status !== "open"))
-  .sort(compareItems);
+const allAgentWork = hub ? d.repos.flatMap((r) => agentWork(r.items)).sort(compareItems) : [];
+const settled = hub
+  ? d.repos.flatMap((r) => r.items.filter((i) => i.status !== "open")).sort(compareItems)
+  : [];
 const repoAgentWork = agentWork(items);
 const byPriority = (list: typeof items, p: number) => list.filter((i) => i.priority === p).length;
 const doc =
@@ -67,8 +70,13 @@ const product = repo && page.product !== undefined ? repo.products[page.product]
 const pins = (r: NonNullable<typeof repo>) =>
   Object.entries(r.pkg.dependencies).filter(([name]) => name.startsWith("@hackersandwizards/"));
 const pin = (spec: string) => spec.match(/#(v[\w.-]+)$/)?.[1] ?? spec;
-const packages = [...new Set(d.repos.flatMap((r) => pins(r).map(([n]) => n)))].sort();
+const packages =
+  page.type === "hub-architecture"
+    ? [...new Set(d.repos.flatMap((r) => pins(r).map(([n]) => n)))].sort()
+    : [];
 const answersAll = page.type === "decisions" || page.type === "hub";
+// A folder of docs this small opens, so a short list reads as before; a larger one waits closed.
+const FOLDER_OPEN = 10;
 // Every page with answerable rows hands its answers over from where they were given.
 const answerable = answersAll || ["dashboard", "work", "reviews"].includes(page.type);
 const leads: Partial<Record<Page["type"], string>> = {
@@ -147,7 +155,7 @@ const leads: Partial<Record<Page["type"], string>> = {
                     <a class="hw-link" href={link(r.dashboard)}>
                       {r.key}
                     </a>
-                    {r.behind > 0 && <span class="ml-1 text-error">{r.behind} behind</span>}
+                    {!!r.behind && <span class="ml-1 text-error">{r.behind} behind</span>}
                     {r.defects.length > 0 && (
                       <span class="ml-1 text-error">{r.defects.length} defects</span>
                     )}
@@ -382,11 +390,15 @@ const leads: Partial<Record<Page["type"], string>> = {
                     Report
                   </a>
                 )}
-                {named.map((id) => (
-                  <a class="hw-link" href={link(`${repo.prefix}decisions`)}>
-                    {id}
-                  </a>
-                ))}
+                {named.map((id) => {
+                  const i = items.find((x) => x.id === id)!;
+                  const on = `${repo.prefix}${isQuestion(i) ? "decisions" : "work"}`;
+                  return (
+                    <a class="hw-link" href={`${link(on)}#${keyOf(i)}`}>
+                      {id}
+                    </a>
+                  );
+                })}
               </p>
               <div class="grid grid-cols-2 gap-3 xl:grid-cols-3">
                 {r.images.map((f) => (
@@ -418,6 +430,7 @@ const leads: Partial<Record<Page["type"], string>> = {
     <>
       <section>
         <h2 class="mb-2 font-mono font-semibold text-heading">Reports</h2>
+        {!repo.reports.length && <p class="text-ui text-foreground/70">No reports yet.</p>}
         <table class="hw-table w-full">
           <tbody>
             {repo.reports.map((r) => (
@@ -435,20 +448,32 @@ const leads: Partial<Record<Page["type"], string>> = {
       </section>
       <section>
         <h2 class="mb-2 font-mono font-semibold text-heading">Documents</h2>
-        <table class="hw-table w-full">
-          <tbody>
-            {repo.docs.map((r) => (
-              <tr data-row>
-                <td class="font-mono">{r.path}</td>
-                <td>
-                  <a class="hw-link" href={link(repo.prefix + docSlug(r.path))}>
-                    {r.title}
-                  </a>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {[...Map.groupBy(repo.docs, (r) => r.path.slice(0, r.path.lastIndexOf("/") + 1))]
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([folder, docs]) => (
+            <details class="hw-disclosure" data-group open={docs.length <= FOLDER_OPEN}>
+              <summary class="py-2 font-mono font-semibold text-ui">
+                {folder || "Repository root"}{" "}
+                <span class="ml-1 font-normal text-foreground/70" data-count>
+                  {docs.length}
+                </span>
+              </summary>
+              <table class="hw-table w-full">
+                <tbody>
+                  {docs.map((r) => (
+                    <tr data-row>
+                      <td class="font-mono">{r.path.slice(folder.length)}</td>
+                      <td>
+                        <a class="hw-link" href={link(repo.prefix + docSlug(r.path))}>
+                          {r.title}
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          ))}
       </section>
     </>
   )}

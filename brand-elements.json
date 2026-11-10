@@ -37,7 +37,8 @@
   ],
   "exceptions": {
     "item-list": "A card framing a list of item rows edge to edge: no padding, since each row carries its own padding and the hairline between rows. brand's card pads its content.",
-    "image-tile": "A review folder's image as a link: a card at half the padding, so the thumbnail fills the tile in a grid of two or three. brand's card pads its content by the card padding."
+    "image-tile": "A review folder's image as a link: a card at half the padding, so the thumbnail fills the tile in a grid of two or three. brand's card pads its content by the card padding.",
+    "option-list": "An item's options without images as one card of option rows edge to edge: no padding, since each row carries its own padding and the hairline between rows. brand's card pads its content."
   },
   "site": "dist",
   "csp": "object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'"

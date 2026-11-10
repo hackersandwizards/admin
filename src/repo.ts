@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import {
   ITEMS_DIR,
   WORK_DIR,
@@ -47,11 +47,7 @@ export async function headSource(repo: string): Promise<Source> {
   const cache = new Map<string, string>();
   const wanted = paths.filter(
     (p) =>
-      p === "package.json" ||
-      ASTRO_CONFIG.test(p) ||
-      (/\.md$/i.test(p) && (p.startsWith("docs/") || !p.includes("/"))) ||
-      /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/.test(p) ||
-      AGENT.test(p),
+      p === "package.json" || ASTRO_CONFIG.test(p) || isDoc(p) || SCRIPT.test(p) || AGENT.test(p),
   );
   const batch = await gitBytes(
     repo,
@@ -73,11 +69,9 @@ export async function headSource(repo: string): Promise<Source> {
 
 export function treeSource(repo: string): Source {
   const listed = git(repo, "ls-files", "-z", "--cached", "--others", "--exclude-standard");
-  const paths = (
-    listed
-      ? listed.split("\0").filter(Boolean)
-      : walk(repo, "").filter((p) => !p.startsWith("node_modules/"))
-  ).filter((p) => existsSync(join(repo, p)));
+  const paths = (listed ? listed.split("\0").filter(Boolean) : walk(repo, "")).filter((p) =>
+    existsSync(join(repo, p)),
+  );
   return {
     paths,
     read: (p) => (existsSync(join(repo, p)) ? readFileSync(join(repo, p), "utf8") : undefined),
@@ -98,8 +92,8 @@ export function readItems(src: Source): ReadItems {
   const items: Item[] = [];
   const defects: string[] = [];
   const has = new Set(src.paths);
-  const exists = (p: string) =>
-    has.has(p) || src.paths.some((q) => q.startsWith(p.replace(/\/?$/, "/")));
+  // An image is a file: a folder of that name has no picture to show.
+  const exists = (p: string) => has.has(p);
   for (const p of src.paths) {
     if (!p.startsWith(`${ITEMS_DIR}/`)) continue;
     const name = p.slice(ITEMS_DIR.length + 1);
@@ -141,7 +135,8 @@ export type RepoData = {
   key: string;
   path: string;
   head: string;
-  behind: number;
+  // Commits the upstream has that HEAD lacks, unknown without an upstream.
+  behind?: number;
   fetched?: number;
   items: (Item & { changed?: number })[];
   defects: string[];
@@ -170,6 +165,9 @@ export type RepoData = {
 };
 
 const AGENT = /^\.claude\/agents\/[^/]+\.md$/;
+const SCRIPT = /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/;
+// A Markdown file at the root or under docs/: a report or a doc, unless an item file.
+const isDoc = (p: string) => /\.md$/i.test(p) && (p.startsWith("docs/") || !p.includes("/"));
 const description = (text: string) => {
   try {
     const front = Bun.YAML.parse(text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "") as {
@@ -228,10 +226,19 @@ export const withElements = (html: string) =>
     .replace(/<pre>/g, '<pre class="hw-code not-prose">')
     .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');
 
-// `text` without front matter, as an item's body, renders whole: a leading rule stays a rule.
+// Front matter is a leading YAML mapping between --- lines; `text` without it, as an item's body,
+// renders whole, and so does a leading rule: "---" above a paragraph is no mapping.
 export function renderMarkdown(repo: string, path: string, text: string, front = true) {
   const dir = join(repo, path, "..");
-  const body = front ? text.replace(/^---\n[\s\S]*?\n---\n/, "") : text;
+  const body = front
+    ? text.replace(/^---\n([\s\S]*?)\n---\n/, (all, yaml: string) => {
+        try {
+          return isObject(Bun.YAML.parse(yaml)) ? "" : all;
+        } catch {
+          return all;
+        }
+      })
+    : text;
   const html = withElements(Bun.markdown.html(body));
   return html.replace(
     /(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"?#]*)([^"]*)"/gi,
@@ -310,6 +317,21 @@ const linked = <T extends { label: unknown; href: unknown }>(list: T[] | undefin
 
 type AdminConfig = { name?: string; designSystem?: string; products?: Product[]; links?: Link[] };
 
+// When the repository was last fetched: its FETCH_HEAD's time, which a worktree keeps in its own
+// git folder rather than in <repo>/.git.
+const fetchHeads = new Map<string, Promise<string>>();
+export async function fetchedAt(repo: string) {
+  let path = fetchHeads.get(repo);
+  if (!path) {
+    path = gitAsync(repo, ["rev-parse", "--git-path", "FETCH_HEAD"]).then((p) =>
+      resolve(repo, p.trim()),
+    );
+    fetchHeads.set(repo, path);
+  }
+  const file = await path;
+  return existsSync(file) ? statSync(file).mtimeMs : undefined;
+}
+
 // Every git call of a repository runs at once, and the hub reads its repositories at once.
 export async function readRepo(repo: string, source?: Source): Promise<RepoData> {
   const commits = async (...a: string[]) =>
@@ -320,13 +342,15 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
         const [hash, time, ...s] = l.split("\t");
         return { hash: hash!, time: Number(time), subject: s.join("\t") };
       });
-  const [src, itemsLog, head, behind, trackingLog, log] = await Promise.all([
+  const [src, itemsLog, head, behind, trackingLog, log, fetched] = await Promise.all([
     source ?? headSource(repo),
     gitAsync(repo, ["log", "--format=@%ct", "--name-only", "--", ITEMS_DIR]),
     gitAsync(repo, ["rev-parse", "--short", "HEAD"]),
-    gitAsync(repo, ["rev-list", "--count", "HEAD..@{u}"]),
+    // Without an upstream the count fails: the distance is unknown, not zero.
+    gitBytes(repo, ["rev-list", "--count", "HEAD..@{u}"]),
     commits("-n", "60", "--", WORK_DIR),
     commits("-n", "60"),
+    fetchedAt(repo),
   ]);
   const { items, defects } = readItems(src);
   const pkgText = src.read("package.json");
@@ -396,14 +420,9 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
       report: reports.some((r) => r.path === `${dir}.md`) ? `${dir}.md` : undefined,
     }))
     .sort((a, b) => b.dir.localeCompare(a.dir));
+  const reported = new Set(reports.map((r) => r.path));
   const docs = src.paths
-    .filter(
-      (p) =>
-        /\.md$/i.test(p) &&
-        (p.startsWith("docs/") || !p.includes("/")) &&
-        !reports.some((r) => r.path === p) &&
-        !p.startsWith(`${ITEMS_DIR}/`),
-    )
+    .filter((p) => isDoc(p) && !reported.has(p) && !p.startsWith(`${ITEMS_DIR}/`))
     .map((p) => titled(repo, p, src.read(p) ?? "", p))
     .sort((a, b) => a.path.localeCompare(b.path));
 
@@ -413,16 +432,15 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     .map((s) => s.trim())
     .filter(Boolean);
   const scripts = src.paths
-    .filter((p) => /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/.test(p))
+    .filter((p) => SCRIPT.test(p))
     .map((p) => ({ path: p, comment: firstComment(src.read(p) ?? "") }));
 
-  const fetchHead = join(repo, ".git", "FETCH_HEAD");
   return {
     key,
     path: repo,
     head: head.trim(),
-    behind: Number(behind.trim() || 0),
-    fetched: existsSync(fetchHead) ? statSync(fetchHead).mtimeMs : undefined,
+    behind: behind ? Number(behind.toString().trim()) : undefined,
+    fetched,
     items: withChange,
     defects,
     reports,

@@ -17,6 +17,8 @@ export const VERSION = JSON.parse(readFileSync(join(PKG, "package.json"), "utf8"
   .version as string;
 
 export type ViewItem = Item & {
+  // The item file's last commit, in seconds.
+  changed?: number;
   repo: string;
   who: string;
   // Owned by an agent rather than a person: no person filter hides it.
@@ -68,9 +70,6 @@ export type SiteData = {
   pages: Page[];
 };
 
-const escape = (s: string) =>
-  s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-
 // A file path under docs/agent-work links into the repository named right before it ("website
 // `docs/...`") or after it ("`...` in trainer-hub"), else into the item's own, and stays text where
 // that repository holds no such file. A Markdown link relative to the item file is rewritten like a
@@ -87,20 +86,18 @@ function itemHtml(
       before.match(/([\w.-]+)\s+(?:<code[^>]*>)?$/)?.[1],
       after.match(/^(?:<\/code>)?\s+in\s+([\w.-]+)/)?.[1],
     ].find((k) => k && byKey.has(k));
-  return html
-    .split(/(<a\b[\s\S]*?<\/a>)/)
-    .map((part, n) =>
-      n % 2
-        ? part
-        : part.replace(/(?<![\w/"=])(docs\/agent-work\/[\w./äöüÄÖÜß-]*\w)/g, (p, _, at: number) => {
-            const key = named(part.slice(Math.max(0, at - 80), at), part.slice(at + p.length));
-            const target = key ? byKey.get(key)! : repo;
-            return files.get(target)!.has(p)
-              ? `<a class="hw-link" href="${escape(fileHref(join(target.path, p)))}">${p}</a>`
-              : p;
-          }),
-    )
-    .join("");
+  // A link or a tag goes through whole, so no path inside an attribute becomes a link.
+  return html.replace(
+    /(<a\b[\s\S]*?<\/a>|<[^>]*>)|(?<![\w/"=])(docs\/agent-work\/[\w./äöüÄÖÜß-]*\w)/g,
+    (whole, tag: string | undefined, p: string, at: number) => {
+      if (tag) return tag;
+      const key = named(html.slice(Math.max(0, at - 80), at), html.slice(at + p.length));
+      const target = key ? byKey.get(key)! : repo;
+      return files.get(target)!.has(p)
+        ? `<a class="hw-link" href="${Bun.escapeHTML(fileHref(join(target.path, p)))}">${p}</a>`
+        : p;
+    },
+  );
 }
 
 export const firstWord = (owner = "") => owner.match(/^[\p{L}\p{N}-]+/u)?.[0] ?? owner;
@@ -108,12 +105,13 @@ export const firstWord = (owner = "") => owner.match(/^[\p{L}\p{N}-]+/u)?.[0] ??
 // `you` is the hub's user where an item owner names them, else the first person.
 export function siteData(repos: RepoData[], you?: string): SiteData {
   // A person is the hub's user or a name that opens some open item's owner, unless lower-case
-  // ("an agent"), an article, "Agent" or a name an agent definition gives. An item is the first
+  // ("an agent"), an article, "Agent", an agent runtime's own name (Claude, Codex) or a name an
+  // agent definition gives. An item is the first
   // person its owner names anywhere, so "Ivo drafts, Kim sends" is Kim's; with none it is its first
   // word's.
   const agents = new Set(repos.flatMap((r) => r.agents));
   const isPerson = (p: string) =>
-    /^\p{Lu}/u.test(p) && !/^(a|an|the|agent)$/i.test(p) && !agents.has(p);
+    /^\p{Lu}/u.test(p) && !/^(a|an|the|agent|claude|codex)$/i.test(p) && !agents.has(p);
   const open = repos.flatMap((r) => r.items.filter((i) => i.status === "open"));
   const names = [...new Set([you ?? "", ...open.map((i) => firstWord(i.owner))])]
     .filter(isPerson)
@@ -245,8 +243,7 @@ export function shelled(data: SiteData): SiteData {
 // Every path is resolved, since the package may sit hoisted or nested.
 export function stylesheet() {
   const at = (spec: string) => Bun.resolveSync(spec, PKG);
-  const brand = dirname(at("@hackersandwizards/brand/tokens.css"));
-  const brandRoot = join(brand, "..");
+  const brandRoot = dirname(at("@hackersandwizards/brand/package.json"));
   return [
     `@import "${at("tailwindcss/index.css")}";`,
     `@plugin "${at("@tailwindcss/typography")}";`,

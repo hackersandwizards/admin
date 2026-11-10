@@ -1,7 +1,7 @@
 // Runs on every admin page. src/build.ts bundles it with brand's element script into one classic
 // script, not a module, so a page opened from disk loads it; a file of its own, since admin-serve's
 // Content-Security-Policy runs no inline script.
-// An answer whose row left a rebuilt page is dropped once it was copied.
+// A copied answer to an item gone from its repository is dropped.
 import { enhance } from "@hackersandwizards/brand/elements/behaviour.ts";
 
 enhance();
@@ -24,17 +24,36 @@ const write = (k, v) => {
     return false;
   }
 };
+// Keys of this browser's own state beside the answers.
+const OWN = new Set(["copied", "who", "seen", "visit"].map((k) => STORE + k));
+const isAnswer = (k) => !!k && k.startsWith(STORE) && !OWN.has(k);
 const items = [...document.querySelectorAll("details.item[data-k]")];
-const known = new Set(items.map((d) => d.dataset.k));
-const repos = new Set(items.map((d) => d.dataset.k.split(":")[0]));
+// A page that names every item of its repositories knows which answers lost their item.
+const live = new Set(document.body.dataset.answers?.split(" ").filter(Boolean));
+const liveRepos = new Set([...live].map((k) => k.split(":")[0]));
 const copiedAt = localStorage.getItem(STORE + "copied") || "";
 for (let i = localStorage.length - 1; i >= 0; i--) {
   const k = localStorage.key(i);
-  if (!k || !k.startsWith(STORE) || k === STORE + "copied" || k === STORE + "who") continue;
+  if (!isAnswer(k)) continue;
   const id = k.slice(STORE.length);
   const a = read(id);
-  if (document.body.dataset.answers === "all" && repos.has(id.split(":")[0]) && !known.has(id))
+  if (liveRepos.has(id.split(":")[0]) && !live.has(id))
     if (!a || !a.at || a.at <= copiedAt) localStorage.removeItem(k);
+}
+// A visit is a run of page views under an hour apart: an item whose file changed since the one
+// before says so on its row.
+try {
+  const now = Date.now();
+  const seen = Number(localStorage.getItem(STORE + "seen")) || 0;
+  if (now - seen > 36e5) localStorage.setItem(STORE + "visit", String(seen));
+  localStorage.setItem(STORE + "seen", String(now));
+  const since = Number(localStorage.getItem(STORE + "visit")) || 0;
+  if (since)
+    for (const r of document.querySelectorAll("[data-changed]"))
+      if (Number(r.dataset.changed) * 1000 > since)
+        r.querySelector("[data-updated]")?.removeAttribute("hidden");
+} catch {
+  /* storage blocked: no row says what changed */
 }
 const hhmm = (iso) =>
   new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
@@ -82,7 +101,7 @@ function save(d) {
 }
 const answered = () =>
   Object.keys(localStorage)
-    .filter((k) => k.startsWith(STORE) && k !== STORE + "copied" && k !== STORE + "who")
+    .filter(isAnswer)
     .map((k) => k.slice(STORE.length))
     .filter((k) => read(k));
 function block() {

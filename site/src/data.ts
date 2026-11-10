@@ -26,6 +26,9 @@ let paths: Set<string> | undefined;
 export const hasPage = (path: string) =>
   (paths ??= new Set(data().pages.map((p) => p.path))).has(path);
 
+// The start of a row's meta line where its item changed since the last visit (admin.js).
+export const UPDATED = "updated since your last visit · ";
+
 // An item's row id on a page, which a link to the item names after #.
 export const keyOf = (i: ViewItem) => `${i.repo}:${i.id}`;
 export const isQuestion = (i: ViewItem) => i.kind === "decision" || i.kind === "review";

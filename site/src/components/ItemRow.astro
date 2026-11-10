@@ -2,7 +2,7 @@
 // Options with images are cards; options without are one dense list, so a long list of candidates
 // stays scannable.
 import { dueSoon } from "../../../src/items.ts";
-import { data, day, keyOf, type ViewItem } from "../data";
+import { data, day, keyOf, UPDATED, type ViewItem } from "../data";
 import Choice from "./Choice.astro";
 import Shot from "./Shot.astro";
 
@@ -35,6 +35,7 @@ const soon = dueSoon(i.due);
   id={k}
   data-k={k}
   data-who={i.agent ? undefined : i.who}
+  data-changed={i.changed}
   data-row
   open={open}
 >
@@ -54,7 +55,14 @@ const soon = dueSoon(i.due);
       <span class="block sm:min-w-0 sm:flex-1">
         <span class="block font-medium text-ui">{i.title}</span>
         {i.recommendedLabel && <span class="block text-ui">Recommended: {i.recommendedLabel}</span>}
-        <span class="block text-ui text-foreground/70">{meta.join(" · ")}</span>
+        <span class="block text-ui text-foreground/70">
+          {[
+            <span class="text-accent" data-updated hidden>
+              {UPDATED}
+            </span>,
+            meta.join(" · "),
+          ]}
+        </span>
       </span>
       <span class="flex flex-wrap items-center gap-x-3 gap-y-1 has-[:not(:empty)]:mt-1 sm:contents">
         {i.due && (

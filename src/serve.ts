@@ -23,9 +23,10 @@ import {
   siteData,
 } from "./build.ts";
 import elements from "../brand-elements.json";
-import { findRepos } from "./hub.ts";
+import { findRepos, uniqueKeys } from "./hub.ts";
 import {
   docSlug,
+  fetchedAt,
   fileHref,
   git,
   gitAsync,
@@ -41,9 +42,11 @@ export type ServeOptions = { root: string; rescanMs?: number };
 
 // The pages show when each repository was last fetched, so a fetch that moves no ref counts too.
 export async function stateOf(repo: string) {
-  const fetchHead = join(repo, ".git", "FETCH_HEAD");
-  const fetched = existsSync(fetchHead) ? statSync(fetchHead).mtimeMs : 0;
-  return (await gitAsync(repo, ["show-ref", "--head"])) + fetched;
+  const [refs, fetched] = await Promise.all([
+    gitAsync(repo, ["show-ref", "--head"]),
+    fetchedAt(repo),
+  ]);
+  return refs + (fetched ?? 0);
 }
 
 const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
@@ -319,7 +322,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
       )
     ).flat();
     try {
-      site = await rebuild(key, repos);
+      site = await rebuild(key, uniqueKeys(repos));
       failed = undefined;
     } catch (e) {
       console.error(e);

@@ -5,9 +5,10 @@ import Home from "@hackersandwizards/scaffolding/catalog/Home.astro";
 import { version } from "@hackersandwizards/brand/package.json";
 import catalogs from "@hackersandwizards/brand/catalogs.json";
 import ItemGroups from "../site/src/components/ItemGroups.astro";
+import ItemRow from "../site/src/components/ItemRow.astro";
 import elements from "../brand-elements.json";
 import { withElements } from "../src/repo.ts";
-import { items } from "./story";
+import { item, items } from "./story";
 
 const brand = catalogs.find((c) => c.name === "Brand")!;
 const anchor = (name: string) => brand.portal + brand.anchors!.element.replace("<element>", name);
@@ -215,6 +216,7 @@ const notes: Record<string, string> = {
         <p class="font-medium text-ui">{name}</p>
         <p class="text-ui text-foreground/70">{reason}</p>
         {name === "item-list" && <ItemGroups items={items.slice(0, 2)} title="Priority 1" />}
+        {name === "option-list" && <ItemRow item={item("pick-recipients")} open />}
         {name === "image-tile" && (
           <span class="hw-card flex flex-col gap-1 p-2!">
             <span class="aspect-video w-full rounded-brand bg-muted" />

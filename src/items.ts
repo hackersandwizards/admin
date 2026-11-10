@@ -78,8 +78,17 @@ export function parseItem(id: string, text: string): Item {
   } as Item;
 }
 
-const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const ID = /^[a-z0-9][a-z0-9-]*$/;
+// A day the calendar has, not only a string in ISO shape.
+const isDay = (v: unknown) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(String(v)) &&
+  !Number.isNaN(Date.parse(String(v))) &&
+  new Date(`${v}T00:00Z`).toISOString().startsWith(String(v));
+// The fields a page prints as text.
+const TEXTS = ["area", "owner", "assumption", "decision", "by", "quote", "evidence"] as const;
+const isText = (v: unknown) => typeof v === "string" || typeof v === "number";
+// An option key as the pages store and compare it: text.
+const optionKey = (v: unknown) => (v == null || v === "" ? undefined : String(v));
 
 export function itemDefects(item: Item, exists: (path: string) => boolean): string[] {
   const d: string[] = [];
@@ -92,21 +101,26 @@ export function itemDefects(item: Item, exists: (path: string) => boolean): stri
   if (kind === "goal" && item.priority !== undefined) d.push("goal has a priority");
   if (item.order !== undefined && typeof item.order !== "number") d.push(`order ${item.order}`);
   if (kind !== "goal" && !item.owner) d.push("lacks owner");
-  if (item.due !== undefined && !ISO.test(String(item.due))) d.push(`due ${item.due} not ISO`);
+  for (const f of TEXTS) if (item[f] !== undefined && !isText(item[f])) d.push(`${f} is not text`);
+  if (item.due !== undefined && !isDay(item.due)) d.push(`due ${item.due} not ISO`);
   if ((kind === "work" || kind === "goal") && status !== "open") d.push(`${kind} is ${status}`);
   const options = item.options ?? [];
   if (!Array.isArray(options)) d.push("options is not a list");
-  const keys = Array.isArray(options) ? options.map((o) => o?.key) : [];
+  const keys = Array.isArray(options) ? options.map((o) => optionKey(o?.key)) : [];
   if (Array.isArray(options))
     options.forEach((o, i) => {
-      if (!o?.key || !o?.label) d.push(`option ${i + 1} lacks key or label`);
+      if (!optionKey(o?.key) || !optionKey(o?.label)) d.push(`option ${i + 1} lacks key or label`);
+      else if (!isText(o.key) || /[\s,]/.test(String(o.key)))
+        d.push(`option ${i + 1} key ${JSON.stringify(o.key)} is not one word`);
+      else if (!isText(o.label) || (o.detail !== undefined && !isText(o.detail)))
+        d.push(`option ${o.key} label or detail is not text`);
     });
   if (new Set(keys).size !== keys.length) d.push("duplicate option key");
   if (kind === "decision" && status === "open" && keys.length < 2)
     d.push("open decision with fewer than two options (a review request is kind: review)");
   if (item.multiple !== undefined && typeof item.multiple !== "boolean")
     d.push(`multiple ${item.multiple} is not true or false`);
-  const recommended = [item.recommended ?? []].flat();
+  const recommended = [item.recommended ?? []].flat().map(String);
   if (recommended.length > 1 && !item.multiple) d.push("several recommended without multiple");
   for (const r of recommended) if (!keys.includes(r)) d.push(`recommended ${r} is not an option`);
   if (Array.isArray(options))
@@ -146,9 +160,9 @@ export function itemDefects(item: Item, exists: (path: string) => boolean): stri
 }
 
 // The item with each field its pages read in the shape its type states, so a malformed field shows
-// as its defect rather than failing the build of every page.
+// as its defect rather than failing the build of every page or printing "[object Object]".
 export function usable(item: Item): Item {
-  const text = (v: unknown) => (v == null ? undefined : String(v));
+  const text = (v: unknown) => (isText(v) ? String(v) : undefined);
   const shots = (v: unknown) =>
     [v]
       .flat()
@@ -159,10 +173,20 @@ export function usable(item: Item): Item {
   const { images } = item;
   return {
     ...item,
+    ...Object.fromEntries(TEXTS.map((f) => [f, text(item[f])])),
     priority: [1, 2, 3].includes(item.priority as number) ? item.priority : undefined,
-    owner: text(item.owner),
-    due: text(item.due),
-    options: Array.isArray(item.options) ? item.options.filter((o) => o?.key) : undefined,
+    due: isDay(item.due) ? String(item.due) : undefined,
+    recommended: item.recommended === undefined ? undefined : [item.recommended].flat().map(String),
+    options: Array.isArray(item.options)
+      ? item.options
+          .filter((o) => optionKey(o?.key))
+          .map((o) => ({
+            ...o,
+            key: String(o.key),
+            label: text(o.label) ?? String(o.key),
+            detail: text(o.detail),
+          }))
+      : undefined,
     images: Array.isArray(images)
       ? shots(images)
       : images && typeof images === "object"

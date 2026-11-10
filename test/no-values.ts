@@ -20,7 +20,7 @@ const files = process.argv.slice(2).length
   : [...walk(join(root, "site/src")), ...walk(join(root, "catalog")), join(root, "src/build.ts")];
 const RULES: [RegExp, string][] = [
   [/#[0-9a-f]{3,8}\b(?![\w-])/gi, "colour literal"],
-  [/\b(?:rgba?|hsla?|oklch|oklab|lab|lch)\(/gi, "colour function"],
+  [/\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color-mix)\(/gi, "colour function"],
   [/(?<![\w-])--(?!hw-)[\w-]+\s*:/g, "custom property defined"],
   [/--hw-[\w-]+\s*:(?!\s*var\(--)/g, "--hw-* set to something other than a brand token"],
   [/[\w:-]-\[[^\]]*\d[^\]]*\]/g, "Tailwind arbitrary value"],

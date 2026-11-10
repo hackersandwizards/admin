@@ -4,13 +4,14 @@ import AppHeader from "@hackersandwizards/brand/expert/components/AppHeader.astr
 import favicon from "@hackersandwizards/brand/logos/favicon.svg?url";
 import adminScript from "admin:script?url";
 import themeScript from "../theme.js?url";
-import { data, forPerson, hasPage, href, openQuestions, repoOf, type Page } from "../data";
+import { data, forPerson, hasPage, href, keyOf, openQuestions, repoOf, type Page } from "../data";
 
 interface Props {
   page: Page;
   lead?: string;
   provenance?: string;
-  /** The page lists every question of its repositories, so an answer whose row is gone was done. */
+  /** The page names every item of its repositories, so a copied answer to an item gone from them
+   * was done. */
   answersAll?: boolean;
   /** What admin-serve says went wrong, as HTML: it fills the empty notice on every page it serves. */
   problem?: string;
@@ -75,7 +76,11 @@ const entries = [
   <body
     class="hw-focus-ring bg-background text-foreground"
     data-hw-scale="dense"
-    data-answers={answersAll ? "all" : undefined}
+    data-answers={
+      answersAll
+        ? (repo ? [repo] : d.repos).flatMap((r) => r.items.map(keyOf)).join(" ")
+        : undefined
+    }
   >
     <AppHeader product="Admin" href={at("index")}>
       <nav class="hw-breadcrumb admin-where ml-auto" aria-label="Where">
@@ -178,7 +183,7 @@ const entries = [
           </div>
         </div>
         {lead && <p class="admin-lead">{lead}</p>}
-        {provenance && <p class="admin-provenance">{provenance}</p>}
+        {provenance && <p class="admin-provenance text-foreground/70">{provenance}</p>}
         <div
           id="admin-problem"
           class="hw-callout mt-3 flex flex-col gap-1 text-ui"

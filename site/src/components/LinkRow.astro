@@ -2,7 +2,7 @@
 // An item as one line linking to its full row on its repository's page, for a list the person
 // reads but does not answer on this page.
 import { dueSoon } from "../../../src/items.ts";
-import { day, href, isQuestion, keyOf, type ViewItem } from "../data";
+import { day, href, isQuestion, keyOf, UPDATED, type ViewItem } from "../data";
 
 interface Props {
   item: ViewItem;
@@ -11,9 +11,16 @@ interface Props {
 }
 const { item: i, from } = Astro.props;
 const to = `${href(from, `${i.repo}/${isQuestion(i) ? "decisions" : "work"}`)}#${keyOf(i)}`;
+const meta = [i.repo, i.kind, i.agent || i.owner !== i.who ? i.owner : ""]
+  .filter(Boolean)
+  .join(" · ");
 ---
 
-<div class="flex items-start gap-3 border-b border-border px-3 py-2 last:border-b-0" data-row>
+<div
+  class="flex items-start gap-3 border-b border-border px-3 py-2 last:border-b-0"
+  data-changed={i.changed}
+  data-row
+>
   <span
     class="hw-pill shrink-0"
     data-priority={i.priority}
@@ -26,7 +33,12 @@ const to = `${href(from, `${i.repo}/${isQuestion(i) ? "decisions" : "work"}`)}#$
       {i.title}
     </a>
     <span class="block text-ui text-foreground/70">
-      {[i.repo, i.kind, i.agent || i.owner !== i.who ? i.owner : ""].filter(Boolean).join(" · ")}
+      {[
+        <span class="text-accent" data-updated hidden>
+          {UPDATED}
+        </span>,
+        meta,
+      ]}
     </span>
   </span>
   {i.due && (
