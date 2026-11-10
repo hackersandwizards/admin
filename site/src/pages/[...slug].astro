@@ -331,7 +331,7 @@ const leads: Partial<Record<Page["type"], string>> = {
         <details class="hw-disclosure hw-card" id={keyOf(g)} data-row>
           <summary class="font-mono font-semibold text-ui">{g.title}</summary>
           <div
-            class="mt-3 text-ui [&_blockquote]:max-w-measure [&_li]:max-w-measure [&_p]:mb-2 [&_p]:max-w-measure"
+            class="mt-3 text-ui [&_blockquote:not(:has(img,video,pre,table,figure))]:max-w-measure [&_li]:max-w-measure [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:mb-2 [&_p]:max-w-measure"
             set:html={g.html}
           />
         </details>
