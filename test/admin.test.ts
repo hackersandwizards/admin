@@ -1,7 +1,8 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -23,7 +24,7 @@ import {
   type Item,
 } from "../src/items.ts";
 import { gitEnv, readItems, readRepo, renderMarkdown, treeSource } from "../src/repo.ts";
-import { createHub, csp } from "../src/serve.ts";
+import { createHub, csp, linker } from "../src/serve.ts";
 
 const FIX = join(import.meta.dir, "fixtures");
 const made: string[] = [];
@@ -431,6 +432,12 @@ describe("pages", () => {
     const out = join(dirname(repo), "out");
     // A second repo without catalog or products, for the switcher's fallbacks.
     const plain = repoFrom("legacy", "plain");
+    // A doc named index.md ends its page's path in "index", which Astro reads as the folder's own.
+    mkdirSync(join(plain, "docs/guide"), { recursive: true });
+    writeFileSync(join(plain, "docs/index.md"), "# Start here\n");
+    writeFileSync(join(plain, "docs/guide/index.md"), "# Guide\n");
+    sh(plain, "git", "add", "-A");
+    commit(plain, "d");
     await buildSite(siteData([await readRepo(repo), await readRepo(plain)]), out);
     const html = readFileSync(join(out, "index.html"), "utf8");
     expect(html).toContain("Which variant ships?");
@@ -468,6 +475,15 @@ describe("pages", () => {
     expect(pages).toContain("decisions.html");
     expect(pages).toContain("products-1.html");
     expect(pages).toContain("doc/docs/agent-work/2026-01-15-sample-topic.html");
+    const plainDocs = readFileSync(join(out, "plain/docs.html"), "utf8");
+    for (const [title, to] of [
+      ["Start here", "doc/docs/index"],
+      ["Guide", "doc/docs/guide/index"],
+    ] as const) {
+      const link = plainDocs.match(new RegExp(`href="([^"]+)">\\s*${title}`))![1]!;
+      expect(link).toStartWith(to);
+      expect(readFileSync(join(out, "plain", link), "utf8")).toContain(`<h1>${title}</h1>`);
+    }
     for (const page of [
       "index.html",
       "spoke/decisions.html",
@@ -689,6 +705,108 @@ describe("serve", () => {
     expect(await hub.pages()).not.toBe(cached);
     expect(await (await get("/")).text()).toContain("Renamed ");
   }, 60_000);
+
+  test("a failed read or build shows on every page and is tried again only once a state moves", async () => {
+    const repo = repoFrom("spoke");
+    const second = join(dirname(repo), "second");
+    cpSync(repo, second, { recursive: true });
+    // A missing object reads as a failed git call, never as a repository without items.
+    const blob = sh(second, "git", "rev-parse", "HEAD:docs/agent-work/items/goal.md").trim();
+    rmSync(join(second, ".git/objects", blob.slice(0, 2), blob.slice(2)));
+    const hub = createHub({ root: dirname(repo) });
+    const get = async (path: string) =>
+      (await hub.fetch(new Request(`http://admin.localhost${path}`))).text();
+    const notice = (html: string) => html.match(/<div id="admin-problem"[^>]*>[\s\S]*?<\/div>/)![0];
+    const first = await hub.pages();
+    expect(notice(await get("/"))).toContain("second could not be read: git cat-file answered");
+    expect(notice(await get("/spoke/doc/docs/agent-work/2026-01-15-sample-topic"))).toContain(
+      "It is left out.",
+    );
+    expect(await hub.pages()).toBe(first);
+    const spawn = Bun.spawn;
+    let builds = 0;
+    const failing = spyOn(Bun, "spawn").mockImplementation(((cmd: string[], opts: object) => {
+      if (!cmd[1]?.endsWith("serve.ts")) return spawn(cmd, opts as never);
+      builds++;
+      return spawn([process.execPath, "-e", "console.error('TypeError: boom'); process.exit(1)"], {
+        stderr: "pipe",
+      });
+    }) as typeof Bun.spawn);
+    try {
+      writeFileSync(join(repo, "moved.md"), "# Moved\n");
+      sh(repo, "git", "add", "moved.md");
+      commit(repo, "m");
+      // The last pages stay on show, saying since when.
+      expect(await hub.pages()).toBe(first);
+      expect(await hub.pages()).toBe(first);
+      expect(builds).toBe(1);
+      expect(notice(await get("/spoke/dashboard"))).toMatch(
+        /could not rebuild on [^<]+<\/b> These pages show the repositories as of [\s\S]*The build stopped: build failed: TypeError: boom/,
+      );
+    } finally {
+      failing.mockRestore();
+    }
+    writeFileSync(join(repo, "moved.md"), "# Moved again\n");
+    sh(repo, "git", "add", "moved.md");
+    commit(repo, "n");
+    expect(await hub.pages()).not.toBe(first);
+    expect(notice(await get("/"))).not.toContain("The build stopped");
+    expect(await get("/")).toContain("second could not be read");
+  }, 120_000);
+
+  test("serves each doc page from its depth's shell, as a full build renders it", async () => {
+    const repo = repoFrom("spoke");
+    mkdirSync(join(repo, "docs/guide"), { recursive: true });
+    const files: Record<string, string> = {
+      "README.md":
+        "# Read me\n\nSee [setup](docs/guide/index.md#setup) and [notes](docs/c%23-notes.md).\n",
+      "docs/guide/index.md": "# Guide\n\n## Setup\n",
+      "docs/c#-notes.md": "# C# notes & more\n",
+      "docs/50% off.md": "# Half off\n",
+    };
+    for (const [path, text] of Object.entries(files)) writeFileSync(join(repo, path), text);
+    sh(repo, "git", "add", "-A");
+    commit(repo, "docs");
+    const hub = createHub({ root: dirname(repo) });
+    const at = "http://admin.localhost/spoke/docs";
+    const get = (path: string) => hub.fetch(new Request(new URL(path, at)));
+    const list = await (await get(at)).text();
+    const data = await readRepo(repo);
+    for (const doc of [...data.reports, ...data.docs]) {
+      const link = list.match(
+        new RegExp(`href="([^"]+)">\\s*${RegExp.escape(Bun.escapeHTML(doc.title))}`),
+      );
+      const page = await get(link![1]!);
+      expect([doc.path, page.status]).toEqual([doc.path, 200]);
+      expect(await page.text()).toContain(`<h1>${Bun.escapeHTML(doc.title)}</h1>`);
+    }
+    const readme = await (await get("/spoke/doc/README")).text();
+    // A link to another doc opens its page, the fragment kept.
+    expect(readme).toContain('href="/spoke/doc/docs/guide/index.md#setup"');
+    expect(readme).toContain('href="/spoke/doc/docs/c%23-notes"');
+    expect((await get("/spoke/doc/docs/c%23-notes")).status).toBe(200);
+    const notes = await (await get("/spoke/doc/docs/c%23-notes")).text();
+    expect(notes).toContain("<title>C# notes &amp; more · spoke · Admin</title>");
+    expect(notes).toContain('href="/_file/spoke/docs/c%23-notes.md"');
+    expect(await (await get("/_file/spoke/docs/c%23-notes.md")).text()).toBe(
+      files["docs/c#-notes.md"],
+    );
+    // A doc filled into its shell is the page a full build renders, served with the same links:
+    // the article's links to docs open their pages, the line above it opens the file.
+    const out = join(scratch(), "out");
+    await buildSite(siteData([data]), out);
+    const served = linker([data]);
+    for (const page of [
+      "README",
+      "docs/guide/index.md",
+      "docs/agent-work/2026-01-15-sample-topic",
+    ]) {
+      const built = readFileSync(join(out, `spoke/doc/${page}.html`), "utf8");
+      expect(await (await get(`/spoke/doc/${page}`)).text()).toBe(
+        served.files(built.replace(/<article[\s\S]*<\/article>/, (a) => served.pages(a))),
+      );
+    }
+  }, 120_000);
 
   test("the hub serves a committed image at a thumbnail's width", async () => {
     const pixel = Buffer.from(

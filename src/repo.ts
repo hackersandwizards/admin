@@ -39,10 +39,11 @@ export async function gitBytes(cwd: string, args: string[], stdin = "") {
 export const gitAsync = async (cwd: string, args: string[], stdin = "") =>
   (await gitBytes(cwd, args, stdin))?.toString() ?? "";
 
+// A git call that fails throws, so a repository that cannot be read never shows as an empty one.
 export async function headSource(repo: string): Promise<Source> {
-  const paths = (await gitAsync(repo, ["ls-tree", "-r", "--name-only", "-z", "HEAD"]))
-    .split("\0")
-    .filter(Boolean);
+  const listed = await gitBytes(repo, ["ls-tree", "-r", "--name-only", "-z", "HEAD"]);
+  if (!listed) throw new Error("git ls-tree HEAD failed");
+  const paths = listed.toString().split("\0").filter(Boolean);
   const cache = new Map<string, string>();
   const wanted = paths.filter(
     (p) =>
@@ -57,16 +58,13 @@ export async function headSource(repo: string): Promise<Source> {
     ["cat-file", "--batch"],
     wanted.map((p) => `HEAD:${p}`).join("\n") + "\n",
   );
-  if (!batch) return { paths, read: () => undefined };
+  if (!batch) throw new Error("git cat-file failed");
   let at = 0;
   for (const p of wanted) {
     const nl = batch.indexOf(10, at);
     const head = batch.subarray(at, nl).toString();
     const size = Number(head.split(" ")[2]);
-    if (Number.isNaN(size)) {
-      at = nl + 1;
-      continue;
-    }
+    if (Number.isNaN(size)) throw new Error(`git cat-file answered "${head}"`);
     cache.set(p, batch.subarray(nl + 1, nl + 1 + size).toString());
     at = nl + 1 + size + 1;
   }
@@ -184,6 +182,18 @@ const description = (text: string) => {
 };
 const ASTRO_CONFIG = /^([^/]+\/)?astro\.config\.(ts|mjs|js)$/;
 const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
+// A page path ending in "index" is its folder's own route to Astro, so index.md keeps its extension.
+export const docSlug = (path: string) =>
+  `doc/${/(^|\/)index\.md$/i.test(path) ? path : path.replace(/\.md$/i, "")}`;
+
+// A moment as a reader names it, "10 Nov, 09:05", in the machine's time zone.
+export const when = (ms: number) =>
+  new Date(ms).toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 export const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
 
 // What admin-serve resizes a committed image to: a review tile's 16:9 box (the page's aspect-video),
@@ -223,15 +233,18 @@ export function renderMarkdown(repo: string, path: string, text: string, front =
   const dir = join(repo, path, "..");
   const body = front ? text.replace(/^---\n[\s\S]*?\n---\n/, "") : text;
   const html = withElements(Bun.markdown.html(body));
-  return html.replace(/(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"]+)"/gi, (_, attr, rel) => {
-    let path = rel;
-    try {
-      path = decodeURI(rel);
-    } catch {
-      // A stray % in a hand-written link stays as written.
-    }
-    return `${attr}="${fileHref(join(dir, path))}"`;
-  });
+  return html.replace(
+    /(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"?#]*)([^"]*)"/gi,
+    (_, attr, rel: string, rest: string) => {
+      let path = rel;
+      try {
+        path = decodeURIComponent(rel);
+      } catch {
+        // A stray % in a hand-written link stays as written.
+      }
+      return `${attr}="${fileHref(join(dir, path))}${rest}"`;
+    },
+  );
 }
 
 // A page's title is its first rendered h1, which leaves the article since the title shows above it.
@@ -286,9 +299,14 @@ function astrobookDev(src: Source, scripts: Record<string, string>) {
   }
 }
 
-// Config entries without an href are dropped rather than failing the whole hub.
-const linked = <T extends { href: unknown }>(list: T[] | undefined) =>
-  (Array.isArray(list) ? list : []).filter((e) => typeof e?.href === "string");
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === "object" && !Array.isArray(v);
+
+// Config entries without a text label and href are dropped rather than failing the whole hub.
+const linked = <T extends { label: unknown; href: unknown }>(list: T[] | undefined) =>
+  (Array.isArray(list) ? list : []).filter(
+    (e) => typeof e?.label === "string" && typeof e?.href === "string",
+  );
 
 type AdminConfig = { name?: string; designSystem?: string; products?: Product[]; links?: Link[] };
 
@@ -318,18 +336,28 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
   } catch {
     defects.push("package.json: not JSON");
   }
-  const admin = (pkg.admin ?? {}) as AdminConfig;
-  const key = admin.name ?? basename(repo);
-  const scriptsMap = (pkg.scripts ?? {}) as Record<string, string>;
+  if (!isObject(pkg)) {
+    defects.push("package.json: not an object");
+    pkg = {};
+  }
+  // A field of the wrong type is a defect, never a failed build of every repository's pages.
+  const texts = (field: string) => {
+    const value = pkg[field] ?? {};
+    const entries = isObject(value) ? Object.entries(value) : [];
+    const kept = entries.filter(([, v]) => typeof v === "string");
+    if (!isObject(value) || kept.length < entries.length)
+      defects.push(`package.json: ${field} holds a value that is not text`);
+    return Object.fromEntries(kept) as Record<string, string>;
+  };
+  const admin = (isObject(pkg.admin) ? pkg.admin : {}) as AdminConfig;
+  const key = typeof admin.name === "string" ? admin.name : basename(repo);
+  const scriptsMap = texts("scripts");
   const href = (h: string) => {
     if (/^[a-z][\w+.-]*:/i.test(h)) return h;
     const [path, hash] = h.split("#");
     return fileHref(join(repo, path!)) + (hash ? `#${hash}` : "");
   };
-  const dependencies = {
-    ...((pkg.dependencies ?? {}) as Record<string, string>),
-    ...((pkg.devDependencies ?? {}) as Record<string, string>),
-  };
+  const dependencies = { ...texts("dependencies"), ...texts("devDependencies") };
   const dev = astrobookDev(src, scriptsMap);
   const designSystem = typeof admin.designSystem === "string" ? href(admin.designSystem) : dev?.url;
   const designSystemDev =
@@ -402,13 +430,11 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     docs,
     workFiles: src.paths.filter((p) => p.startsWith(`${WORK_DIR}/`)),
     pkg: {
-      name: pkg.name as string | undefined,
-      version: pkg.version as string | undefined,
+      name: typeof pkg.name === "string" ? pkg.name : undefined,
+      version: typeof pkg.version === "string" ? pkg.version : undefined,
       dependencies,
       scripts: scriptsMap,
-      bin: (typeof pkg.bin === "string"
-        ? { [String(pkg.name)]: pkg.bin }
-        : (pkg.bin ?? {})) as Record<string, string>,
+      bin: typeof pkg.bin === "string" ? { [String(pkg.name)]: pkg.bin } : texts("bin"),
     },
     designSystem,
     designSystemDev,

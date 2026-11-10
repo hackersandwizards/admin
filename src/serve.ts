@@ -10,12 +10,32 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, relative, resolve, sep } from "node:path";
-import { buildCatalog, buildSite, filesUnder, firstWord, PKG, siteData } from "./build.ts";
+import { basename, join, relative, resolve, sep } from "node:path";
+import {
+  buildCatalog,
+  buildSite,
+  filesUnder,
+  firstWord,
+  PKG,
+  SHELL,
+  shelled,
+  shellPath,
+  siteData,
+} from "./build.ts";
 import elements from "../brand-elements.json";
 import { findRepos } from "./hub.ts";
-import { fileHref, git, gitAsync, gitBytes, readRepo, THUMB_BOXES, type RepoData } from "./repo.ts";
+import {
+  docSlug,
+  fileHref,
+  git,
+  gitAsync,
+  gitBytes,
+  readRepo,
+  THUMB_BOXES,
+  type Doc,
+  type RepoData,
+  when,
+} from "./repo.ts";
 
 export type ServeOptions = { root: string; rescanMs?: number };
 
@@ -44,10 +64,14 @@ const IMMUTABLE = "public, max-age=31536000, immutable";
 
 // Runs this file as a child that builds into `out`, then reads what it wrote, keyed by path.
 async function spawnBuild(what: string, args: string[], out: string) {
-  const child = Bun.spawn([process.execPath, import.meta.path, ...args, out], {
-    stderr: "inherit",
-  });
-  if (await child.exited) throw new Error(`admin-serve: ${what} exited ${child.exitCode}`);
+  const child = Bun.spawn([process.execPath, import.meta.path, ...args, out], { stderr: "pipe" });
+  const err = await new Response(child.stderr).text();
+  process.stderr.write(err);
+  if (await child.exited) {
+    // The thrown error's own line, as Bun prints it: "TypeError: ...", "error: ...".
+    const line = err.match(/^(?:error|[A-Z]\w*): \S.*$/m)?.[0];
+    throw new Error(`${what} failed: ${line ?? `exit ${child.exitCode}`}`);
+  }
   return new Map(filesUnder(out).map((f) => [relative(out, f), readFileSync(f)]));
 }
 
@@ -82,42 +106,157 @@ async function resized(body: Buffer, [width, height]: readonly [number, number])
   }
 }
 
+// file:// links as the hub serves them: one to a doc with a page opens that page, any other the
+// committed file under /_file/<repo>/.
+export function linker(repos: RepoData[]) {
+  const encoded = (path: string) => path.split("/").map(encodeURIComponent).join("/");
+  const pageOf = new Map(
+    repos.flatMap((r) =>
+      [...r.reports, ...r.docs].map(
+        (d) =>
+          [fileHref(join(r.path, d.path)), `/${encoded(`${r.key}/${docSlug(d.path)}`)}`] as const,
+      ),
+    ),
+  );
+  // Longest path first: a repository nested in another keeps its own prefix.
+  const prefixes = [...repos]
+    .sort((a, b) => b.path.length - a.path.length)
+    .map((r) => [fileHref(r.path) + "/", `/_file/${encodeURIComponent(r.key)}/`] as const);
+  const files = (html: string) => {
+    for (const [from, to] of prefixes) html = html.replaceAll(from, to);
+    return html;
+  };
+  const pages = (html: string) =>
+    html.replace(/href="(file:\/\/[^"?#]*)([?#][^"]*)?"/g, (link, file: string, rest = "") => {
+      const to = pageOf.get(file);
+      return to ? `href="${to}${rest}"` : link;
+    });
+  return { files, pages };
+}
+
+type Site = {
+  key: string;
+  built: number;
+  files: Map<string, Buffer>;
+  repos: RepoData[];
+  links: ReturnType<typeof linker>;
+  // A doc page's path to its doc, and each repository's shells by their paths.
+  docs: Map<string, { repo: RepoData; doc: Doc }>;
+  shells: Map<string, string>;
+};
+
 export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   let paths: Promise<string[]> | undefined;
   let scanned = 0;
   let scanning: Promise<string[]> | undefined;
   const read = new Map<string, { state: string; data: RepoData }>();
-  let site: { key: string; files: Map<string, Buffer> } | undefined;
-  let refreshing: Promise<Map<string, Buffer>> | undefined;
+  // A repository that failed to read at a state, and a build that failed for a key, are tried
+  // again only once that changes, and say on every page what went wrong.
+  const unread = new Map<string, { state: string; message: string }>();
+  let failed: { key: string; at: number; message: string } | undefined;
+  let site: Site | undefined;
+  let refreshing: Promise<Site> | undefined;
   let catalog: Promise<Map<string, Buffer>> | undefined;
   // A built file is compressed once, on its first request that accepts gzip.
   const gzipped = new WeakMap<Buffer, Uint8Array<ArrayBuffer>>();
   // The hub's user is the machine's git identity, by first name as item owners write it.
   const you = firstWord(git(root, "config", "user.name").trim()) || undefined;
 
-  async function rebuild(key: string, repos: RepoData[]) {
-    const out = mkdtempSync(join(tmpdir(), "admin-serve-"));
-    const json = `${out}.json`;
+  async function rebuild(key: string, repos: RepoData[]): Promise<Site> {
+    const work = mkdtempSync(join(PKG, "site", ".build-"));
+    const json = join(work, "data.json");
+    const out = join(work, "out");
     try {
-      writeFileSync(json, JSON.stringify(siteData(repos, you)));
+      const data = siteData(repos, you);
+      writeFileSync(json, JSON.stringify(shelled(data)));
       const files = await spawnBuild("build", [json], out);
-      // Longest path first: a repository nested in another keeps its own prefix.
-      const links = [...repos]
-        .sort((a, b) => b.path.length - a.path.length)
-        .map((r) => [fileHref(r.path) + "/", `/_file/${encodeURIComponent(r.key)}/`] as const);
+      const links = linker(repos);
+      const shells = new Map<string, string>();
       for (const [name, bytes] of files) {
         if (!name.endsWith(".html")) continue;
-        let html = bytes.toString("utf8");
-        for (const [from, to] of links) html = html.replaceAll(from, to);
-        files.set(name, Buffer.from(html));
+        const html = links.files(links.pages(bytes.toString("utf8")));
+        const page = name.slice(0, -".html".length);
+        if (data.repos.some((r) => page.startsWith(`${r.prefix}_shell/`))) {
+          shells.set(page, html);
+          files.delete(name);
+        } else files.set(name, Buffer.from(html));
       }
-      site = { key, files };
-      return files;
+      const byKey = new Map(repos.map((r) => [r.key, r]));
+      const docs = new Map(
+        repos.map((r) => [r.key, new Map([...r.reports, ...r.docs].map((d) => [d.path, d]))]),
+      );
+      return {
+        key,
+        built: Date.now(),
+        files,
+        repos,
+        links,
+        shells,
+        docs: new Map(
+          data.pages
+            .filter((p) => p.type === "doc")
+            .map((p) => [
+              p.path,
+              { repo: byKey.get(p.repo!)!, doc: docs.get(p.repo!)!.get(p.doc!)! },
+            ]),
+        ),
+      };
     } finally {
-      rmSync(out, { recursive: true, force: true });
-      rmSync(json, { force: true });
+      rmSync(work, { recursive: true, force: true });
     }
   }
+
+  // A doc page, its doc filled into the shell for its depth.
+  function docPage(name: string) {
+    const hit = site?.docs.get(name);
+    if (!site || !hit) return undefined;
+    const { repo, doc } = hit;
+    const { links } = site;
+    const shell = site.shells.get(shellPath(`${repo.key}/`, name.split("/").length))!;
+    const fileLink = (path: string) => Bun.escapeHTML(links.files(fileHref(join(repo.path, path))));
+    return Buffer.from(
+      shell
+        .replaceAll(fileLink(SHELL.path), () => fileLink(doc.path))
+        .replaceAll(SHELL.path, () => Bun.escapeHTML(doc.path))
+        .replaceAll(SHELL.title, () => Bun.escapeHTML(doc.title))
+        .replaceAll(
+          `"${SHELL.name}.html"`,
+          () => `"${encodeURIComponent(name.split("/").pop()!)}.html"`,
+        )
+        .replace(SHELL.html, () => links.files(links.pages(doc.html))),
+    );
+  }
+
+  // What went wrong, for the notice on every page: the build that failed, and each repository
+  // that could not be read at its current state.
+  function notice() {
+    const lines = [...unread].map(([p, u]) => {
+      const had = read.get(p);
+      const name = had?.data.key ?? basename(p);
+      return `${name} could not be read: ${u.message}. ${had ? "Its pages show its last read." : "It is left out."}`;
+    });
+    if (failed) lines.unshift(`The build stopped: ${failed.message}`);
+    if (!lines.length) return undefined;
+    const head = failed
+      ? `The hub could not rebuild on ${when(failed.at)}.`
+      : `The hub could not read ${lines.length === 1 ? "a repository" : `${lines.length} repositories`}.`;
+    const shows =
+      failed && site ? ` These pages show the repositories as of ${when(site.built)}.` : "";
+    return `<p><b>${head}</b>${shows} It tries again once a repository changes; nothing to do unless this stays, and then the terminal running admin-serve shows the whole error.</p><ul class="hw-marker-list">${lines.map((l) => `<li>${Bun.escapeHTML(l)}</li>`).join("")}</ul>`;
+  }
+  const withNotice = (html: Buffer) => {
+    const text = notice();
+    return text
+      ? Buffer.from(
+          html
+            .toString("utf8")
+            .replace(
+              /(<div id="admin-problem"[^>]*?) hidden><\/div>/,
+              (_, open) => `${open}>${text}</div>`,
+            ),
+        )
+      : html;
+  };
 
   // Requests that arrive while one checks, reads or builds share its answer.
   const pages = () => (refreshing ??= refresh().finally(() => (refreshing = undefined)));
@@ -138,45 +277,52 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const current = await paths;
     // A repository gone from the search leaves no entry for /_file/ to find under its key.
     for (const p of read.keys()) if (!current.includes(p)) read.delete(p);
+    for (const p of unread.keys()) if (!current.includes(p)) unread.delete(p);
     const states = await Promise.all(current.map(async (p) => [p, await stateOf(p)] as const));
     // The day is part of the state: a due date comes within a week of it with no commit.
     const key = [new Date(Date.now()).toDateString(), ...states.map(([p, s]) => `${p} ${s}`)].join(
       "\n",
     );
-    if (site?.key === key) return site.files;
-    // A repository that fails to read keeps its last pages, or is left out, and is read again on
-    // the next request.
-    let failed = false;
+    if (site?.key === key) return site;
+    if (failed?.key === key) {
+      if (site) return site;
+      throw new Error(failed.message);
+    }
+    // A repository that fails to read keeps its last pages, or is left out.
     const repos = (
       await Promise.all(
         states.map(async ([p, s]) => {
           const had = read.get(p);
-          if (had?.state === s) return [had.data];
+          if (had?.state === s || unread.get(p)?.state === s) return had ? [had.data] : [];
           try {
             const data = await readRepo(p);
             read.set(p, { state: s, data });
+            unread.delete(p);
             return [data];
           } catch (e) {
             console.error(`admin-serve: ${p}:`, e);
-            failed = true;
+            unread.set(p, { state: s, message: (e as Error).message ?? String(e) });
             return had ? [had.data] : [];
           }
         }),
       )
     ).flat();
-    // A failed build keeps the last pages on show and is tried again on the next request.
-    return rebuild(failed ? "" : key, repos).catch((e) => {
-      if (!site) throw e;
+    try {
+      site = await rebuild(key, repos);
+      failed = undefined;
+    } catch (e) {
       console.error(e);
-      return site.files;
-    });
+      failed = { key, at: Date.now(), message: (e as Error).message ?? String(e) };
+      if (!site) throw e;
+    }
+    return site;
   }
 
   // Specimen pages link brand's stylesheets under node_modules, which no commit holds, so the
   // installed file answers, only from inside the repository, since a symlink there may point
   // anywhere on disk.
   async function file(repoKey: string, path: string) {
-    const repo = [...read.values()].find((r) => r.data.key === repoKey)?.data.path;
+    const repo = site?.repos.find((r) => r.key === repoKey)?.path;
     if (!repo || path.split("/").includes("..")) return undefined;
     if (path.startsWith("node_modules/")) {
       const installed = join(repo, path);
@@ -201,7 +347,12 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const url = new URL(req.url);
     // Only a local name: a page elsewhere that points its own domain at 127.0.0.1 reads nothing.
     if (!LOCAL.test(url.hostname)) return new Response("local only", { status: 403 });
-    const path = decodeURIComponent(url.pathname);
+    let path: string;
+    try {
+      path = decodeURIComponent(url.pathname);
+    } catch {
+      return new Response("malformed path", { status: 400 });
+    }
     const catalogPage = path === "/catalog" || path.startsWith("/catalog/");
     const gzip = /\bgzip\b/.test(req.headers.get("accept-encoding") ?? "");
     // Only a built file is compressed: a committed file under /_file/ is read per request.
@@ -256,13 +407,24 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
         ? typed(built.get(at)!, at, at.startsWith("_astro/") ? IMMUTABLE : "no-store")
         : new Response("no such page", { status: 404 });
     }
-    const files = await pages();
+    const built = await pages().catch((e: Error) => e);
+    if (built instanceof Error)
+      return new Response(
+        `The hub could not build its pages: ${built.message}. It tries again once a repository changes.`,
+        { status: 503 },
+      );
+    const { files } = built;
     // A page's asset URLs are relative, so they only resolve from the page's own address.
     if (path.length > 1 && path.endsWith("/") && files.has(`${path.slice(1, -1)}.html`))
       return Response.redirect(url.origin + url.pathname.slice(0, -1) + url.search, 302);
     const name = path.slice(1) || "index.html";
     const hit = files.get(name) ?? files.get(`${name}.html`);
-    if (hit) return typed(hit, files.has(name) ? name : `${name}.html`);
+    if (hit) {
+      const at = files.has(name) ? name : `${name}.html`;
+      return typed(at.endsWith(".html") ? withNotice(hit) : hit, at);
+    }
+    const doc = docPage(name.replace(/\.html$/, ""));
+    if (doc) return typed(withNotice(doc), "doc.html");
     // A repository's own address, with or without the slash, opens its dashboard.
     if (files.has(`${path.slice(1).replace(/\/$/, "")}/dashboard.html`))
       return Response.redirect(

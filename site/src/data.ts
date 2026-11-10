@@ -3,7 +3,7 @@ import { relative, dirname } from "node:path/posix";
 import type { Page, SiteData, ViewItem } from "../../src/build.ts";
 
 export type { Page, SiteData, ViewItem };
-export { fileHref, thumbnail } from "../../src/repo.ts";
+export { docSlug, fileHref, thumbnail, when } from "../../src/repo.ts";
 
 let cached: SiteData | undefined;
 export function data(): SiteData {
@@ -13,10 +13,11 @@ export function data(): SiteData {
 
 export const fileOf = (path: string) => `${path}.html`;
 
-// Relative, so the output opens from disk.
+// Relative, so the output opens from disk, and encoded, so a "#" or "%" in a doc's name stays in
+// its path.
 export function href(from: string, to: string) {
-  const r = relative(dirname(fileOf(from)), fileOf(to));
-  return r || fileOf(to).split("/").pop()!;
+  const r = relative(dirname(fileOf(from)), fileOf(to)) || fileOf(to).split("/").pop()!;
+  return r.split("/").map(encodeURIComponent).join("/");
 }
 
 export const repoOf = (key?: string) => data().repos.find((r) => r.key === key);
@@ -34,11 +35,6 @@ export const forPerson = (items: ViewItem[]) =>
   items.filter((i) => i.kind === "work" && data().people.includes(i.who));
 
 const DAY = 864e5;
-export function age(ms?: number) {
-  if (!ms) return "never";
-  const h = Math.round((Date.now() - ms) / 3.6e6);
-  return h < 1 ? "under an hour ago" : h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
-}
 export const day = (seconds: number) =>
   new Date(seconds * 1000).toLocaleDateString("en-GB", {
     day: "numeric",

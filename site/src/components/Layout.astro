@@ -12,8 +12,10 @@ interface Props {
   provenance?: string;
   /** The page lists every question of its repositories, so an answer whose row is gone was done. */
   answersAll?: boolean;
+  /** What admin-serve says went wrong, as HTML: it fills the empty notice on every page it serves. */
+  problem?: string;
 }
-const { page, lead, provenance, answersAll = false } = Astro.props;
+const { page, lead, provenance, answersAll = false, problem } = Astro.props;
 const d = data();
 const repo = repoOf(page.repo);
 type Repo = NonNullable<typeof repo>;
@@ -177,6 +179,13 @@ const entries = [
         </div>
         {lead && <p class="admin-lead">{lead}</p>}
         {provenance && <p class="admin-provenance">{provenance}</p>}
+        <div
+          id="admin-problem"
+          class="hw-callout mt-3 flex flex-col gap-1 text-ui"
+          role="status"
+          hidden={!problem}
+          set:html={problem}
+        />
         <div class="mt-6 flex flex-col gap-8">
           <slot />
         </div>

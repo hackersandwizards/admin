@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { compareItems, imagesOf, ITEMS_DIR, type Item } from "./items.ts";
-import { fileHref, renderMarkdown, type RepoData } from "./repo.ts";
+import { docSlug, fileHref, renderMarkdown, type Doc, type RepoData } from "./repo.ts";
 
 export const PKG = join(import.meta.dirname, "..");
 export const VERSION = JSON.parse(readFileSync(join(PKG, "package.json"), "utf8"))
@@ -49,6 +49,8 @@ export type Page = {
   type: (typeof PAGE_TYPES)[number];
   repo?: string;
   doc?: string;
+  // A doc page's own doc, where no list of the repository holds it: the shell's marks.
+  article?: Doc;
   product?: number;
   title: string;
 };
@@ -193,7 +195,7 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
     add({ path: "log", type: "log", title: "Log" });
     for (const d of [...r.reports, ...r.docs])
       add({
-        path: `doc/${d.path.replace(/\.md$/i, "")}`,
+        path: docSlug(d.path),
         type: "doc",
         doc: d.path,
         title: d.title,
@@ -202,6 +204,42 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
     return { ...rest, items, prefix, dashboard };
   });
   return { version: VERSION, people, others, repos: out, pages };
+}
+
+// The hub builds no doc page: it fills a doc into its repository's shell on request, a doc page
+// built once per folder depth with these marks in place of the doc, so that a build covers the list
+// pages alone. The depth decides every relative link of a page, so a shell's links hold for each
+// doc at its depth.
+export const SHELL = {
+  name: "admin-shell-name",
+  path: "admin-shell-path",
+  title: "admin-shell-title",
+  html: "admin-shell-html",
+};
+export const shellPath = (prefix: string, depth: number) =>
+  `${prefix}_shell/${"_/".repeat(depth - 3)}${SHELL.name}`;
+
+export function shelled(data: SiteData): SiteData {
+  const docs = data.pages.filter((p) => p.type === "doc");
+  const pages = data.pages.filter((p) => p.type !== "doc");
+  const repos = data.repos.map((r) => {
+    for (const depth of new Set(
+      docs.filter((p) => p.repo === r.key).map((p) => p.path.split("/").length),
+    ))
+      pages.push({
+        path: shellPath(r.prefix, depth),
+        type: "doc",
+        repo: r.key,
+        title: SHELL.title,
+        article: SHELL,
+      });
+    return {
+      ...r,
+      reports: r.reports.map((d) => ({ ...d, html: "" })),
+      docs: r.docs.map((d) => ({ ...d, html: "" })),
+    };
+  });
+  return { ...data, repos, pages };
 }
 
 // Every path is resolved, since the package may sit hoisted or nested.

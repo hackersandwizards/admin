@@ -6,9 +6,9 @@ import WhoFilter from "../components/WhoFilter.astro";
 import Waiting from "../components/Waiting.astro";
 import { compareItems, imagesOf } from "../../../src/items.ts";
 import {
-  age,
   data,
   day,
+  docSlug,
   fileHref,
   forPerson,
   href,
@@ -17,6 +17,7 @@ import {
   repoOf,
   thumbnail,
   type Page,
+  when,
 } from "../data";
 
 export function getStaticPaths() {
@@ -40,7 +41,7 @@ const provenance = repo
   ? `@hackersandwizards/admin v${d.version} · ${repo.key} HEAD ${repo.head} · ${items.length} item files · ${
       !repo.fetched
         ? "origin never fetched in this checkout, commits behind unknown"
-        : `${repo.behind ? `${repo.behind} commits behind origin` : "up to date with origin"}, fetched ${age(repo.fetched)}`
+        : `${repo.behind ? `${repo.behind} commits behind origin` : "up to date with origin"}, fetched ${when(repo.fetched)}`
     }`
   : `@hackersandwizards/admin v${d.version} · ${d.repos.length} checkouts · ${
       d.repos.filter((r) => r.behind).length
@@ -60,7 +61,8 @@ const settled = d.repos
   .sort(compareItems);
 const repoAgentWork = agentWork(items);
 const byPriority = (list: typeof items, p: number) => list.filter((i) => i.priority === p).length;
-const doc = repo && [...repo.reports, ...repo.docs].find((x) => x.path === page.doc);
+const doc =
+  page.article ?? (repo && [...repo.reports, ...repo.docs].find((x) => x.path === page.doc));
 const product = repo && page.product !== undefined ? repo.products[page.product] : undefined;
 const pins = (r: NonNullable<typeof repo>) =>
   Object.entries(r.pkg.dependencies).filter(([name]) => name.startsWith("@hackersandwizards/"));
@@ -289,7 +291,7 @@ const leads: Partial<Record<Page["type"], string>> = {
           <ul class="flex flex-col gap-1 text-ui">
             {repo.reports.slice(0, 6).map((r) => (
               <li data-row>
-                <a class="hw-link" href={link(`${repo.prefix}doc/${r.path.replace(/\.md$/i, "")}`)}>
+                <a class="hw-link" href={link(repo.prefix + docSlug(r.path))}>
                   {r.title}
                 </a>{" "}
                 <span class="text-foreground/70">{r.date}</span>
@@ -376,10 +378,7 @@ const leads: Partial<Record<Page["type"], string>> = {
             <div class="mt-2 flex flex-col gap-2">
               <p class="flex flex-wrap gap-4 text-ui">
                 {r.report && (
-                  <a
-                    class="hw-link"
-                    href={link(`${repo.prefix}doc/${r.report.replace(/\.md$/i, "")}`)}
-                  >
+                  <a class="hw-link" href={link(repo.prefix + docSlug(r.report))}>
                     Report
                   </a>
                 )}
@@ -425,10 +424,7 @@ const leads: Partial<Record<Page["type"], string>> = {
               <tr data-row>
                 <td class="w-28 font-mono">{r.date}</td>
                 <td>
-                  <a
-                    class="hw-link"
-                    href={link(`${repo.prefix}doc/${r.path.replace(/\.md$/i, "")}`)}
-                  >
+                  <a class="hw-link" href={link(repo.prefix + docSlug(r.path))}>
                     {r.title}
                   </a>
                 </td>
@@ -445,10 +441,7 @@ const leads: Partial<Record<Page["type"], string>> = {
               <tr data-row>
                 <td class="font-mono">{r.path}</td>
                 <td>
-                  <a
-                    class="hw-link"
-                    href={link(`${repo.prefix}doc/${r.path.replace(/\.md$/i, "")}`)}
-                  >
+                  <a class="hw-link" href={link(repo.prefix + docSlug(r.path))}>
                     {r.title}
                   </a>
                 </td>
