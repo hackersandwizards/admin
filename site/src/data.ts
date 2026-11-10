@@ -81,9 +81,14 @@ export function dueOf(due: string, now = Date.now()) {
 // A bare web address in rendered text becomes a link; one already in a link, in code or inside a
 // tag stays, and an escaped quote or bracket ends it. One in escaped angle brackets, as an item's
 // body keeps <https://…>, becomes the link without them.
+const URL_CHAR = String.raw`(?:(?!&(?:quot|#x27|#39|lt|gt);)[^\s<>"'])`;
+const LINKED = new RegExp(
+  String.raw`(<(a|code|pre)\b[\s\S]*?<\/\2>|<[^>]*>)|&lt;(https?:\/\/${URL_CHAR}+)&gt;|\bhttps?:\/\/${URL_CHAR}*[^\s<>"'.,;:!?)\]&]`,
+  "g",
+);
 export const withLinks = (html: string) =>
   html.replace(
-    /(<(a|code|pre)\b[\s\S]*?<\/\2>|<[^>]*>)|&lt;(https?:\/\/(?:(?!&(?:quot|#x27|#39|lt|gt);)[^\s<>"'])+)&gt;|\bhttps?:\/\/(?:(?!&(?:quot|#x27|#39|lt|gt);)[^\s<>"'])*[^\s<>"'.,;:!?)\]&]/g,
+    LINKED,
     (whole, tag?: string, _name?: string, bracketed?: string) =>
       tag ?? `<a class="hw-link" href="${bracketed ?? whole}">${bracketed ?? whole}</a>`,
   );

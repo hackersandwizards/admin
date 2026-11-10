@@ -1266,9 +1266,19 @@ describe("serve", () => {
     expect(lost).not.toMatch(/(?:href|src)="(?!\/|#|[a-z]+:)/);
     expect((await get("/index.html")).status).toBe(200);
     expect(lost).toContain("Nothing on the hub answers at /nosuchrepo/:");
+    for (const own of ["/404", "/404.html"]) {
+      const r = await get(own);
+      expect([r.status, (await r.text()).includes("admin-missing-path")]).toEqual([404, false]);
+    }
     expect(await (await get("/a/<b>")).text()).toContain("answers at /a/%3Cb%3E:");
     // The hub says it is current as of the request.
     expect(first).toContain(`· as of <span data-stamp>${when(Date.now())}</span>`);
+    // So does the hub's other page, a day after its build.
+    const later = Date.now() + 864e5;
+    const clock = spyOn(Date, "now").mockReturnValue(later);
+    const packages = await (await get("/architecture")).text();
+    clock.mockRestore();
+    expect(packages).toContain(`· as of <span data-stamp>${when(later)}</span>`);
     // Every script, on the hub and on a nested page, resolves under the one path the policy runs.
     const nested = await decisions.text();
     // A page travels gzipped where the browser takes it, and a hashed asset stays in its cache.

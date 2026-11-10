@@ -51,7 +51,7 @@ A repository shows in the hub when its HEAD has `docs/agent-work/items/` or its 
 `@hackersandwizards` package, so this engine shows itself.
 
 An item's body is Markdown without HTML: a tag in it, such as a placeholder `<id>`, shows as
-written, and an address in angle brackets is a link. A doc keeps its raw HTML, styles and images
+written, and a web address in angle brackets is a link. A doc keeps its raw HTML, styles and images
 included, but no script in it runs:
 the hub's content security policy runs only its own build under `/_astro/`, so a `.js` file a
 repository commits and links through `/_file/` stays inert. Nor can a doc send the page

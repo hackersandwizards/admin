@@ -285,13 +285,13 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     return page;
   };
 
-  // Every request checks each repository first, so a page is current when it is served: the hub's
-  // provenance line ends on the request's time, and a repository page's on the fetch time this
+  // Every request checks each repository first, so a page is current when it is served: a hub
+  // page's provenance line ends on the request's time, and a repository page's on the fetch time this
   // request found, once a fetch that moved no ref left the page unbuilt.
   const stamped = new WeakMap<Buffer, { key: string; page: Buffer }>();
   const stamp = (html: Buffer, page: string) => {
     const repo = site?.repos.find((r) => page.startsWith(`${r.key}/`));
-    const at = page === "index.html" ? Date.now() : repo && newerFetch(repo);
+    const at = repo ? newerFetch(repo) : Date.now();
     if (!at) return html;
     const key = when(at);
     const done = stamped.get(html);
@@ -511,9 +511,10 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     if (path.length > 1 && path.endsWith("/") && (files.has(`${bare}.html`) || docs.has(bare)))
       return Response.redirect(url.origin + url.pathname.slice(0, -1) + url.search, 302);
     const name = path.slice(1) || "index.html";
-    const hit = files.get(name) ?? files.get(`${name}.html`);
-    if (hit) {
-      const at = files.has(name) ? name : `${name}.html`;
+    // The 404 page answers only where no page does.
+    const at = [name, `${name}.html`].find((n) => n !== "404.html" && files.has(n));
+    if (at) {
+      const hit = files.get(at)!;
       return typed(at.endsWith(".html") ? withNotice(stamp(hit, at)) : hit, at);
     }
     // A doc's slug may end in .html itself, as for x.html.md.
