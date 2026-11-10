@@ -135,7 +135,8 @@ priority, and every `due` shows as a badge. On the hub each priority runs its ro
 the one with the most urgent row first, and assumed and decided items come last, under "Settled".
 Work an agent owns shows collapsed under "Agents on it", each row a link to its repository's
 page. An item belongs to the first person its `owner` names anywhere ("Ivo drafts, Kim sends" is
-Kim's), a person being a name that opens some open item's owner and no agent's. The hub and each
+Kim's), a person being the hub's user or a name that opens some open item's owner, and never an
+agent's name; a name matches only whole. The hub and each
 dashboard list open items people other than the hub's user own under "Waiting on others"; the
 hub's user is the machine's git identity by first name where an owner writes it, else the person
 with the most open questions. On the hub and Decisions a row of buttons for every person who owns
