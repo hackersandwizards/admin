@@ -128,7 +128,7 @@ The question's context, in Markdown.
 `admin-check` enforces:
 
 - `kind`, `status` and, except on a goal, `priority` and `owner` are present and valid. Unknown
-  fields are defects.
+  fields and a field written twice are defects.
 - An open decision has at least two options. A request to look at something is `kind: review`.
 - `recommended` and every `images` key name an option; several recommended need `multiple: true`.
   `images` may instead be a list: images of the item as a whole, shown under its text.

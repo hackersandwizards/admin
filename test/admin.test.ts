@@ -252,6 +252,15 @@ describe("item files", () => {
     );
     expect(() => parseItem("x", "---\nkind: review\n---\n\nNo title.\n")).toThrow("# <title>");
   });
+
+  test("a repeated top-level field is a defect naming the file and the field", () => {
+    const { defects } = readItems({
+      paths: ["docs/agent-work/items/twice.md"],
+      read: () =>
+        "---\nkind: work\nstatus: open\npriority: 2\nowner: Alex\noptions:\n  - key: a\n    label: A\n  - key: b\n    label: B\npriority: 3\n---\n# Twice\n",
+    });
+    expect(defects).toEqual(["docs/agent-work/items/twice.md: repeated field priority"]);
+  });
 });
 
 describe("admin-check", () => {

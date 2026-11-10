@@ -67,6 +67,10 @@ export function parseItem(id: string, text: string): Item {
     throw new ItemError("frontmatter is not a mapping");
   const unknown = Object.keys(front).filter((k) => !FIELDS.includes(k));
   if (unknown.length) throw new ItemError(`unknown field ${unknown.join(", ")}`);
+  // The parser keeps a repeated key's last value without a word; a top-level key starts a line.
+  const keys = [...m[1]!.matchAll(/^([\w-]+)[ \t]*:/gm)].map((k) => k[1]!);
+  const repeated = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
+  if (repeated.length) throw new ItemError(`repeated field ${repeated.join(", ")}`);
   const rest = m[2]!.replace(/^\s*\n/, "");
   const title = rest.match(/^# (.+)\n?/);
   if (!title) throw new ItemError('body does not start with "# <title>"');
