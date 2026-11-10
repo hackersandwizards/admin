@@ -8,25 +8,22 @@
     font-family: var(--font-sans);
   }
   /* A scroller clips at its padding box, and focus.css draws the ring outside the control: each
-     scroller here pads by the ring and takes the padding back in a negative margin, so a control
-     at its edge keeps the whole ring and stays where it was. */
+     scroller here pads by the ring's room (--hw-focus-room) and takes it back in a negative
+     margin, so a control at its edge keeps the whole ring and stays where it was. */
   .admin-rail {
     position: sticky;
-    top: calc(var(--spacing-app-header) + 1.5rem - var(--hw-focus-width) - var(--hw-focus-offset));
+    top: calc(var(--spacing-app-header) + 1.5rem - var(--hw-focus-room));
     align-self: start;
-    max-height: calc(
-      100vh - var(--spacing-app-header) - 3rem + 2 *
-        (var(--hw-focus-width) + var(--hw-focus-offset))
-    );
+    max-height: calc(100vh - var(--spacing-app-header) - 3rem + 2 * var(--hw-focus-room));
     overflow-y: auto;
   }
   .admin-rail,
   .admin-who {
-    margin: calc(-1 * (var(--hw-focus-width) + var(--hw-focus-offset)));
-    padding: calc(var(--hw-focus-width) + var(--hw-focus-offset));
+    margin: calc(-1 * var(--hw-focus-room));
+    padding: var(--hw-focus-room);
   }
   .admin-who {
-    max-width: calc(100% + 2 * (var(--hw-focus-width) + var(--hw-focus-offset)));
+    max-width: calc(100% + 2 * var(--hw-focus-room));
   }
   .admin-search {
     margin-bottom: 1rem;
@@ -113,8 +110,8 @@
     .admin-choices {
       --hw-choice-height: var(--hw-check-target-touch);
       flex-wrap: nowrap;
-      margin: calc(-1 * (var(--hw-focus-width) + var(--hw-focus-offset))) -1rem;
-      padding: calc(var(--hw-focus-width) + var(--hw-focus-offset)) 1rem;
+      margin: calc(-1 * var(--hw-focus-room)) -1rem;
+      padding: var(--hw-focus-room) 1rem;
       overflow-x: auto;
       scrollbar-width: none;
     }

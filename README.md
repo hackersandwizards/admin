@@ -71,16 +71,18 @@ running now.
 `admin.designSystem` overrides it.
 
 Answers to decisions stay in the browser as they are typed, across reloads and with no prompt on
-leaving, until "Copy answers", on every page that lists questions, puts them on the clipboard as
-one `repo:id: choice, note` line each, in the page's order, each picked key with its label as
-answered: `repo:id: a (Label A), b (Label B), note`. A copy holds the answers not copied yet, and
-all of them again once none is new. An answer keeps the item's title and options it answered: where
-they changed since, its row shows the pick as given and asks for a new answer, and its line ends
-`; answered <time>, before the question or its options changed`, which the agent checks against
-the item before it acts. An assumption is answered "Agree" or "Veto", which leads its line:
-`repo:id: veto, b (Label B), note`. "Decide later" puts a question off: it stays out of the copy,
-and the next visit, a page view more than an hour after the last, asks it again, with a note
-written beside it as its answer.
+leaving, until "Copy answers", on every page that lists questions, puts them on the clipboard under
+the line `Answers from the admin pages:`, one line each in the page's order: `repo:id: stance,
+choice, note`, each part left out where it is empty. The choice is each picked key with its label as
+answered, `a (Label A), b (Label B)`, a bare key where the answer kept no label and its row is not
+on the page, or `done` where the row was marked done and no option picked; the note's line breaks
+become spaces. A copy holds the answers not copied yet, and all of them again once none is new. An
+answer keeps the item's title and options it answered: where they changed since, its row shows the
+pick as given and asks for a new answer, and its line ends `; answered <time>, before the question
+or its options changed`, which the agent checks against the item before it acts. An assumption is
+answered "Agree" or "Veto", the stance that leads its line: `repo:id: veto, b (Label B), note`.
+"Decide later" puts a question off: it stays out of the copy, and the next visit, a page view more
+than an hour after the last, asks it again, with a note written beside it as its answer.
 
 ## Item files
 
