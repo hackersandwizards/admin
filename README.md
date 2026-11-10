@@ -15,12 +15,13 @@ bun add -d "git+https://github.com/hackersandwizards/admin.git#v<version>"
 `<version>` is the newest of the
 [repository's tags](https://github.com/hackersandwizards/admin/tags).
 
-`@hackersandwizards/brand` is a peer dependency: the repository pins it itself, and admin uses
-that copy, so no second copy lands under `node_modules/@hackersandwizards/admin/`. It is marked
-optional, so bun never looks it up on the npm registry, where the package does not exist.
-`admin-check` does not need it; `admin-serve` stops and names what to pin when it is missing or
-older than its peer range, which bun does not check for a Git pin (older brand draws P3 as the
-outline that means unset). The versions in admin's `devDependencies` are the tested set.
+`@hackersandwizards/brand` is a peer dependency: the repository pins it itself, and admin uses that
+copy, so no second copy lands under `node_modules/@hackersandwizards/admin/`. It is marked optional,
+so bun never looks it up on the npm registry, where the package does not exist. `admin-check` does
+not need it; `admin-serve` stops and names what to pin when it is missing or older than its peer
+range, which bun does not check for a Git pin (older brand breaks a rail count onto two lines and
+lacks the focus ring's room the rail is laid out by). The versions in admin's `devDependencies` are
+the tested set.
 
 `astro`, `tailwindcss`, `@tailwindcss/vite` and `@tailwindcss/typography`, which `admin-serve`
 builds the pages with, are peer dependencies too: a repository on another version within the
@@ -72,17 +73,18 @@ running now.
 
 Answers to decisions stay in the browser as they are typed, across reloads and with no prompt on
 leaving, until "Copy answers", on every page that lists questions, puts them on the clipboard under
-the line `Answers from the admin pages:`, one line each in the page's order: `repo:id: stance,
-choice, note`, each part left out where it is empty. The choice is each picked key with its label as
-answered, `a (Label A), b (Label B)`, a bare key where the answer kept no label and its row is not
-on the page, or `done` where the row was marked done and no option picked; the note's line breaks
-become spaces. A copy holds the answers not copied yet, and all of them again once none is new. An
-answer keeps the item's title and options it answered: where they changed since, its row shows the
-pick as given and asks for a new answer, and its line ends `; answered <time>, before the question
-or its options changed`, which the agent checks against the item before it acts. An assumption is
-answered "Agree" or "Veto", the stance that leads its line: `repo:id: veto, b (Label B), note`.
-"Decide later" puts a question off: it stays out of the copy, and the next visit, a page view more
-than an hour after the last, asks it again, with a note written beside it as its answer.
+the line `Answers from the admin pages:`, one line each in the page's order, then the answers to
+items not on the page: `repo:id: stance, choice, note`, each part left out where it is empty. The
+choice is each picked key with its label as answered, `a (Label A), b (Label B)`, a bare key where
+the answer kept no label and its row is not on the page, or `done` where the row was marked done and
+no option picked; the note's runs of white space become one space. A copy holds the answers not
+copied yet, and all of them again once none is new. An answer keeps the item's title and options it
+answered: where they changed since, its row shows the pick as given and asks for a new answer, and
+its line ends `; answered <time>, before the question or its options changed`, which the agent
+checks against the item before it acts. An assumption is answered "Agree" or "Veto", the stance that
+leads its line: `repo:id: veto, b (Label B), note`. "Decide later" puts a question off: it stays out
+of the copy, and the next visit, a page view more than an hour after the last, asks it again, with a
+note written beside it as its answer.
 
 ## Item files
 
