@@ -208,13 +208,13 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
     )}
     {i.kind === "work" && (
       <label class="flex items-start gap-2">
-        <input type="checkbox" class="hw-check" value="done" /> done
+        <input type="checkbox" class="hw-check" data-done /> done
       </label>
     )}
     {i.status === "open" && (
       <label class="flex items-start gap-2">
-        <input type="checkbox" class="hw-check" value="later" /> Decide later: ask me again on my
-        next visit
+        <input type="checkbox" class="hw-check" data-later /> Decide later: ask me again on my next
+        visit
       </label>
     )}
     <label class="text-micro text-foreground/70" for={`n-${k}`}>

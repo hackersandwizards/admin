@@ -837,7 +837,7 @@ describe("admin.js", () => {
     // Putting a question off clears its pick, and the copy leaves it out.
     const logo = row("spoke:pick-a-logo");
     (logo.querySelector(".pick") as DomElement).click();
-    const later = logo.querySelector("input[value=later]") as DomInput;
+    const later = logo.querySelector("input[data-later]") as DomInput;
     later.checked = true;
     later.dispatchEvent(new page.Event("change", { bubbles: true }));
     expect(logo.querySelectorAll("input[data-option]:checked").length).toBe(0);
@@ -852,6 +852,32 @@ describe("admin.js", () => {
       "admin-answers:seen": String(Date.now() - 2 * 36e5),
     });
     expect(back.localStorage.getItem("admin-answers:spoke:pick-a-logo")).toBeNull();
+    // A note written before a question is put off is its answer on the next visit.
+    const review = row("spoke:check-the-copy");
+    (review.querySelector("textarea") as unknown as HTMLTextAreaElement).value = "looks fine";
+    review.querySelector("textarea")!.dispatchEvent(new page.Event("input"));
+    const off = review.querySelector("input[data-later]") as DomInput;
+    off.checked = true;
+    off.dispatchEvent(new page.Event("change", { bubbles: true }));
+    expect((page.document.getElementById("copy") as DomElement).dataset.hwCopy).not.toContain(
+      "check-the-copy",
+    );
+    const next = open("spoke/decisions", {
+      ...stored(page),
+      "admin-answers:seen": String(Date.now() - 2 * 36e5),
+    });
+    expect((next.document.getElementById("copy") as DomElement).dataset.hwCopy).toContain(
+      "spoke:check-the-copy: looks fine",
+    );
+    // An option whose key is "later" or "done" is a pick like any other.
+    const variant2 = page.document.getElementById("spoke:pick-a-variant") as unknown as DomElement;
+    const b = variant2.querySelector('input[data-option][value="b"]') as DomInput;
+    b.value = "later";
+    b.checked = true;
+    variant2.dispatchEvent(new page.Event("change"));
+    expect(
+      JSON.parse(page.localStorage.getItem("admin-answers:spoke:pick-a-variant")!),
+    ).toMatchObject({ option: "later", later: false });
     // A note is an answer: it takes a question put off up again.
     later.checked = true;
     later.dispatchEvent(new page.Event("change", { bubbles: true }));

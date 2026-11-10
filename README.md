@@ -78,7 +78,8 @@ they changed since, its row shows the pick as given and asks for a new answer, a
 the item before it acts. "Take recommended" on a closed row picks the recommendation without
 opening it. An assumption is answered "Agree" or "Veto", which leads its line:
 `repo:id: veto, b (Label B), note`. "Decide later" puts a question off: it stays out of the copy,
-and the next visit, a page view more than an hour after the last, asks it again.
+and the next visit, a page view more than an hour after the last, asks it again, with a note
+written beside it as its answer.
 
 ## Item files
 

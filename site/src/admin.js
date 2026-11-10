@@ -58,9 +58,17 @@ try {
     localStorage.setItem(STORE + "visit", String(seen));
     localStorage.setItem(STORE + "before", JSON.stringify(versions));
     localStorage.removeItem(STORE + "who");
-    // A question put off is asked again: its row stands unanswered.
-    for (const k of Object.keys(localStorage))
-      if (isAnswer(k) && read(k.slice(STORE.length))?.later) localStorage.removeItem(k);
+    // A question put off is asked again: its row keeps only a note written beside it.
+    for (const k of Object.keys(localStorage)) {
+      const a = isAnswer(k) && read(k.slice(STORE.length));
+      if (a?.later)
+        if (a.note)
+          localStorage.setItem(
+            k,
+            JSON.stringify({ ...a, later: false, at: new Date(now).toISOString() }),
+          );
+        else localStorage.removeItem(k);
+    }
   }
   localStorage.setItem(STORE + "seen", String(now));
   const since = Number(localStorage.getItem(STORE + "visit")) || 0;
@@ -170,8 +178,9 @@ function mark(d, a) {
       : "";
   }
 }
-// The inputs an answer sets, beside read-only boxes an item's own text may hold.
-const ANSWER = "input[data-option], input[data-stance], input[value=done], input[value=later]";
+// The inputs an answer sets, beside read-only boxes an item's own text may hold. The done and later
+// boxes go by attribute, since an option's value is its key, which may be either word.
+const ANSWER = "input[data-option], input[data-stance], input[data-done], input[data-later]";
 function load(d) {
   const a = read(d.dataset.k);
   const old = stale(d.dataset.k, a);
@@ -183,15 +192,15 @@ function load(d) {
         ? picked(a).includes(i.value)
         : "stance" in i.dataset
           ? a.stance === i.value
-          : !!a[i.value]);
+          : !!a["done" in i.dataset ? "done" : "later"]);
   const t = d.querySelector("textarea");
   if (t) t.value = a ? a.note || "" : "";
   mark(d, a);
 }
 function save(d) {
   const keys = [...d.querySelectorAll("input[data-option]:checked")].map((i) => i.value);
-  const done = d.querySelector("input[value=done]:checked");
-  const later = !!d.querySelector("input[value=later]:checked");
+  const done = d.querySelector("input[data-done]:checked");
+  const later = !!d.querySelector("input[data-later]:checked");
   const stance = d.querySelector("input[data-stance]:checked")?.value || "";
   const note = (d.querySelector("textarea")?.value || "").trim();
   // The labels and the question go with the answer, so a page without its row still copies it as
@@ -280,20 +289,20 @@ for (const d of items) {
   load(d);
   // A question put off holds no answer, and an answer takes it up again.
   d.addEventListener("change", (e) => {
-    const later = e.target.value === "later";
+    const later = "later" in e.target.dataset;
     if (e.target.checked)
       for (const i of d.querySelectorAll(ANSWER))
-        if (later !== (i.value === "later")) i.checked = false;
+        if (later !== "later" in i.dataset) i.checked = false;
     save(d);
   });
   d.querySelector("textarea")?.addEventListener("input", () => {
-    const off = d.querySelector("input[value=later]");
+    const off = d.querySelector("input[data-later]");
     if (off) off.checked = false;
     save(d);
   });
   const pick = d.querySelector(".pick");
   pick?.addEventListener("click", () => {
-    const off = d.querySelector("input[value=later]");
+    const off = d.querySelector("input[data-later]");
     if (off) off.checked = false;
     for (const v of pick.dataset.v.split(" ")) {
       const r = d.querySelector(`input[data-option][value="${CSS.escape(v)}"]`);
