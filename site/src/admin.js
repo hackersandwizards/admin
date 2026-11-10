@@ -149,8 +149,6 @@ function mark(d, a) {
               .join(", ") || "note"
           }`;
   const sent = !!a && !old && !a.later && a.at <= copiedAt();
-  const take = d.querySelector(".take");
-  if (take) take.style.display = a && !old ? "none" : "";
   const m = d.querySelector(".mark");
   if (m) {
     m.textContent = text + (sent ? " · copied" : "");
@@ -309,12 +307,6 @@ for (const d of items) {
       if (r) r.checked = true;
     }
     save(d);
-  });
-  // The recommendation taken from the closed row, which stays closed.
-  d.querySelector(".take")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    d.querySelector(".pick")?.click();
   });
   d.querySelector(".clear")?.addEventListener("click", () => {
     write(d.dataset.k, null);

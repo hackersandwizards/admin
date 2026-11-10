@@ -50,12 +50,14 @@ installed beside the package; without them the address answers 503 and names bot
 A repository shows in the hub when its HEAD has `docs/agent-work/items/` or its `package.json` names an
 `@hackersandwizards` package, so this engine shows itself.
 
-Item and doc bodies keep their raw HTML, styles and images included, but no script in them runs:
+An item's body is Markdown without HTML: a tag in it, such as a placeholder `<id>`, shows as
+written, and an address in angle brackets is a link. A doc keeps its raw HTML, styles and images
+included, but no script in it runs:
 the hub's content security policy runs only its own build under `/_astro/`, so a `.js` file a
-repository commits and links through `/_file/` stays inert. Nor can a body send the page
+repository commits and links through `/_file/` stays inert. Nor can a doc send the page
 elsewhere: the policy lets no form post and no frame load from another site, and a `<meta>` tag
-in a body shows as text. Images, fonts and stylesheets load only from the hub itself, committed
-images included, so a body's image or `url()` from another site stays blank. A committed `.html`
+in a doc shows as text. Images, fonts and stylesheets load only from the hub itself, committed
+images included, so a doc's image or `url()` from another site stays blank. A committed `.html`
 file opened through `/_file/` is served as written. A page on another site, or on another port of
 this machine, may link the hub, but the hub refuses its scripts, images and fetches, which would
 learn from what loads which repositories and files exist.
@@ -75,8 +77,7 @@ answered: `repo:id: a (Label A), b (Label B), note`. A copy holds the answers no
 all of them again once none is new. An answer keeps the item's title and options it answered: where
 they changed since, its row shows the pick as given and asks for a new answer, and its line ends
 `; answered <time>, before the question or its options changed`, which the agent checks against
-the item before it acts. "Take recommended" on a closed row picks the recommendation without
-opening it. An assumption is answered "Agree" or "Veto", which leads its line:
+the item before it acts. An assumption is answered "Agree" or "Veto", which leads its line:
 `repo:id: veto, b (Label B), note`. "Decide later" puts a question off: it stays out of the copy,
 and the next visit, a page view more than an hour after the last, asks it again, with a note
 written beside it as its answer.

@@ -29,7 +29,7 @@ const notes: Record<string, string> = {
   prose: "A report or document read on its doc page.",
   field: "The rail's search field.",
   search: "The rail's search, with its icon.",
-  nav: "The rail: the repository's pages, the hub's repositories, with their counts.",
+  nav: "The rail: the repository's pages, the hub's repositories, with their counts, at the rail's width, where a long name wraps beside its count.",
   choice: "The rail's menu on a phone, one row under the search.",
   menu: "The repo switcher's list of repositories, opened from the top bar.",
   disclosure: "A priority group, a person waited on, an item row: each opens and closes.",
@@ -151,21 +151,29 @@ const notes: Record<string, string> = {
           </div>
         )}
         {name === "nav" && (
-          <nav class="hw-nav" aria-label="Menu">
-            <p class="hw-label hw-nav-group" data-tone="muted">
-              spoke
-            </p>
-            <ul>
-              <li>
-                <a href="#">Dashboard</a>
-              </li>
-              <li>
-                <a href="#" aria-current="page">
-                  Decisions <span class="hw-nav-count">4</span>
-                </a>
-              </li>
-            </ul>
-          </nav>
+          <div class="admin-shell p-0!">
+            <nav class="hw-nav" aria-label="Menu">
+              <p class="hw-label hw-nav-group" data-tone="muted">
+                spoke
+              </p>
+              <ul>
+                <li>
+                  <a href="#">Dashboard</a>
+                </li>
+                <li>
+                  <a href="#" aria-current="page">
+                    Decisions <span class="hw-nav-count">4</span>
+                  </a>
+                </li>
+                <li>
+                  <a href="#">
+                    {"an-invented-repository-with-a-long-sample-name"}
+                    <span class="hw-nav-count">22</span>
+                  </a>
+                </li>
+              </ul>
+            </nav>
+          </div>
         )}
         {name === "choice" && (
           <nav class="hw-choices" aria-label="Menu">

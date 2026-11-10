@@ -379,6 +379,24 @@ describe("admin-check", () => {
     }
   });
 
+  test("an item body is Markdown without HTML: a placeholder shows as written, an address stays a link", async () => {
+    const item = parseItem(
+      "p",
+      "---\nkind: work\nstatus: open\npriority: 1\nowner: A\n---\n# P\n\nWrite to <repo>/docs as <title>, see <https://x.example/a>, and `<id>` in code.\n\n<details>\nhidden?\n</details>\n",
+    );
+    const repo = {
+      ...(await readRepo(join(FIX, "spoke"), treeSource(join(FIX, "spoke")))),
+      items: [item],
+    };
+    const html = withLinks(siteData([repo]).repos[0]!.items[0]!.html);
+    expect(html).toContain("Write to &lt;repo&gt;/docs as &lt;title&gt;");
+    expect(html).toContain("&lt;details&gt;");
+    expect(html).toContain(
+      'see <a class="hw-link" href="https://x.example/a">https://x.example/a</a>,',
+    );
+    expect(html).toContain('<code class="hw-inline-code">&lt;id&gt;</code>');
+  });
+
   test("a task list wears no marker beside its read-only hw-check boxes", () => {
     const html = renderMarkdown("/r", "docs/a.md", "- [ ] open\n- [x] done\n\nNext:\n\n- plain\n");
     expect(html.match(/hw-marker-list/g)).toHaveLength(1);
@@ -684,12 +702,16 @@ describe("pages", () => {
     expect(settled("cache-folder")).toContain("Assumed: The build writes to node_modules/.cache");
     expect(settled("name-the-command")).toContain("Decided by Alex: Keep the short name");
     expect(settled("name-the-command")).not.toContain("Recommended");
+    // A closed row answers nothing: a control that commits an answer sits beside the text it answers.
+    const summaries = html.match(/<summary[\s\S]*?<\/summary>/g)!;
+    expect(summaries.length).toBeGreaterThan(5);
+    for (const s of summaries) expect(s).not.toMatch(/<(button|input|textarea|select)\b/);
     // An opened decision shows its options before its context.
     const variant = html.match(/id="spoke:pick-a-variant"[\s\S]*?<\/details>/)![0];
     expect(variant.indexOf('value="a"')).toBeLessThan(variant.indexOf(">Context<"));
     expect(variant.indexOf("Pick recommended")).toBeLessThan(variant.indexOf(">Context<"));
     // The hub's provenance names the checkouts behind and says when it is from.
-    expect(html).toMatch(/class="admin-provenance[^>]*>[^<]*· as of \d/);
+    expect(html).toMatch(/class="admin-provenance[^>]*>[^<]*· as of <span data-stamp>\d/);
     expect(html).toContain("Decide P2");
   }, 60_000);
 
@@ -812,15 +834,12 @@ describe("admin.js", () => {
     expect(page.document.getElementById("copy")!.textContent).toBe("Copy 1 answer");
   });
 
-  test("a closed row takes its recommendation, an assumption takes agree or veto, and a question put off copies nothing until the next visit", () => {
+  test("an opened row picks its recommendation, an assumption takes agree or veto, and a question put off copies nothing until the next visit", () => {
     const page = open("spoke/decisions", {});
     const row = (k: string) => page.document.getElementById(k) as unknown as DomElement;
     const variant = row("spoke:pick-a-variant");
-    const take = variant.querySelector(".take") as DomElement;
-    take.click();
-    expect(variant.hasAttribute("open")).toBe(false);
+    (variant.querySelector("summary + div .pick") as DomElement).click();
     expect(variant.querySelector(".mark")!.textContent).toBe("✓ Variant A");
-    expect(take.style.display).toBe("none");
     // An assumption has no recommendation to pick: Agree and Veto answer it.
     const cache = row("spoke:cache-folder");
     expect(cache.querySelector(".pick")).toBeNull();
@@ -1173,7 +1192,7 @@ describe("serve", () => {
     // A first fetch changes what the pages say: fetched or never.
     const fetched = await hub.pages();
     // The build runs in a child, whose time zone the test runner does not set.
-    const at = (page: string) => page.match(/fetched ([^<]+)</)?.[1];
+    const at = (page: string) => page.match(/fetched <span data-stamp>([^<]+)</)?.[1];
     const before = at(await get("/spoke/dashboard"));
     expect(before).toBeString();
     utimesSync(head, new Date(2026, 0, 3, 10, 7), new Date(2026, 0, 3, 10, 7));
@@ -1242,11 +1261,14 @@ describe("serve", () => {
     expect(none.status).toBe(404);
     // In the hub's styles, with the way back.
     const lost = await none.text();
-    expect(lost).toContain('href="/">Open the hub</a>');
+    expect(lost).toMatch(/<a class="hw-link" href="\/index\.html">\s*Open the hub\s*<\/a>/);
     expect(lost).toMatch(/<link rel="stylesheet" href="\/_astro\/[^"]+\.css">/);
-    expect(lost).toContain('<code class="hw-inline-code">/nosuchrepo/</code>');
+    expect(lost).not.toMatch(/(?:href|src)="(?!\/|#|[a-z]+:)/);
+    expect((await get("/index.html")).status).toBe(200);
+    expect(lost).toContain("Nothing on the hub answers at /nosuchrepo/:");
+    expect(await (await get("/a/<b>")).text()).toContain("answers at /a/%3Cb%3E:");
     // The hub says it is current as of the request.
-    expect(first).toContain(`· as of ${when(Date.now())}`);
+    expect(first).toContain(`· as of <span data-stamp>${when(Date.now())}</span>`);
     // Every script, on the hub and on a nested page, resolves under the one path the policy runs.
     const nested = await decisions.text();
     // A page travels gzipped where the browser takes it, and a hashed asset stays in its cache.

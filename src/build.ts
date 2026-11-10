@@ -45,6 +45,7 @@ export const PAGE_TYPES = [
   "architecture",
   "checks",
   "log",
+  "missing",
 ] as const;
 
 export type Page = {
@@ -81,7 +82,7 @@ function itemHtml(
   files: Map<RepoData, Set<string>>,
   text: string,
 ) {
-  const html = renderMarkdown(repo.path, `${ITEMS_DIR}/item.md`, text, false);
+  const html = renderMarkdown(repo.path, `${ITEMS_DIR}/item.md`, text, true);
   const named = (before: string, after: string) =>
     [
       before.match(/([\w.-]+)\s+(?:<code[^>]*>)?$/)?.[1],
@@ -145,6 +146,8 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
   const pages: Page[] = [
     { path: "index", type: "hub", title: "Admin hub" },
     { path: "architecture", type: "hub-architecture", title: "Packages" },
+    // What admin-serve answers where no page is.
+    { path: "404", type: "missing", title: "No such page" },
   ];
   const byKey = new Map(repos.map((r) => [r.key, r]));
   const files = new Map(repos.map((r) => [r, new Set(r.workFiles)]));

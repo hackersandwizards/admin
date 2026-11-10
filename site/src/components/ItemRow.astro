@@ -101,11 +101,6 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
           </span>
         )}
         <span class="mark shrink-0 text-micro text-accent empty:hidden"></span>
-        {i.status === "open" && i.recommendedKeys.length > 0 && (
-          <button type="button" class="take hw-button shrink-0" data-variant="secondary">
-            Take recommended
-          </button>
-        )}
         {i.area && (
           <span class="hw-pill shrink-0" data-variant="outline" title="area">
             {i.area}

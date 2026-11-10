@@ -15,19 +15,23 @@ import {
   repoOf,
   reviewsOf,
   type Page,
+  when,
 } from "../data";
 
 interface Props {
   page: Page;
   lead?: string;
   provenance?: string;
+  /** The time the provenance line ends on: a repository's fetch, or the hub's build. admin-serve
+   * brings it up to date on each request (stamp in serve.ts). */
+  stamp?: number;
   /** The page names every item of its repositories, so a copied answer to an item gone from them
    * was done. */
   answersAll?: boolean;
   /** What went wrong, where admin-serve fills it in on each page: the catalog shows it here. */
   notice?: string;
 }
-const { page, lead, provenance, answersAll = false, notice = NOTICE } = Astro.props;
+const { page, lead, provenance, stamp, answersAll = false, notice = NOTICE } = Astro.props;
 const d = data();
 const repo = repoOf(page.repo);
 type Repo = NonNullable<typeof repo>;
@@ -194,7 +198,12 @@ const entries = [
       <main class="admin-main pb-16">
         <h1>{page.title}</h1>
         {lead && <p class="admin-lead">{lead}</p>}
-        {provenance && <p class="admin-provenance text-foreground/70">{provenance}</p>}
+        {provenance && (
+          <p class="admin-provenance text-foreground/70">
+            {provenance}
+            {stamp !== undefined && <span data-stamp>{when(stamp)}</span>}
+          </p>
+        )}
         {Astro.slots.has("action") && (
           <div class="admin-action bg-background">
             <slot name="action" />

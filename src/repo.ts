@@ -245,11 +245,12 @@ export const withElements = (html: string) =>
     .replace(/<pre>/g, '<pre class="hw-code not-prose">')
     .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');
 
-// Front matter is a leading YAML mapping between --- lines; `text` without it, as an item's body,
-// renders whole, and so does a leading rule: "---" above a paragraph is no mapping.
-export function renderMarkdown(repo: string, path: string, text: string, front = true) {
+// Front matter is a leading YAML mapping between --- lines; a leading rule renders, since "---"
+// above a paragraph is no mapping. An item's body has no front matter and no HTML: a placeholder
+// such as <id> shows as written, and an address in angle brackets is linked by the pages.
+export function renderMarkdown(repo: string, path: string, text: string, item = false) {
   const dir = join(repo, path, "..");
-  const body = front
+  const body = !item
     ? text.replace(/^---\n([\s\S]*?)\n---\n/, (all, yaml: string) => {
         try {
           return isObject(Bun.YAML.parse(yaml)) ? "" : all;
@@ -258,7 +259,9 @@ export function renderMarkdown(repo: string, path: string, text: string, front =
         }
       })
     : text;
-  const html = withElements(Bun.markdown.html(body));
+  const html = withElements(
+    Bun.markdown.html(body, item ? { noHtmlSpans: true, noHtmlBlocks: true } : {}),
+  );
   return html.replace(
     /(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"?#]*)([^"]*)"/gi,
     (_, attr, rel: string, rest: string) => {

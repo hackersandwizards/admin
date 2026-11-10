@@ -14,12 +14,12 @@ import {
   href,
   itemHref,
   keyOf,
+  MISSING,
   openQuestions,
   repoOf,
   reviewsOf,
   thumbnail,
   type Page,
-  when,
 } from "../data";
 
 export function getStaticPaths() {
@@ -49,7 +49,7 @@ const behind =
 const provenance = repo
   ? `@hackersandwizards/admin v${d.version} · ${repo.key} HEAD ${repo.head} · ${items.length} item files · ${
       repo.fetched
-        ? `${behind}, fetched ${when(repo.fetched)}`
+        ? `${behind}, fetched `
         : "origin never fetched in this checkout, commits behind unknown"
     }`
   : (() => {
@@ -64,7 +64,7 @@ const provenance = repo
           : "none behind origin",
         never.length ? `never fetched: ${never.join(", ")}` : "",
         `${items} item files`,
-        `as of ${when(Date.now())}`,
+        "as of ",
       ]
         .filter(Boolean)
         .join(" · ");
@@ -114,13 +114,15 @@ const leads: Partial<Record<Page["type"], string>> = {
     "The package, what it pins, its commands and every script with its first comment line.",
   checks: "The steps of the repository's gate, in order.",
   log: "Commits to the tracking files, then the full history.",
+  missing: `Nothing on the hub answers at ${MISSING}: the page moved, or its repository left the hub.`,
 };
 ---
 
 <Layout
   page={page}
   lead={leads[page.type] ?? product?.description}
-  provenance={page.type === "doc" ? undefined : provenance}
+  provenance={page.type === "doc" || page.type === "missing" ? undefined : provenance}
+  stamp={repo ? repo.fetched : Date.now()}
   answersAll={answersAll}
 >
   {answerable && (
@@ -137,6 +139,15 @@ const leads: Partial<Record<Page["type"], string>> = {
         </span>
       </p>
     </Fragment>
+  )}
+
+  {page.type === "missing" && (
+    <p class="text-ui">
+      <a class="hw-link" href={link("index")}>
+        Open the hub
+      </a>
+      , which lists every repository and what waits on whom.
+    </p>
   )}
 
   {page.type === "hub" && (

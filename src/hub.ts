@@ -52,7 +52,7 @@ export async function findRepos(root: string, depth = 6): Promise<string[]> {
 }
 
 // Addresses the hub's own pages and routes take.
-const RESERVED = new Set(["index", "architecture", "catalog", "_astro", "_file"]);
+const RESERVED = new Set(["index", "architecture", "404", "catalog", "_astro", "_file"]);
 
 // Each repository's pages lie under its key, so two checkouts with one key, or a key the hub's own
 // addresses take, would show one's data under both: such a key gets its parent folder's name before

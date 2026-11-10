@@ -30,6 +30,9 @@ export const hasPage = (path: string) =>
 // notice :empty, so it stays hidden where nothing went wrong.
 export const NOTICE = "<!--admin-notice-->";
 
+// The address no page answers, which admin-serve writes into its 404 page.
+export const MISSING = "admin-missing-path";
+
 // A row's mark where its item changed since the last visit, which admin.js words by what changed.
 export const UPDATED = "updated since your last visit";
 
@@ -76,11 +79,13 @@ export function dueOf(due: string, now = Date.now()) {
 }
 
 // A bare web address in rendered text becomes a link; one already in a link, in code or inside a
-// tag stays, and an escaped quote or bracket ends it.
+// tag stays, and an escaped quote or bracket ends it. One in escaped angle brackets, as an item's
+// body keeps <https://…>, becomes the link without them.
 export const withLinks = (html: string) =>
   html.replace(
-    /(<(a|code|pre)\b[\s\S]*?<\/\2>|<[^>]*>)|\bhttps?:\/\/(?:(?!&(?:quot|#x27|#39|lt|gt);)[^\s<>"'])*[^\s<>"'.,;:!?)\]&]/g,
-    (whole, tag?: string) => tag ?? `<a class="hw-link" href="${whole}">${whole}</a>`,
+    /(<(a|code|pre)\b[\s\S]*?<\/\2>|<[^>]*>)|&lt;(https?:\/\/(?:(?!&(?:quot|#x27|#39|lt|gt);)[^\s<>"'])+)&gt;|\bhttps?:\/\/(?:(?!&(?:quot|#x27|#39|lt|gt);)[^\s<>"'])*[^\s<>"'.,;:!?)\]&]/g,
+    (whole, tag?: string, _name?: string, bracketed?: string) =>
+      tag ?? `<a class="hw-link" href="${bracketed ?? whole}">${bracketed ?? whole}</a>`,
   );
 
 // A one-line field (an option's detail, an assumption, evidence) as its Markdown is meant: code

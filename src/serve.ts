@@ -24,7 +24,7 @@ import {
 } from "./build.ts";
 import elements from "../brand-elements.json";
 import { findRepos, uniqueKeys } from "./hub.ts";
-import { NOTICE } from "../site/src/data.ts";
+import { MISSING, NOTICE } from "../site/src/data.ts";
 import {
   docSlug,
   encodeFile,
@@ -55,7 +55,7 @@ export async function stateOf(repo: string) {
 
 const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
 
-// Item and doc bodies render committed raw HTML, and /_file/ serves every committed file from this
+// Docs render committed raw HTML, and /_file/ serves every committed file from this
 // origin, so only the site's own build under /_astro/ may run, with no <base> to repoint it, else
 // that markup could read every repository through /_file/. Nor may it post a form or frame a page
 // from elsewhere, which would put an outside login inside the hub; withElements in repo.ts defuses
@@ -286,26 +286,19 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   };
 
   // Every request checks each repository first, so a page is current when it is served: the hub's
-  // provenance line says so with the request's time, and a repository page's line prints the fetch
-  // time this request found, once a fetch that moved no ref left the page unbuilt. The line comes
-  // before any item or doc text.
+  // provenance line ends on the request's time, and a repository page's on the fetch time this
+  // request found, once a fetch that moved no ref left the page unbuilt.
   const stamped = new WeakMap<Buffer, { key: string; page: Buffer }>();
   const stamp = (html: Buffer, page: string) => {
     const repo = site?.repos.find((r) => page.startsWith(`${r.key}/`));
-    const at = repo && newerFetch(repo);
-    const now = page === "index.html" ? when(Date.now()) : "";
-    const key = `${at ?? ""}|${now}`;
-    if (key === "|") return html;
+    const at = page === "index.html" ? Date.now() : repo && newerFetch(repo);
+    if (!at) return html;
+    const key = when(at);
     const done = stamped.get(html);
     if (done?.key === key) return done.page;
-    const fetched = (ms: number) => `fetched ${Bun.escapeHTML(when(ms))}`;
-    let text = html.toString("utf8");
-    if (at) text = text.replace(fetched(repo.fetched!), () => fetched(at));
-    if (now)
-      text = text.replace(
-        /(class="admin-provenance[^"]*">[^<]*· as of )[^<]*/,
-        (_, before: string) => before + Bun.escapeHTML(now),
-      );
+    const text = html
+      .toString("utf8")
+      .replace(/(<span data-stamp>)[^<]*/, (_, mark: string) => mark + Bun.escapeHTML(key));
     const next = Buffer.from(text);
     stamped.set(html, { key, page: next });
     return next;
@@ -495,20 +488,15 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
         ? typed(built.get(at)!, at, at.startsWith("_astro/") ? IMMUTABLE : "no-store")
         : new Response("no such page", { status: 404 });
     }
-    // An address no page answers: a page in the hub's own styles with the way back.
+    // An address no page answers: the hub's own 404 page, its relative addresses made absolute so
+    // they hold at any depth.
     function missing(built: Site, path: string) {
-      // The hub's stylesheet and theme script, from its head.
-      const hub = built.files.get("index.html")?.toString("utf8").split("</head>")[0] ?? "";
-      const assets = [
-        ...hub.matchAll(/<(?:link rel="stylesheet" href|script src)="\.\/(_astro\/[^"]+)"/g),
-      ]
-        .map(
-          ([tag, file]) =>
-            `${tag.replace(`"./${file}"`, `"/${file}"`)}>${tag.startsWith("<script") ? "</script>" : ""}`,
-        )
-        .join("");
-      const page = `<!DOCTYPE html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>No such page · Admin</title>${assets}</head><body class="bg-background text-foreground" data-hw-scale="dense"><main class="admin-main hw-container flex flex-col gap-3 pb-16"><h1>No such page</h1><p class="text-ui">Nothing on the hub answers at <code class="hw-inline-code">${Bun.escapeHTML(path)}</code>: the page moved, or its repository left the hub.</p><p class="text-ui"><a class="hw-link" href="/">Open the hub</a>, which lists every repository and what waits on whom.</p></main></body></html>`;
-      const r = typed(Buffer.from(page), "404.html");
+      const page = built.files
+        .get("404.html")!
+        .toString("utf8")
+        .replace(/((?:href|src)=")(?:\.\/)?(?![a-z][\w+.-]*:|#|\/)/gi, "$1/")
+        .replaceAll(MISSING, () => Bun.escapeHTML(path));
+      const r = typed(withNotice(Buffer.from(page)), "404.html");
       return new Response(r.body, { status: 404, headers: r.headers });
     }
     const built = await pages().catch((e: Error) => e);

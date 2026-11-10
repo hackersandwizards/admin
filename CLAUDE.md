@@ -32,6 +32,11 @@ exported file is a release whose commit names the change.
 - `docs/agent-work/`: empty but for `.gitkeep`, since scaffolding's skeleton requires the folder; no
   item or report goes here.
 
+## Pages
+
+A control that commits an answer (an option, Pick recommended, Agree or Veto, Decide later, done)
+sits only where the text it answers is on screen: in the opened row, never on a closed row.
+
 ## Checks
 
 `bun run check` is the gate, `scaffolding check` from `@hackersandwizards/scaffolding`: the shared
