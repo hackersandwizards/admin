@@ -75,7 +75,7 @@ const soon = dueSoon(i.due);
         <b>Decided by {i.by}:</b> {i.decision}
       </p>
     )}
-    <div class="flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4" set:html={i.html} />
+    <div class="hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4" set:html={i.html} />
     {i.evidence && <p class="text-foreground/70">Evidence: {i.evidence}</p>}
     {shots("").length > 0 && (
       <div class="grid grid-cols-2 gap-3 xl:grid-cols-3">
