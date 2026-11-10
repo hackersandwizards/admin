@@ -12,7 +12,7 @@ import {
   fileHref,
   forPerson,
   href,
-  isQuestion,
+  itemHref,
   keyOf,
   openQuestions,
   repoOf,
@@ -38,11 +38,17 @@ const assumed = items.filter((i) => i.status === "assumed");
 const decided = items.filter((i) => i.status === "decided");
 const work = items.filter((i) => i.kind === "work");
 const goals = items.filter((i) => i.kind === "goal");
+const behind =
+  repo?.behind === undefined
+    ? "no upstream, commits behind unknown"
+    : repo.behind
+      ? `${repo.behind} commits behind origin`
+      : "up to date with origin";
 const provenance = repo
   ? `@hackersandwizards/admin v${d.version} · ${repo.key} HEAD ${repo.head} · ${items.length} item files · ${
-      !repo.fetched
-        ? "origin never fetched in this checkout, commits behind unknown"
-        : `${repo.behind === undefined ? "no upstream, commits behind unknown" : repo.behind ? `${repo.behind} commits behind origin` : "up to date with origin"}, fetched ${when(repo.fetched)}`
+      repo.fetched
+        ? `${behind}, fetched ${when(repo.fetched)}`
+        : "origin never fetched in this checkout, commits behind unknown"
     }`
   : `@hackersandwizards/admin v${d.version} · ${d.repos.length} checkouts · ${
       d.repos.filter((r) => r.behind).length
@@ -392,9 +398,8 @@ const leads: Partial<Record<Page["type"], string>> = {
                 )}
                 {named.map((id) => {
                   const i = items.find((x) => x.id === id)!;
-                  const on = `${repo.prefix}${isQuestion(i) ? "decisions" : "work"}`;
                   return (
-                    <a class="hw-link" href={`${link(on)}#${keyOf(i)}`}>
+                    <a class="hw-link" href={itemHref(page.path, i)}>
                       {id}
                     </a>
                   );

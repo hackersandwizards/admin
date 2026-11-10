@@ -4,7 +4,17 @@ import AppHeader from "@hackersandwizards/brand/expert/components/AppHeader.astr
 import favicon from "@hackersandwizards/brand/logos/favicon.svg?url";
 import adminScript from "admin:script?url";
 import themeScript from "../theme.js?url";
-import { data, forPerson, hasPage, href, keyOf, openQuestions, repoOf, type Page } from "../data";
+import {
+  data,
+  forPerson,
+  hasPage,
+  href,
+  keyOf,
+  NOTICE,
+  openQuestions,
+  repoOf,
+  type Page,
+} from "../data";
 
 interface Props {
   page: Page;
@@ -13,10 +23,8 @@ interface Props {
   /** The page names every item of its repositories, so a copied answer to an item gone from them
    * was done. */
   answersAll?: boolean;
-  /** What admin-serve says went wrong, as HTML: it fills the empty notice on every page it serves. */
-  problem?: string;
 }
-const { page, lead, provenance, answersAll = false, problem } = Astro.props;
+const { page, lead, provenance, answersAll = false } = Astro.props;
 const d = data();
 const repo = repoOf(page.repo);
 type Repo = NonNullable<typeof repo>;
@@ -186,10 +194,9 @@ const entries = [
         {provenance && <p class="admin-provenance text-foreground/70">{provenance}</p>}
         <div
           id="admin-problem"
-          class="hw-callout mt-3 flex flex-col gap-1 text-ui"
+          class="hw-callout mt-3 flex flex-col gap-1 text-ui empty:hidden"
           role="status"
-          hidden={!problem}
-          set:html={problem}
+          set:html={NOTICE}
         />
         <div class="mt-6 flex flex-col gap-8">
           <slot />

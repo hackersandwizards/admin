@@ -25,7 +25,7 @@ const write = (k, v) => {
   }
 };
 // Keys of this browser's own state beside the answers.
-const OWN = new Set(["copied", "who", "seen", "visit"].map((k) => STORE + k));
+const OWN = new Set(["copied", "who", "seen", "visit", "versions", "before"].map((k) => STORE + k));
 const isAnswer = (k) => !!k && k.startsWith(STORE) && !OWN.has(k);
 const items = [...document.querySelectorAll("details.item[data-k]")];
 // A page that names every item of its repositories knows which answers lost their item.
@@ -41,17 +41,28 @@ for (let i = localStorage.length - 1; i >= 0; i--) {
     if (!a || !a.at || a.at <= copiedAt) localStorage.removeItem(k);
 }
 // A visit is a run of page views under an hour apart: an item whose file changed since the one
-// before says so on its row.
+// before says so on its row. A row this browser showed then compares the file's text, since a
+// change fetched later carries its older commit time; any other row compares that time.
 try {
   const now = Date.now();
   const seen = Number(localStorage.getItem(STORE + "seen")) || 0;
-  if (now - seen > 36e5) localStorage.setItem(STORE + "visit", String(seen));
+  const versions = JSON.parse(localStorage.getItem(STORE + "versions") || "{}");
+  if (now - seen > 36e5) {
+    localStorage.setItem(STORE + "visit", String(seen));
+    localStorage.setItem(STORE + "before", JSON.stringify(versions));
+  }
   localStorage.setItem(STORE + "seen", String(now));
   const since = Number(localStorage.getItem(STORE + "visit")) || 0;
-  if (since)
-    for (const r of document.querySelectorAll("[data-changed]"))
-      if (Number(r.dataset.changed) * 1000 > since)
-        r.querySelector("[data-updated]")?.removeAttribute("hidden");
+  const before = JSON.parse(localStorage.getItem(STORE + "before") || "{}");
+  for (const r of document.querySelectorAll("[data-k][data-version]")) {
+    const was = before[r.dataset.k];
+    if (since && (was ? was !== r.dataset.version : Number(r.dataset.changed) * 1000 > since))
+      r.querySelector("[data-updated]")?.removeAttribute("hidden");
+    versions[r.dataset.k] = r.dataset.version;
+  }
+  for (const k of Object.keys(versions))
+    if (liveRepos.has(k.split(":")[0]) && !live.has(k)) delete versions[k];
+  localStorage.setItem(STORE + "versions", JSON.stringify(versions));
 } catch {
   /* storage blocked: no row says what changed */
 }

@@ -63,9 +63,9 @@ export function uniqueKeys(repos: RepoData[]): RepoData[] {
   const used = new Set(repos.map((r) => r.key));
   return repos.map((r) => {
     if (counts.get(r.key) === 1 && !RESERVED.has(r.key)) return r;
-    let key = `${basename(dirname(r.path))}-${r.key}`;
-    for (let n = 2; used.has(key) || RESERVED.has(key); n++)
-      key = `${basename(dirname(r.path))}-${r.key}-${n}`;
+    const base = `${basename(dirname(r.path))}-${r.key}`;
+    let key = base;
+    for (let n = 2; used.has(key) || RESERVED.has(key); n++) key = `${base}-${n}`;
     used.add(key);
     const why = RESERVED.has(r.key) ? "names a page of the hub" : "names another checkout too";
     return {

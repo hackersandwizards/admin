@@ -41,22 +41,34 @@ export const gitAsync = async (cwd: string, args: string[], stdin = "") =>
 
 // A git call that fails throws, so a repository that cannot be read never shows as an empty one.
 export async function headSource(repo: string): Promise<Source> {
-  const listed = await gitBytes(repo, ["ls-tree", "-r", "--name-only", "-z", "HEAD"]);
+  const listed = await gitBytes(repo, ["ls-tree", "-r", "-z", "HEAD"]);
   if (!listed) throw new Error("git ls-tree HEAD failed");
-  const paths = listed.toString().split("\0").filter(Boolean);
+  // "<mode> <type> <object>\t<path>": the batch asks by object, so a path holding a newline reads
+  // too, and a submodule, which is no file here, is left out.
+  const entries = listed
+    .toString()
+    .split("\0")
+    .filter(Boolean)
+    .map((e) => {
+      const tab = e.indexOf("\t");
+      const [, type, oid] = e.slice(0, tab).split(" ");
+      return { path: e.slice(tab + 1), type, oid: oid! };
+    })
+    .filter((e) => e.type === "blob");
+  const paths = entries.map((e) => e.path);
   const cache = new Map<string, string>();
-  const wanted = paths.filter(
-    (p) =>
+  const wanted = entries.filter(
+    ({ path: p }) =>
       p === "package.json" || ASTRO_CONFIG.test(p) || isDoc(p) || SCRIPT.test(p) || AGENT.test(p),
   );
   const batch = await gitBytes(
     repo,
     ["cat-file", "--batch"],
-    wanted.map((p) => `HEAD:${p}`).join("\n") + "\n",
+    wanted.map((e) => e.oid).join("\n") + "\n",
   );
   if (!batch) throw new Error("git cat-file failed");
   let at = 0;
-  for (const p of wanted) {
+  for (const { path: p } of wanted) {
     const nl = batch.indexOf(10, at);
     const head = batch.subarray(at, nl).toString();
     const size = Number(head.split(" ")[2]);
@@ -138,7 +150,8 @@ export type RepoData = {
   // Commits the upstream has that HEAD lacks, unknown without an upstream.
   behind?: number;
   fetched?: number;
-  items: (Item & { changed?: number })[];
+  // When an item file last changed in a commit, and its text as a version a browser compares.
+  items: (Item & { changed?: number; version?: string })[];
   defects: string[];
   reports: Report[];
   reviews: Review[];
@@ -192,7 +205,13 @@ export const when = (ms: number) =>
     hour: "2-digit",
     minute: "2-digit",
   });
-export const fileHref = (abs: string) => "file://" + encodeURI(abs).replace(/#/g, "%23");
+// "#" would end the path, and an "&" or "'" left as is comes out of the pages' attributes escaped,
+// where the hub's link rewriting no longer finds it.
+export const encodeFile = (path: string) =>
+  encodeURI(path).replace(/[#&']/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+export const fileHref = (abs: string) => "file://" + encodeFile(abs);
+// A path whose every segment is encoded, so a "#", "%" or "?" in a name stays in its path.
+export const encodePath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
 
 // What admin-serve resizes a committed image to: a review tile's 16:9 box (the page's aspect-video),
 // and twice it for a 2x screen.
@@ -324,12 +343,14 @@ export async function fetchedAt(repo: string) {
   let path = fetchHeads.get(repo);
   if (!path) {
     path = gitAsync(repo, ["rev-parse", "--git-path", "FETCH_HEAD"]).then((p) =>
-      resolve(repo, p.trim()),
+      p.trim() ? resolve(repo, p.trim()) : "",
     );
     fetchHeads.set(repo, path);
   }
   const file = await path;
-  return existsSync(file) ? statSync(file).mtimeMs : undefined;
+  // A failed call is asked again next time, rather than kept.
+  if (!file) fetchHeads.delete(repo);
+  return file && existsSync(file) ? statSync(file).mtimeMs : undefined;
 }
 
 // Every git call of a repository runs at once, and the hub reads its repositories at once.
@@ -393,7 +414,14 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     if (line.startsWith("@")) t = Number(line.slice(1));
     else if (line && !changed.has(line)) changed.set(line, t);
   }
-  const withChange = items.map((i) => ({ ...i, changed: changed.get(`${ITEMS_DIR}/${i.id}.md`) }));
+  const withChange = items.map((i) => {
+    const path = `${ITEMS_DIR}/${i.id}.md`;
+    return {
+      ...i,
+      changed: changed.get(path),
+      version: Bun.hash(src.read(path) ?? "").toString(36),
+    };
+  });
 
   const tracking = src.paths.filter(
     (p) => p.startsWith(`${WORK_DIR}/`) && !p.startsWith(`${ITEMS_DIR}/`),

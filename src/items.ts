@@ -80,10 +80,14 @@ export function parseItem(id: string, text: string): Item {
 
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 // A day the calendar has, not only a string in ISO shape.
-const isDay = (v: unknown) =>
-  /^\d{4}-\d{2}-\d{2}$/.test(String(v)) &&
-  !Number.isNaN(Date.parse(String(v))) &&
-  new Date(`${v}T00:00Z`).toISOString().startsWith(String(v));
+const isDay = (v: unknown) => {
+  const t = Date.parse(`${v}T00:00Z`);
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(String(v)) &&
+    !Number.isNaN(t) &&
+    new Date(t).toISOString().startsWith(String(v))
+  );
+};
 // The fields a page prints as text.
 const TEXTS = ["area", "owner", "assumption", "decision", "by", "quote", "evidence"] as const;
 const isText = (v: unknown) => typeof v === "string" || typeof v === "number";

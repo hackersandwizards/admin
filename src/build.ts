@@ -19,6 +19,7 @@ export const VERSION = JSON.parse(readFileSync(join(PKG, "package.json"), "utf8"
 export type ViewItem = Item & {
   // The item file's last commit, in seconds.
   changed?: number;
+  version?: string;
   repo: string;
   who: string;
   // Owned by an agent rather than a person: no person filter hides it.

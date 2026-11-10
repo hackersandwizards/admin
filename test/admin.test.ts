@@ -25,7 +25,7 @@ import {
   usable,
   type Item,
 } from "../src/items.ts";
-import { gitEnv, readItems, readRepo, renderMarkdown, treeSource } from "../src/repo.ts";
+import { fetchedAt, gitEnv, readItems, readRepo, renderMarkdown, treeSource } from "../src/repo.ts";
 import { createHub, csp, linker } from "../src/serve.ts";
 
 const FIX = join(import.meta.dir, "fixtures");
@@ -481,6 +481,34 @@ describe("hub", () => {
     expect(read.behind).toBeUndefined();
   });
 
+  test("a folder git cannot read has no fetch time, and is asked again once it can", async () => {
+    const dir = scratch();
+    expect(await fetchedAt(dir)).toBeUndefined();
+    sh(dir, "git", "init", "-q");
+    writeFileSync(join(dir, ".git/FETCH_HEAD"), "");
+    expect(await fetchedAt(dir)).toBeNumber();
+  });
+
+  test("a path holding a newline, or a submodule, leaves the rest of a repository readable", async () => {
+    const repo = repoFrom("spoke");
+    writeFileSync(join(repo, "docs/line\nbreak.md"), "# Broken line\n");
+    sh(repo, "git", "add", "-A");
+    // A submodule's commit lives in its own repository, so this one has no such object.
+    sh(
+      repo,
+      "git",
+      "update-index",
+      "--add",
+      "--cacheinfo",
+      `160000,${"12".repeat(20)},docs/sub.md`,
+    );
+    commit(repo, "odd paths");
+    const read = await readRepo(repo);
+    expect(read.docs.map((d) => d.title)).toContain("Broken line");
+    expect(read.docs.map((d) => d.path)).not.toContain("docs/sub.md");
+    expect(read.items.length).toBeGreaterThan(0);
+  });
+
   test("front matter is a leading YAML mapping; a leading rule stays in the doc", () => {
     const html = (text: string) => renderMarkdown("/r", "docs/a.md", text);
     expect(html("---\n\nintro\n\n---\n\nrest\n")).toContain("intro");
@@ -693,11 +721,13 @@ describe("admin.js", () => {
       "admin-answers:other:gone": answer(10),
     });
     expect(Object.keys(stored(page)).sort()).toEqual([
+      "admin-answers:before",
       "admin-answers:copied",
       "admin-answers:other:gone",
       "admin-answers:seen",
       "admin-answers:spoke:ask-the-printer",
       "admin-answers:spoke:gone-uncopied",
+      "admin-answers:versions",
       "admin-answers:visit",
     ]);
   });
@@ -726,6 +756,23 @@ describe("admin.js", () => {
     expect(Number(stored(back)["admin-answers:visit"])).toBeLessThan(Date.now() - 36e5);
     // A page view within the hour belongs to the same visit, and keeps its marks.
     expect(shown(open("spoke/work", stored(back)))).toBeGreaterThan(0);
+  });
+
+  test("a row shown on the visit before compares its file, not its commit time", () => {
+    const first = stored(open("index", {}));
+    const versions = JSON.parse(first["admin-answers:versions"]!);
+    const [changed] = Object.keys(versions);
+    // Every item's commit is newer than the visit, but only one file differs from what it showed.
+    const back = open("index", {
+      "admin-answers:seen": String(Date.now() - 2 * 36e5),
+      "admin-answers:versions": JSON.stringify({ ...versions, [changed!]: "older" }),
+    });
+    const marked = [...back.document.querySelectorAll("[data-row]")].filter((r) =>
+      r.querySelector("[data-updated]:not([hidden])"),
+    );
+    expect([...new Set(marked.map((r) => (r as unknown as HTMLElement).dataset.k))]).toEqual([
+      changed,
+    ]);
   });
 });
 
@@ -784,8 +831,12 @@ describe("serve", () => {
         }),
       );
     expect((await from("cross-site", "no-cors", "script")).status).toBe(403);
+    // Another port of this machine is the same site, and asks no more than a site elsewhere.
+    expect((await from("same-site", "cors", "empty")).status).toBe(403);
     expect((await from("cross-site", "navigate", "document")).status).toBe(200);
+    expect((await from("same-site", "navigate", "document")).status).toBe(200);
     expect((await from("same-origin", "no-cors", "script")).status).toBe(200);
+    expect((await from("none", "navigate", "document")).status).toBe(200);
     expect(decisions.headers.get("x-content-type-options")).toBe("nosniff");
     expect(decisions.headers.get("cross-origin-resource-policy")).toBe("same-origin");
     for (const bare of ["/spoke", "/spoke/?who=A"]) {
@@ -871,13 +922,17 @@ describe("serve", () => {
     expect(await (await get("/")).text()).toContain("Renamed ");
   }, 60_000);
 
-  test("a failed read or build shows on every page and is tried again only once a state moves", async () => {
+  test("a failed read or build shows on every page and is tried again once a state moves or a minute passed", async () => {
     const repo = repoFrom("spoke");
     const second = join(dirname(repo), "second");
     cpSync(repo, second, { recursive: true });
     // A missing object reads as a failed git call, never as a repository without items.
     const blob = sh(second, "git", "rev-parse", "HEAD:docs/agent-work/items/goal.md").trim();
-    rmSync(join(second, ".git/objects", blob.slice(0, 2), blob.slice(2)));
+    const object = join(second, ".git/objects", blob.slice(0, 2), blob.slice(2));
+    const bytes = readFileSync(object);
+    rmSync(object);
+    const now = Date.now;
+    const later = (ms: number) => (Date.now = () => now() + ms);
     const hub = createHub({ root: dirname(repo) });
     const get = async (path: string) =>
       (await hub.fetch(new Request(`http://admin.localhost${path}`))).text();
@@ -908,7 +963,11 @@ describe("serve", () => {
       expect(notice(await get("/spoke/dashboard"))).toMatch(
         /could not rebuild on [^<]+<\/b> These pages show the repositories as of [\s\S]*The build stopped: build failed: TypeError: boom/,
       );
+      later(61_000);
+      expect(await hub.pages()).toBe(first);
+      expect(builds).toBe(2);
     } finally {
+      Date.now = now;
       failing.mockRestore();
     }
     writeFileSync(join(repo, "moved.md"), "# Moved again\n");
@@ -917,6 +976,15 @@ describe("serve", () => {
     expect(await hub.pages()).not.toBe(first);
     expect(notice(await get("/"))).not.toContain("The build stopped");
     expect(await get("/")).toContain("second could not be read");
+    // A read that failed for a passing cause comes back a minute later, with no commit there.
+    writeFileSync(object, bytes);
+    try {
+      // Past the retry the mocked minute above set.
+      later(125_000);
+      expect(await get("/")).not.toContain("could not be read");
+    } finally {
+      Date.now = now;
+    }
   }, 120_000);
 
   test("two checkouts with one key, or a key the hub's pages take, each keep their own pages", async () => {
@@ -938,7 +1006,11 @@ describe("serve", () => {
   }, 120_000);
 
   test("serves each doc page from its depth's shell, as a full build renders it", async () => {
-    const repo = repoFrom("spoke");
+    // A path with characters a page escapes in its attributes.
+    const plain = repoFrom("spoke");
+    const repo = join(dirname(plain), "o'neil & co", "spoke");
+    cpSync(plain, repo, { recursive: true });
+    rmSync(plain, { recursive: true, force: true });
     mkdirSync(join(repo, "docs/guide"), { recursive: true });
     const files: Record<string, string> = {
       "README.md":
@@ -946,6 +1018,7 @@ describe("serve", () => {
       "docs/guide/index.md": "# Guide\n\n## Setup\n",
       "docs/c#-notes.md": "# C# notes & more\n",
       "docs/50% off.md": "# Half off\n",
+      "docs/rock & roll's.md": "# Rock and roll\n",
     };
     for (const [path, text] of Object.entries(files)) writeFileSync(join(repo, path), text);
     sh(repo, "git", "add", "-A");
@@ -974,6 +1047,15 @@ describe("serve", () => {
     expect(await (await get("/_file/spoke/docs/c%23-notes.md")).text()).toBe(
       files["docs/c#-notes.md"],
     );
+    expect(await (await get("/spoke/doc/docs/rock%20&%20roll's")).text()).toContain(
+      'href="/_file/spoke/docs/rock%20%26%20roll%27s.md"',
+    );
+    // A doc's address with a slash leads to it.
+    const slash = await get("/spoke/doc/README/?x=1");
+    expect([slash.status, slash.headers.get("location")]).toEqual([
+      302,
+      "http://admin.localhost/spoke/doc/README?x=1",
+    ]);
     // A doc filled into its shell is the page a full build renders, served with the same links:
     // the article's links to docs open their pages, the line above it opens the file.
     const out = join(scratch(), "out");
@@ -983,12 +1065,18 @@ describe("serve", () => {
       "README",
       "docs/guide/index.md",
       "docs/agent-work/2026-01-15-sample-topic",
+      "docs/rock & roll's",
     ]) {
       const built = readFileSync(join(out, `spoke/doc/${page}.html`), "utf8");
       expect(await (await get(`/spoke/doc/${page}`)).text()).toBe(
         served.files(built.replace(/<article[\s\S]*<\/article>/, (a) => served.pages(a))),
       );
     }
+    // A doc's slug may itself end in .html, which only the hub's shells serve: Astro builds none.
+    writeFileSync(join(repo, "docs/page.html.md"), "# Named like a page\n");
+    sh(repo, "git", "add", "docs/page.html.md");
+    commit(repo, "page");
+    expect((await get("/spoke/doc/docs/page.html")).status).toBe(200);
   }, 120_000);
 
   test("the hub serves a committed image at a thumbnail's width", async () => {

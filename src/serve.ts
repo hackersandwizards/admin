@@ -24,8 +24,11 @@ import {
 } from "./build.ts";
 import elements from "../brand-elements.json";
 import { findRepos, uniqueKeys } from "./hub.ts";
+import { NOTICE } from "../site/src/data.ts";
 import {
   docSlug,
+  encodeFile,
+  encodePath,
   fetchedAt,
   fileHref,
   git,
@@ -123,12 +126,14 @@ async function resized(body: Buffer, [width, height]: readonly [number, number])
 // file:// links as the hub serves them: one to a doc with a page opens that page, any other the
 // committed file under /_file/<repo>/.
 export function linker(repos: RepoData[]) {
-  const encoded = (path: string) => path.split("/").map(encodeURIComponent).join("/");
   const pageOf = new Map(
     repos.flatMap((r) =>
       [...r.reports, ...r.docs].map(
         (d) =>
-          [fileHref(join(r.path, d.path)), `/${encoded(`${r.key}/${docSlug(d.path)}`)}`] as const,
+          [
+            fileHref(join(r.path, d.path)),
+            `/${encodePath(`${r.key}/${docSlug(d.path)}`)}`,
+          ] as const,
       ),
     ),
   );
@@ -154,20 +159,28 @@ type Site = {
   files: Map<string, Buffer>;
   repos: RepoData[];
   links: ReturnType<typeof linker>;
-  // A doc page's path to its doc, and each repository's shells by their paths.
+  // A doc page's path to its doc, each repository's shells by their paths, and the doc pages
+  // filled so far.
   docs: Map<string, { repo: RepoData; doc: Doc }>;
   shells: Map<string, string>;
+  filled: Map<string, Buffer>;
 };
+
+// A read or build that failed is tried again on a request once this passed, or sooner once a
+// repository moves.
+const RETRY_MS = 60_000;
+const messageOf = (e: unknown) => (e as Error).message ?? String(e);
 
 export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   let paths: Promise<string[]> | undefined;
   let scanned = 0;
   let scanning: Promise<string[]> | undefined;
   const read = new Map<string, { state: string; data: RepoData }>();
-  // A repository that failed to read at a state, and a build that failed for a key, are tried
-  // again only once that changes, and say on every page what went wrong.
-  const unread = new Map<string, { state: string; message: string }>();
+  // A repository that failed to read at a state, and a build that failed for a key, say on every
+  // page what went wrong.
+  const unread = new Map<string, { state: string; at: number; message: string }>();
   let failed: { key: string; at: number; message: string } | undefined;
+  const settled = (at: number) => Date.now() - at < RETRY_MS;
   let site: Site | undefined;
   let refreshing: Promise<Site> | undefined;
   let catalog: Promise<Map<string, Buffer>> | undefined;
@@ -181,99 +194,96 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const json = join(work, "data.json");
     const out = join(work, "out");
     try {
-      const data = siteData(repos, you);
-      writeFileSync(json, JSON.stringify(shelled(data)));
+      const data = shelled(siteData(repos, you));
+      writeFileSync(json, JSON.stringify(data));
       const files = await spawnBuild("build", [json], out);
       const links = linker(repos);
+      const shellPaths = new Set(data.pages.filter((p) => p.article === SHELL).map((p) => p.path));
       const shells = new Map<string, string>();
       for (const [name, bytes] of files) {
         if (!name.endsWith(".html")) continue;
         const html = links.files(links.pages(bytes.toString("utf8")));
         const page = name.slice(0, -".html".length);
-        if (data.repos.some((r) => page.startsWith(`${r.prefix}_shell/`))) {
+        if (shellPaths.has(page)) {
           shells.set(page, html);
           files.delete(name);
         } else files.set(name, Buffer.from(html));
       }
-      const byKey = new Map(repos.map((r) => [r.key, r]));
+      // A doc's page is its repository's key and its slug, as siteData names it.
       const docs = new Map(
-        repos.map((r) => [r.key, new Map([...r.reports, ...r.docs].map((d) => [d.path, d]))]),
-      );
-      return {
-        key,
-        built: Date.now(),
-        files,
-        repos,
-        links,
-        shells,
-        docs: new Map(
-          data.pages
-            .filter((p) => p.type === "doc")
-            .map((p) => [
-              p.path,
-              { repo: byKey.get(p.repo!)!, doc: docs.get(p.repo!)!.get(p.doc!)! },
-            ]),
+        repos.flatMap((repo) =>
+          [...repo.reports, ...repo.docs].map(
+            (doc) => [`${repo.key}/${docSlug(doc.path)}`, { repo, doc }] as const,
+          ),
         ),
-      };
+      );
+      return { key, built: Date.now(), files, repos, links, shells, docs, filled: new Map() };
     } finally {
       rmSync(work, { recursive: true, force: true });
     }
   }
 
-  // A doc page, its doc filled into the shell for its depth.
+  // A doc page, its doc filled into the shell for its depth, once per build.
   function docPage(name: string) {
     const hit = site?.docs.get(name);
     if (!site || !hit) return undefined;
+    const done = site.filled.get(name);
+    if (done) return done;
     const { repo, doc } = hit;
     const { links } = site;
     const shell = site.shells.get(shellPath(`${repo.key}/`, name.split("/").length))!;
-    const fileLink = (path: string) => Bun.escapeHTML(links.files(fileHref(join(repo.path, path))));
-    return Buffer.from(
+    // As Astro escapes, so a filled page is the page a build renders.
+    const escape = (text: string) => Bun.escapeHTML(text).replaceAll("&#x27;", "&#39;");
+    const page = Buffer.from(
       shell
-        .replaceAll(fileLink(SHELL.path), () => fileLink(doc.path))
-        .replaceAll(SHELL.path, () => Bun.escapeHTML(doc.path))
-        .replaceAll(SHELL.title, () => Bun.escapeHTML(doc.title))
+        // The file link ends in the mark, after the repository's part the shell already holds.
+        .replaceAll(`/${SHELL.path}"`, () => `/${escape(encodeFile(doc.path))}"`)
+        .replaceAll(SHELL.path, () => escape(doc.path))
+        .replaceAll(SHELL.title, () => escape(doc.title))
         .replaceAll(
           `"${SHELL.name}.html"`,
           () => `"${encodeURIComponent(name.split("/").pop()!)}.html"`,
         )
         .replace(SHELL.html, () => links.files(links.pages(doc.html))),
     );
+    site.filled.set(name, page);
+    return page;
   }
 
   // What went wrong, for the notice on every page: the build that failed, and each repository
-  // that could not be read at its current state.
-  function notice() {
+  // that could not be read at its current state. Set once a refresh ends.
+  let notice = "";
+  let noticed = new WeakMap<Buffer, Buffer>();
+  function noticeHtml() {
     const lines = [...unread].map(([p, u]) => {
       const had = read.get(p);
       const name = had?.data.key ?? basename(p);
       return `${name} could not be read: ${u.message}. ${had ? "Its pages show its last read." : "It is left out."}`;
     });
     if (failed) lines.unshift(`The build stopped: ${failed.message}`);
-    if (!lines.length) return undefined;
+    if (!lines.length) return "";
     const head = failed
       ? `The hub could not rebuild on ${when(failed.at)}.`
       : `The hub could not read ${lines.length === 1 ? "a repository" : `${lines.length} repositories`}.`;
     const shows =
       failed && site ? ` These pages show the repositories as of ${when(site.built)}.` : "";
-    return `<p><b>${head}</b>${shows} It tries again once a repository changes; nothing to do unless this stays, and then the terminal running admin-serve shows the whole error.</p><ul class="hw-marker-list">${lines.map((l) => `<li>${Bun.escapeHTML(l)}</li>`).join("")}</ul>`;
+    return `<p><b>${head}</b>${shows} It tries again a minute later, or once a repository changes; nothing to do unless this stays, and then the terminal running admin-serve shows the whole error.</p><ul class="hw-marker-list">${lines.map((l) => `<li>${Bun.escapeHTML(l)}</li>`).join("")}</ul>`;
   }
   const withNotice = (html: Buffer) => {
-    const text = notice();
-    return text
-      ? Buffer.from(
-          html
-            .toString("utf8")
-            .replace(
-              /(<div id="admin-problem"[^>]*?) hidden><\/div>/,
-              (_, open) => `${open}>${text}</div>`,
-            ),
-        )
-      : html;
+    if (!notice) return html;
+    let page = noticed.get(html);
+    if (!page)
+      noticed.set(html, (page = Buffer.from(html.toString("utf8").replace(NOTICE, () => notice))));
+    return page;
   };
 
   // Requests that arrive while one checks, reads or builds share its answer.
-  const pages = () => (refreshing ??= refresh().finally(() => (refreshing = undefined)));
+  const pages = () =>
+    (refreshing ??= refresh().finally(() => {
+      refreshing = undefined;
+      const next = noticeHtml();
+      if (next !== notice) [notice, noticed] = [next, new WeakMap()];
+    }));
 
   async function refresh() {
     // The first request waits for the search; a later one keeps the last result while the next
@@ -297,36 +307,41 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const key = [new Date(Date.now()).toDateString(), ...states.map(([p, s]) => `${p} ${s}`)].join(
       "\n",
     );
-    if (site?.key === key) return site;
-    if (failed?.key === key) {
-      if (site) return site;
-      throw new Error(failed.message);
-    }
+    const due = [...unread.values()].some((u) => !settled(u.at));
+    if (site?.key === key && !due) return site;
     // A repository that fails to read keeps its last pages, or is left out.
+    let fresh = false;
     const repos = (
       await Promise.all(
         states.map(async ([p, s]) => {
           const had = read.get(p);
-          if (had?.state === s || unread.get(p)?.state === s) return had ? [had.data] : [];
+          const u = unread.get(p);
+          if (had?.state === s || (u?.state === s && settled(u.at))) return had ? [had.data] : [];
           try {
             const data = await readRepo(p);
             read.set(p, { state: s, data });
             unread.delete(p);
+            fresh = true;
             return [data];
           } catch (e) {
             console.error(`admin-serve: ${p}:`, e);
-            unread.set(p, { state: s, message: (e as Error).message ?? String(e) });
+            unread.set(p, { state: s, at: Date.now(), message: messageOf(e) });
             return had ? [had.data] : [];
           }
         }),
       )
     ).flat();
+    if (site?.key === key && !fresh) return site;
+    if (failed?.key === key && settled(failed.at) && !fresh) {
+      if (site) return site;
+      throw new Error(failed.message);
+    }
     try {
       site = await rebuild(key, uniqueKeys(repos));
       failed = undefined;
     } catch (e) {
       console.error(e);
-      failed = { key, at: Date.now(), message: (e as Error).message ?? String(e) };
+      failed = { key, at: Date.now(), message: messageOf(e) };
       if (!site) throw e;
     }
     return site;
@@ -361,10 +376,14 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const url = new URL(req.url);
     // Only a local name: a page elsewhere that points its own domain at 127.0.0.1 reads nothing.
     if (!LOCAL.test(url.hostname)) return new Response("local only", { status: 403 });
-    // A page elsewhere may link the hub, but a script, image or fetch from it would learn which
-    // repositories and files exist from whether each one loads.
+    // A page elsewhere, another port of this machine included, may link the hub, but a script,
+    // image or fetch from it would learn which repositories and files exist from whether each one
+    // loads.
+    const from = req.headers.get("sec-fetch-site");
     if (
-      req.headers.get("sec-fetch-site") === "cross-site" &&
+      from &&
+      from !== "same-origin" &&
+      from !== "none" &&
       req.headers.get("sec-fetch-mode") !== "navigate"
     )
       return new Response("not from another site", { status: 403 });
@@ -433,12 +452,13 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const built = await pages().catch((e: Error) => e);
     if (built instanceof Error)
       return new Response(
-        `The hub could not build its pages: ${built.message}. It tries again once a repository changes.`,
+        `The hub could not build its pages: ${built.message}. It tries again a minute later, or once a repository changes.`,
         { status: 503 },
       );
-    const { files } = built;
+    const { files, docs } = built;
     // A page's asset URLs are relative, so they only resolve from the page's own address.
-    if (path.length > 1 && path.endsWith("/") && files.has(`${path.slice(1, -1)}.html`))
+    const bare = path.slice(1, -1);
+    if (path.length > 1 && path.endsWith("/") && (files.has(`${bare}.html`) || docs.has(bare)))
       return Response.redirect(url.origin + url.pathname.slice(0, -1) + url.search, 302);
     const name = path.slice(1) || "index.html";
     const hit = files.get(name) ?? files.get(`${name}.html`);
@@ -446,7 +466,8 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
       const at = files.has(name) ? name : `${name}.html`;
       return typed(at.endsWith(".html") ? withNotice(hit) : hit, at);
     }
-    const doc = docPage(name.replace(/\.html$/, ""));
+    // A doc's slug may end in .html itself, as for x.html.md.
+    const doc = docPage(name) ?? docPage(name.replace(/\.html$/, ""));
     if (doc) return typed(withNotice(doc), "doc.html");
     // A repository's own address, with or without the slash, opens its dashboard.
     if (files.has(`${path.slice(1).replace(/\/$/, "")}/dashboard.html`))

@@ -56,9 +56,9 @@ repository commits and links through `/_file/` stays inert. Nor can a body send 
 elsewhere: the policy lets no form post and no frame load from another site, and a `<meta>` tag
 in a body shows as text. Images, fonts and stylesheets load only from the hub itself, committed
 images included, so a body's image or `url()` from another site stays blank. A committed `.html`
-file opened through `/_file/` is served as written. A page on another site may link the hub, but
-the hub refuses its scripts, images and fetches, which would learn from what loads which
-repositories and files exist.
+file opened through `/_file/` is served as written. A page on another site, or on another port of
+this machine, may link the hub, but the hub refuses its scripts, images and fetches, which would
+learn from what loads which repositories and files exist.
 
 A repository gets a Catalog entry when an `astro.config.*` at its root or one folder down loads
 Astrobook or scaffolding's catalog preset, at `http://127.0.0.1:<port>` from that config: at
@@ -152,7 +152,8 @@ an open item, the hub's user first, filters the items by owner. A row whose item
 since the visit before, a run of page views under an hour apart in this browser, says so.
 
 When a build fails or a repository cannot be read at its HEAD, every page says so above its
-content, keeps the last pages it built, and the hub tries again once a repository changes. A
+content, keeps the last pages it built, and the hub tries again a minute later, or once a
+repository changes. A
 relative link from one doc to another opens that doc's page.
 
 In an item's text a path under `docs/agent-work/` links into the repository named right

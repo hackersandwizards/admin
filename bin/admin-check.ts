@@ -12,12 +12,13 @@ let defects = 0;
 for (const repo of repos.map((r) => resolve(r))) {
   // Paths are read relative to the folder named, so a subfolder of a repository would pass with
   // none of its items; a folder holding docs/agent-work of its own, such as a fixture, is checked.
-  const top = existsSync(repo) ? git(repo, "rev-parse", "--show-toplevel").trim() : "";
-  const problem = !existsSync(repo)
-    ? "no such folder"
-    : top && realpathSync(top) !== realpathSync(repo) && !existsSync(join(repo, WORK_DIR))
-      ? `not the repository's root, which is ${top}`
-      : "";
+  const top = existsSync(repo) && git(repo, "rev-parse", "--show-toplevel").trim();
+  const problem =
+    top === false
+      ? "no such folder"
+      : top && realpathSync(top) !== realpathSync(repo) && !existsSync(join(repo, WORK_DIR))
+        ? `not the repository's root, which is ${top}`
+        : "";
   if (problem) {
     console.error(`${repo}: ${problem}`);
     defects++;
