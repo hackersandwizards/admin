@@ -52,7 +52,11 @@ Item and doc bodies keep their raw HTML, styles and images included, but no scri
 the hub's content security policy runs only its own build under `/_astro/`, so a `.js` file a
 repository commits and links through `/_file/` stays inert. Nor can a body send the page
 elsewhere: the policy lets no form post and no frame load from another site, and a `<meta>` tag
-in a body shows as text. A committed `.html` file opened through `/_file/` is served as written.
+in a body shows as text. Images, fonts and stylesheets load only from the hub itself, committed
+images included, so a body's image or `url()` from another site stays blank. A committed `.html`
+file opened through `/_file/` is served as written. A page on another site may link the hub, but
+the hub refuses its scripts, images and fetches, which would learn from what loads which
+repositories and files exist.
 
 A repository gets a Catalog entry when an `astro.config.*` at its root or one folder down loads
 Astrobook or scaffolding's catalog preset, at `http://127.0.0.1:<port>` from that config: at

@@ -623,6 +623,28 @@ describe("serve", () => {
     // A committed form posts nowhere else, and no outside page is framed into the hub.
     expect(csp("http://admin.localhost")).toMatch(/(^|; )form-action 'self'(;|$)/);
     expect(csp("http://admin.localhost")).toMatch(/(^|; )frame-src 'self'(;|$)/);
+    // Nothing a body commits loads from elsewhere, so no image or stylesheet reports a view or
+    // reads the page out; a catalog's dev server is still asked whether it runs.
+    for (const directive of [
+      "default-src 'self'",
+      "img-src 'self' data:",
+      "style-src 'self' 'unsafe-inline'",
+      "connect-src 'self' http://127.0.0.1:* http://localhost:*",
+      "frame-ancestors 'self'",
+    ])
+      expect(csp("http://admin.localhost").split("; ")).toContain(directive);
+    // A page elsewhere may link the hub, but loads nothing from it to learn what exists.
+    const from = (site: string, mode: string, dest: string) =>
+      hub.fetch(
+        new Request("http://admin.localhost/_file/spoke/scripts/sample.ts", {
+          headers: { "sec-fetch-site": site, "sec-fetch-mode": mode, "sec-fetch-dest": dest },
+        }),
+      );
+    expect((await from("cross-site", "no-cors", "script")).status).toBe(403);
+    expect((await from("cross-site", "navigate", "document")).status).toBe(200);
+    expect((await from("same-origin", "no-cors", "script")).status).toBe(200);
+    expect(decisions.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(decisions.headers.get("cross-origin-resource-policy")).toBe("same-origin");
     for (const bare of ["/spoke", "/spoke/?who=A"]) {
       const r = await get(bare);
       expect([r.status, r.headers.get("location")]).toEqual([

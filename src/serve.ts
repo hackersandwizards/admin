@@ -53,12 +53,23 @@ const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
 // that markup could read every repository through /_file/. Nor may it post a form or frame a page
 // from elsewhere, which would put an outside login inside the hub; withElements in repo.ts defuses
 // the meta refresh no policy stops, and a refresh inside a frame stays under frame-src. Reports lay
-// themselves out in raw HTML, so styles and images stay free. The catalog is the package's own
-// pages, with the inline scripts Astrobook and the catalog shell write and no committed markup from
-// a repository, so it gets the rest without script-src: brand-elements.json "csp", which
-// brand-elements and brand-markers render the catalog under.
+// themselves out in raw HTML, so inline styles stay, but nothing loads from elsewhere: an image or
+// a stylesheet's url() would report each view and could read the page's attributes out. Only a
+// catalog's dev server on this machine is asked whether it runs (admin.js). The catalog is the
+// package's own pages, with the inline scripts Astrobook and the catalog shell write and no
+// committed markup from a repository, so it gets the rest without script-src or default-src:
+// brand-elements.json "csp", which brand-elements and brand-markers render the catalog under.
 const catalogCsp = elements.csp;
-export const csp = (origin: string) => `script-src ${origin}/_astro/; ${catalogCsp}`;
+export const csp = (origin: string) =>
+  [
+    "default-src 'self'",
+    `script-src ${origin}/_astro/`,
+    "img-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'",
+    "connect-src 'self' http://127.0.0.1:* http://localhost:*",
+    "frame-ancestors 'self'",
+    catalogCsp,
+  ].join("; ");
 
 const IMMUTABLE = "public, max-age=31536000, immutable";
 
@@ -347,6 +358,13 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const url = new URL(req.url);
     // Only a local name: a page elsewhere that points its own domain at 127.0.0.1 reads nothing.
     if (!LOCAL.test(url.hostname)) return new Response("local only", { status: 403 });
+    // A page elsewhere may link the hub, but a script, image or fetch from it would learn which
+    // repositories and files exist from whether each one loads.
+    if (
+      req.headers.get("sec-fetch-site") === "cross-site" &&
+      req.headers.get("sec-fetch-mode") !== "navigate"
+    )
+      return new Response("not from another site", { status: 403 });
     let path: string;
     try {
       path = decodeURIComponent(url.pathname);
@@ -367,6 +385,8 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
           "content-type": type,
           "cache-control": cache,
           "content-security-policy": catalogPage ? catalogCsp : csp(url.origin),
+          "x-content-type-options": "nosniff",
+          "cross-origin-resource-policy": "same-origin",
           vary: "accept-encoding",
           ...(zip && { "content-encoding": "gzip" }),
         },
