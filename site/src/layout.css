@@ -25,6 +25,9 @@
     margin: calc(-1 * (var(--hw-focus-width) + var(--hw-focus-offset)));
     padding: calc(var(--hw-focus-width) + var(--hw-focus-offset));
   }
+  .admin-who {
+    max-width: calc(100% + 2 * (var(--hw-focus-width) + var(--hw-focus-offset)));
+  }
   .admin-search {
     margin-bottom: 1rem;
   }
@@ -75,8 +78,6 @@
     .admin-rail {
       position: static;
       max-height: none;
-      margin: 0;
-      padding: 0;
       overflow: visible;
     }
     .admin-search {

@@ -3,7 +3,7 @@
 import { data } from "../data";
 ---
 
-<div class="admin-who flex max-w-full self-start overflow-x-auto">
+<div class="admin-who flex self-start overflow-x-auto">
   <div class="hw-segmented" role="group" aria-label="For whom">
     {[...data().people, "all"].map((p) => (
       <button type="button" data-who-button={p} aria-pressed="false">
