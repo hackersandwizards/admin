@@ -257,7 +257,7 @@ describe("item files", () => {
     const { defects } = readItems({
       paths: ["docs/agent-work/items/twice.md"],
       read: () =>
-        "---\nkind: work\nstatus: open\npriority: 2\nowner: Alex\noptions:\n  - key: a\n    label: A\n  - key: b\n    label: B\npriority: 3\n---\n# Twice\n",
+        '---\nkind: work\nstatus: open\n"priority": 2\nowner: Alex\noptions:\n  - key: a\n    label: A\n  - key: b\n    label: B\npriority: 3\n---\n# Twice\n',
     });
     expect(defects).toEqual(["docs/agent-work/items/twice.md: repeated field priority"]);
   });
