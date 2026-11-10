@@ -234,8 +234,22 @@ export function renderMarkdown(repo: string, path: string, text: string, front =
   });
 }
 
-const firstHeading = (text: string, fallback: string) =>
-  text.match(/^# (.+)$/m)?.[1]?.trim() ?? fallback;
+// A page's title is its first rendered h1, which leaves the article since the title shows above it.
+function titled(repo: string, path: string, text: string, fallback: string) {
+  const html = renderMarkdown(repo, path, text);
+  const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>\n?/);
+  // Bun's renderer decodes every other entity itself.
+  const title = h1?.[1]
+    ?.replace(/<[^>]*>/g, "")
+    .replace(
+      /&(quot|lt|gt|amp);/g,
+      (_, e: string) => ({ quot: '"', lt: "<", gt: ">", amp: "&" })[e]!,
+    )
+    .trim();
+  // An h1 without text, such as a lone image, stays in the article.
+  if (!h1 || !title) return { path, title: fallback, html };
+  return { path, title, html: html.replace(h1[0], "") };
+}
 
 function firstComment(text: string) {
   for (const line of text.split("\n").slice(0, 12)) {
@@ -335,13 +349,8 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
   const reports = tracking
     .filter((p) => /^docs\/agent-work\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/.test(p))
     .map((p) => {
-      const text = src.read(p) ?? "";
-      return {
-        path: p,
-        date: basename(p).slice(0, 10),
-        title: firstHeading(text, basename(p, ".md")),
-        html: renderMarkdown(repo, p, text),
-      };
+      const page = titled(repo, p, src.read(p) ?? "", basename(p, ".md"));
+      return { ...page, date: basename(p).slice(0, 10) };
     })
     .sort((a, b) => b.date.localeCompare(a.date) || a.path.localeCompare(b.path));
   const reviewDirs = new Map<string, string[]>();
@@ -367,10 +376,7 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
         !reports.some((r) => r.path === p) &&
         !p.startsWith(`${ITEMS_DIR}/`),
     )
-    .map((p) => {
-      const text = src.read(p) ?? "";
-      return { path: p, title: firstHeading(text, p), html: renderMarkdown(repo, p, text) };
-    })
+    .map((p) => titled(repo, p, src.read(p) ?? "", p))
     .sort((a, b) => a.path.localeCompare(b.path));
 
   const check = scriptsMap["check:all"] ?? scriptsMap.check ?? "";

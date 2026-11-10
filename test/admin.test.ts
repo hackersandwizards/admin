@@ -394,6 +394,27 @@ describe("hub", () => {
     expect(shell.designSystemDev).toEqual({ port: 4998, start: "catalog" });
   });
 
+  test("a doc's title is its first rendered h1, which leaves the article", async () => {
+    const files: Record<string, string> = {
+      "docs/fenced.md": "```sh\n# install deps\n```\n\n# Setup &amp; *run*\n\nBody.\n",
+      "docs/setext.md": "Setext title\n============\n\nBody.\n",
+      "docs/none.md": "Just text.\n",
+      "docs/image.md": "# ![logo](logo.png)\n\nBody.\n",
+    };
+    const { docs } = await readRepo("/nonexistent/titles", {
+      paths: Object.keys(files),
+      read: (f) => files[f],
+    });
+    const by = Object.fromEntries(docs.map((d) => [d.path, d]));
+    expect(by["docs/fenced.md"]!.title).toBe("Setup & run");
+    expect(by["docs/fenced.md"]!.html).toContain("# install deps");
+    expect(by["docs/setext.md"]!.title).toBe("Setext title");
+    expect(by["docs/none.md"]!.title).toBe("docs/none.md");
+    expect(by["docs/image.md"]!.title).toBe("docs/image.md");
+    expect(by["docs/image.md"]!.html).toContain("<h1><img");
+    for (const d of ["fenced", "setext"]) expect(by[`docs/${d}.md`]!.html).not.toContain("<h1");
+  });
+
   test("reads at HEAD, not the working tree", async () => {
     const repo = repoFrom("spoke");
     Bun.write(
