@@ -43,8 +43,8 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v2.6.1",
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.7.7",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v2.8.0",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.8.0",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.5",
     "@types/bun": "1.4.4",
@@ -76,7 +76,7 @@
     }
   },
   "peerDependencies": {
-    "@hackersandwizards/brand": ">=1.54.0",
+    "@hackersandwizards/brand": ">=2.8.0",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
     "astro": "^7.4.4",

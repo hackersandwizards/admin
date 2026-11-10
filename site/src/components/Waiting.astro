@@ -40,10 +40,9 @@ const to = (i: ViewItem) =>
               data-row
             >
               <span
-                class="hw-pill shrink-0 font-mono"
+                class="hw-pill shrink-0"
                 data-priority={i.priority}
                 data-variant={i.priority ? undefined : "outline"}
-                data-hw-exception="priority-pill"
               >
                 {i.kind === "goal" ? "Goal" : `P${i.priority ?? "–"}`}
               </span>

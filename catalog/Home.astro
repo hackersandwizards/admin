@@ -215,22 +215,6 @@ const notes: Record<string, string> = {
         <p class="font-medium text-ui">{name}</p>
         <p class="text-ui text-foreground/70">{reason}</p>
         {name === "item-list" && <ItemGroups items={items.slice(0, 2)} title="Priority 1" />}
-        {name === "priority-pill" && (
-          <p class="flex flex-wrap gap-2">
-            <span class="hw-pill font-mono" data-priority="1">
-              P1
-            </span>
-            <span class="hw-pill font-mono" data-priority="2">
-              P2
-            </span>
-            <span class="hw-pill font-mono" data-priority="3">
-              P3
-            </span>
-            <span class="hw-pill font-mono" data-variant="outline">
-              P–
-            </span>
-          </p>
-        )}
         {name === "image-tile" && (
           <span class="hw-card flex flex-col gap-1 p-2!">
             <span class="aspect-video w-full rounded-brand bg-muted" />

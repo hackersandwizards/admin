@@ -3,6 +3,8 @@ kind: decision
 status: open
 priority: 1
 area: product
+due: 2026-02-01
+evidence: both variants were rendered at 1440 and 390 px in day and night, scored blind by three readers in two runs each, and the lead of Variant A stands outside the measured noise in both runs
 owner: Alex
 recommended: a
 options:
@@ -25,7 +27,7 @@ images:
 
 # Which variant ships?
 
-Both variants were scored blind. Report: docs/agent-work/2026-01-15-sample-topic.md.
+Both variants were scored blind by readers who open the hub every morning, in day and night, on a laptop and on a phone, and each reader named what kept a variant below the top score before the second run. Report: docs/agent-work/2026-01-15-sample-topic.md.
 
 - Variant A keeps the current layout.
 - Variant B moves the menu to the top.
