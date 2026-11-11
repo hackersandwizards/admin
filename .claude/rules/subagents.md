@@ -17,15 +17,22 @@
 - A brief's stop condition names which search hits count: for whether a consumer still uses a name,
   the consumer's tracked source (`git -C <repo> grep`), never prose in reports or git-ignored build
   output.
-- Before a brief repeats a tag, pin, item or open point from an earlier report or notes file, read
-  its current state from `origin` and leave it out if a run closed it.
+- Before a brief states what a file, package, release or checkout holds or lacks, or repeats a tag,
+  pin, item or open point from an earlier report or notes file, run the command that shows it
+  yourself, in the turn that writes the brief, and leave out what a run closed: a brief line telling
+  the delegate to check first is not that read. A cause, measurement or fact you did not check goes
+  in marked as an assumption the delegate tests before it builds on it.
 - A delegate reviewing credential handling reasons from the source, and the prompt says so: no
   command that reads a keychain, a credential helper or a secret store. A printed value stays in a
   transcript, and only a person can rotate it.
 - Delegate only work that needs little from the rest of the session and hands back a compact
   result: independent parallel paths, a blind review, or work whose context would bloat this one.
   Launch ready work within the machine's free capacity, nested and headless jobs included, and
-  queue the rest. A whole test gate, a browser suite or a load run runs one at a time. Fan out as
+  queue the rest: hold a launch up to ten minutes while the 1-minute load (`uptime`) is above the
+  core count (`getconf _NPROCESSORS_ONLN`), then launch the next one alone. A whole test gate, a
+  browser suite or a load run runs one at a time. A brief states a machine condition, such as being
+  the only load run, only where its launch holds it, and a wait on load names its ceiling and what
+  the run reports on reaching it. Fan out as
   parallel Agent calls, never through the Workflow tool.
 - A delegate's Skill tool runs in the session's start folder whatever it `cd`s to: a review of
   another repository runs `claude -p` inside that repository, and its output names that

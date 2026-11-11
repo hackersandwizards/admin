@@ -3,7 +3,8 @@ name: shell-tools
 description: >-
   The zsh traps of the Bash tool (a bare `=word`, an unmatched glob, a function named like an alias),
   preferred CLI tools on this machine and the GNU/BSD portability rule. Load before the first Bash
-  command of a run, and for scripts that must run on macOS and Linux.
+  command of a run and again after the context is compacted, and for scripts that must run on
+  macOS and Linux.
 ---
 
 # Shell tools
