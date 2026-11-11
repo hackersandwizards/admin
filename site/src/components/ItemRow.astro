@@ -233,7 +233,7 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
         </p>
         {context && (
           <div
-            class={`${body} [&_h1]:font-semibold [&_h1]:text-subheading [&_h2]:font-semibold [&_h2]:text-subheading [&_h3]:font-semibold [&_h4]:font-semibold [&_table]:block [&_table]:overflow-x-auto`}
+            class={`${body} [&_h1]:font-semibold [&_h1]:text-subheading [&_h2]:font-semibold [&_h2]:text-subheading [&_h3]:font-semibold [&_h4]:font-semibold [--hw-table-ground:var(--color-white)]`}
             set:html={context}
           />
         )}

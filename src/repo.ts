@@ -226,6 +226,42 @@ export const thumbnail = (href: string) => ({
   sizes: "auto, 50vw",
 });
 
+const plain = (html: string) =>
+  html
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+// brand's tableScroll (elements/table.ts), which takes a hast tree, for the HTML string Bun
+// renders: each table in a hw-table-scroll named as brand names it, by the heading above it,
+// numbered from its second table under that heading, else by its column heads. The text keeps
+// Bun's entities, which the attribute decodes; a quote from raw HTML is escaped.
+function tableScroll(html: string) {
+  let title = "";
+  let under = 0;
+  return html.replace(
+    /<(h[1-6])\b[^>]*>([\s\S]*?)<\/\1>|<table>([\s\S]*?<\/table>)/g,
+    (all, h: string | undefined, heading: string, table: string) => {
+      if (h) {
+        [title, under] = [plain(heading), 0];
+        return all;
+      }
+      if (title) under++;
+      const heads = [
+        ...(table.match(/<tr>([\s\S]*?)<\/tr>/)?.[1] ?? "").matchAll(
+          /<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/g,
+        ),
+      ]
+        .map(([, cell]) => plain(cell!))
+        .filter(Boolean)
+        .join(" ");
+      const name = !title ? heads : under > 1 ? `${title} (${under})` : title;
+      const region = name ? ` role="region" aria-label="${name.replaceAll('"', "&quot;")}"` : "";
+      return `<div class="hw-table-scroll" tabindex="0"${region}><table class="hw-table not-prose">${table}</div>`;
+    },
+  );
+}
+
 // brand's prose block asks for tables, quotes and code blocks to be not-prose. A link keeps hw-link
 // for an item's text, which no prose block holds. A task list gets no marker beside its checkboxes,
 // and its boxes are brand's read-only hw-check, a state shown rather than a control, each in a
@@ -234,9 +270,7 @@ export const thumbnail = (href: string) => ({
 // A <meta> tag shows as text, since csp() in serve.ts cannot stop its refresh. The opening is
 // escaped rather than the attributes matched, which quoting would defeat.
 export const withElements = (html: string) =>
-  html
-    .replace(/<meta(?=[\s/>])/gi, "&lt;meta")
-    .replace(/<table>/g, '<table class="hw-table not-prose">')
+  tableScroll(html.replace(/<meta(?=[\s/>])/gi, "&lt;meta"))
     .replace(/<blockquote>/g, '<blockquote class="hw-quote not-prose">')
     .replace(/<a href=/g, '<a class="hw-link" href=')
     .replace(/<ul>(?!\s*<li class="task-list-item")/g, '<ul class="hw-marker-list">')

@@ -634,6 +634,22 @@ describe("hub", () => {
     expect(html("---\ntitle: x\n---\n\nrest\n")).not.toContain("title");
   });
 
+  test("a table's wrapper is named as brand's tableScroll names it", () => {
+    const names = (text: string) =>
+      [
+        ...renderMarkdown("/r", "docs/a.md", text).matchAll(
+          /<div class="hw-table-scroll"([^>]*)>/g,
+        ),
+      ].map(([, attrs]) => attrs!.match(/aria-label="([^"]*)"/)?.[1] ?? null);
+    const table = (head: string) => `| ${head} | B |\n| - | - |\n| 1 | 2 |\n\n`;
+    expect(
+      names(
+        `${table("A")}## Prices\n\n${table("x")}${table("y")}<h3>Raw "q"</h3>\n\n${table("z")}| |\n|-|\n|1|\n`,
+      ),
+    ).toEqual(["A B", "Prices", "Prices (2)", "Raw &quot;q&quot;", "Raw &quot;q&quot; (2)"]);
+    expect(names("| |\n|-|\n|1|\n")).toEqual([null]);
+  });
+
   test("reads at HEAD, not the working tree", async () => {
     const repo = repoFrom("spoke");
     Bun.write(
@@ -720,6 +736,13 @@ describe("pages", () => {
     expect(doc).toContain('<article class="prose hw-prose');
     for (const el of ["hw-table", "hw-quote", "hw-code"])
       expect(doc).toContain(`class="${el} not-prose"`);
+    // Each table in brand's scroll wrapper, named by the heading above it, else by its column heads.
+    expect(doc).toContain(
+      '<div class="hw-table-scroll" tabindex="0" role="region" aria-label="Scores by reader"><table class="hw-table not-prose">',
+    );
+    expect(doc).not.toMatch(
+      /(?<!<div class="hw-table-scroll"[^>]*>)<table class="hw-table not-prose"/,
+    );
     expect(doc).toContain('<a class="hw-link" href=');
     expect(doc).not.toMatch(/<a [^>]*not-prose/);
     // The title shows above the article, so the article opens on what follows it.

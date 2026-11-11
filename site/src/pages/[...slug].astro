@@ -533,10 +533,7 @@ const leads: Partial<Record<Page["type"], string>> = {
         </a>{" "}
         · {repo.key} HEAD {repo.head}
       </p>
-      <article
-        class="prose hw-prose [&_img]:rounded-brand [&_table]:block [&_table]:overflow-x-auto"
-        set:html={doc.html}
-      />
+      <article class="prose hw-prose [&_img]:rounded-brand" set:html={doc.html} />
     </>
   )}
 
