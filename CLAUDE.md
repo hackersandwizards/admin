@@ -29,8 +29,18 @@ exported file is a release whose commit names the change.
   catalog's Content-Security-Policy (`csp`), which `serve.ts` sends and extends for the hub's pages.
 - `test/`: `admin.test.ts` and its invented fixtures; `no-values.ts`, the check that no design value
   lives here.
+- `docs/`: `items.md`, what `admin-check` enforces, and `hub.md`, what the hub does and reads from a
+  repository's `package.json`. The README links them and holds no reference of its own.
 - `docs/agent-work/`: empty but for `.gitkeep`, since scaffolding's skeleton requires the folder; no
   item or report goes here.
+
+## Design values
+
+The pages take every colour, size and font from `@hackersandwizards/brand`: tokens, the expert
+set, the shared elements at the dense scale and the internal header. The one exception is the
+shell's layout, `site/src/layout.css`: the rail's and the page's lengths are the admin's own, its
+colours and type roles brand's. `bun run check:values` fails on a colour, a custom property or a
+Tailwind arbitrary value defined here.
 
 ## Pages
 
