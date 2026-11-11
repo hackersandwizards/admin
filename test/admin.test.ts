@@ -319,6 +319,11 @@ describe("admin-check", () => {
     expect(cli.exitCode).toBe(1);
   });
 
+  test("--help prints the usage and passes", () => {
+    const cli = Bun.spawnSync(["bun", join(import.meta.dir, "../bin/admin-check.ts"), "--help"]);
+    expect([cli.exitCode, cli.stdout.toString()]).toEqual([0, expect.stringMatching(/^Usage: /)]);
+  });
+
   test("a malformed item shows as a defect and leaves the pages building", async () => {
     const dir = join(scratch(), "r");
     cpSync(join(FIX, "spoke"), dir, { recursive: true });

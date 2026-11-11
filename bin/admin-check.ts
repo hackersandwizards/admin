@@ -1,13 +1,19 @@
 #!/usr/bin/env bun
 // Checks a repository's item files in docs/agent-work/items (fields, status, options, images and
 // image folders) from the working tree, and fails while a legacy GOAL.md or items.js remains.
-// Usage: admin-check [<repo> ...]   default: the current directory. Exit 1 on a defect.
 import { existsSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WORK_DIR } from "../src/items.ts";
 import { git, readItems, treeSource } from "../src/repo.ts";
 
-const repos = process.argv.slice(2).length ? process.argv.slice(2) : ["."];
+const args = process.argv.slice(2);
+if (args.some((a) => a === "--help" || a === "-h")) {
+  console.log(
+    "Usage: admin-check [<repo> ...]   default: the current directory. Exit 1 on a defect.",
+  );
+  process.exit(0);
+}
+const repos = args.length ? args : ["."];
 let defects = 0;
 for (const repo of repos.map((r) => resolve(r))) {
   // Paths are read relative to the folder named, so a subfolder of a repository would pass with
