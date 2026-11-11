@@ -51,7 +51,9 @@ const write = (k, v) => {
   }
 };
 // Keys of this browser's own state beside the answers.
-const OWN = new Set(["copied", "who", "seen", "visit", "versions", "before"].map((k) => STORE + k));
+const OWN = new Set(
+  ["copied", "who", "seen", "visit", "versions", "before", "repos"].map((k) => STORE + k),
+);
 const isAnswer = (k) => !!k && k.startsWith(STORE) && !OWN.has(k);
 const items = [...document.querySelectorAll("details.item[data-k]")];
 // A page that names every item of its repositories knows which answers lost their item.
@@ -369,6 +371,11 @@ let who = buttons.some((b) => b.dataset.whoButton === stored)
   ? stored
   : buttons[0]?.dataset.whoButton || "all";
 let kind = "all";
+// The hub's choice of repositories: the keys hidden, kept in this browser across visits until
+// shown again. Elsewhere no row hides by its repository.
+const repoBoxes = [...document.querySelectorAll("[data-repo-box]")];
+const allRepos = repoBoxes.map((b) => b.value);
+let off = new Set([].concat(read("repos") || []).filter((k) => allRepos.includes(k)));
 // A link to an item opens it and shows it whatever person the filter is on.
 const named = () => {
   try {
@@ -399,13 +406,17 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 function apply(picked = false) {
   const term = (search?.value || "").trim().toLowerCase();
   const filtered = buttons.length > 0 && who !== "all";
-  const mine = (r) => !filtered || !r.dataset.who || r.dataset.who === who;
+  // A row the address names shows whatever repository it is in.
+  const away = (r) => off.has(r.dataset.repo) && r !== target;
+  const mine = (r) => (!filtered || !r.dataset.who || r.dataset.who === who) && !away(r);
   let elsewhere = 0;
+  let unseen = 0;
   for (const r of rows()) {
     const hit = !term || textOf(r).includes(term);
     const ofKind = kind === "all" || !r.dataset.kind || r.dataset.kind === kind;
     r.hidden = !mine(r) || !ofKind || !hit;
-    if (term && hit && ofKind && !mine(r)) elsewhere++;
+    if (term && hit && ofKind && away(r)) unseen++;
+    else if (term && hit && ofKind && !mine(r)) elsewhere++;
     // Options narrow only where one matches: a row found by its title keeps all of them.
     const options = [...r.querySelectorAll("[data-option-row]")];
     const hits = options.map((o) => !!term && o.textContent.toLowerCase().includes(term));
@@ -437,7 +448,7 @@ function apply(picked = false) {
     const n = open.filter(
       (r) => b.dataset.kindButton === "all" || r.dataset.kind === b.dataset.kindButton,
     ).length;
-    b.querySelector("[data-kind-count]").textContent = n;
+    b.querySelector("[data-kind-count]").textContent = String(n);
     b.hidden = !n && b.dataset.kindButton !== "all" && b.dataset.kindButton !== kind;
   }
   const veto = document.querySelector("[data-assumed]");
@@ -446,6 +457,20 @@ function apply(picked = false) {
     veto.hidden = !n;
     veto.querySelector("[data-assumed-count]").textContent =
       `${plural(n, "assumption")} agents made`;
+  }
+  // What is hidden shows beside the button, on the button's count and in the Repositories table.
+  if (repoBoxes.length) {
+    const names = allRepos.filter((k) => off.has(k));
+    for (const b of repoBoxes) b.checked = !off.has(b.value);
+    for (const r of document.querySelectorAll("[data-repo-row]"))
+      r.querySelector("[data-repo-off]").hidden = !off.has(r.dataset.repoRow);
+    document.querySelector("[data-repo-said]").textContent = names.length
+      ? `${plural(names.length, "repository", "repositories")} hidden: ${names.join(", ")}.`
+      : "";
+    document.querySelector("[data-repo-all]").hidden = !names.length;
+    document.querySelector("[data-repo-count]").textContent = names.length
+      ? `${allRepos.length - names.length} of ${allRepos.length}`
+      : allRepos.length;
   }
   const none = document.getElementById("admin-nohit");
   if (none) {
@@ -456,7 +481,7 @@ function apply(picked = false) {
           elsewhere
             ? `; ${plural(elsewhere, "row")} of other people ${elsewhere === 1 ? "does" : "do"}: choose All to see ${elsewhere === 1 ? "it" : "them"}`
             : ""
-        }.`
+        }${unseen ? `; ${plural(unseen, "row")} in hidden repositories ${unseen === 1 ? "does" : "do"}` : ""}.`
       : "";
   }
 }
@@ -475,6 +500,20 @@ for (const b of kinds)
     kind = b.dataset.kindButton;
     apply(true);
   });
+// Storage blocked, the choice still applies on this page.
+const keep = () => write("repos", off.size ? [...off] : null);
+for (const b of repoBoxes)
+  b.addEventListener("change", () => {
+    if (b.checked) off.delete(b.value);
+    else off.add(b.value);
+    keep();
+    apply(true);
+  });
+document.querySelector("[data-repo-all]")?.addEventListener("click", () => {
+  off = new Set();
+  keep();
+  apply(true);
+});
 search?.addEventListener("input", () => apply());
 addEventListener("keydown", (e) => {
   if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && !e.metaKey) {

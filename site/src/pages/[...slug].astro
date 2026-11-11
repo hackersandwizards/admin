@@ -154,7 +154,7 @@ const leads: Partial<Record<Page["type"], string>> = {
     <>
       <section class="flex flex-col gap-2">
         <h2 class="font-mono font-semibold text-heading">Needs you</h2>
-        <WhoFilter assumed={settled.length ? "settled" : undefined} />
+        <WhoFilter assumed={settled.length ? "settled" : undefined} repos />
         <ItemGroups items={allNeeds} showRepo openUpTo={1} />
       </section>
       <Waiting from={page.path} />
@@ -185,11 +185,14 @@ const leads: Partial<Record<Page["type"], string>> = {
               const decide = q.filter((i) => i.kind === "decision");
               const top = needs(r.items)[0];
               return (
-                <tr data-row>
+                <tr data-row data-repo-row={r.key}>
                   <td>
                     <a class="hw-link" href={link(r.dashboard)}>
                       {r.key}
                     </a>
+                    <span class="hw-label ml-1" data-repo-off hidden>
+                      hidden
+                    </span>
                     {!!r.behind && (
                       <span class="ml-1 text-error">
                         {r.behind} commit{r.behind === 1 ? "" : "s"} behind
@@ -227,7 +230,7 @@ const leads: Partial<Record<Page["type"], string>> = {
           <ul class="hw-marker-list text-ui">
             {d.repos.flatMap((r) =>
               r.defects.map((x) => (
-                <li data-row>
+                <li data-row data-repo={r.key}>
                   {r.key}: {x}
                 </li>
               )),

@@ -34,6 +34,7 @@ const notes: Record<string, string> = {
   menu: "The repo switcher's list of repositories, opened from the top bar.",
   disclosure: "A priority group, a person waited on, an item row: each opens and closes.",
   status: "An answer given before its question changed, and a page left open for long.",
+  popover: "The hub's choice of repositories, a box each, opened from Which repositories.",
 };
 ---
 
@@ -190,6 +191,15 @@ const notes: Record<string, string> = {
               Decisions <span class="hw-choice-count">4</span>
             </a>
           </nav>
+        )}
+        {name === "popover" && (
+          <div class="hw-popover" role="dialog" aria-label="Which repositories">
+            <p class="hw-popover-title">Show on the hub</p>
+            <label class="flex items-start gap-2 py-1">
+              <input type="checkbox" class="hw-check" checked />
+              spoke
+            </label>
+          </div>
         )}
         {name === "menu" && (
           <div class="hw-menu" role="menu" aria-label="Repos">

@@ -1203,6 +1203,54 @@ describe("admin.js", () => {
     expect(!!other.closest("[hidden]")).toBe(false);
   });
 
+  test("hidden repositories: their rows leave the hub, the counts follow, the hub says so, a link still opens", () => {
+    const answer = JSON.stringify({ note: "fine", at: new Date().toISOString() });
+    const kept = {
+      "admin-answers:repos": '["spoke"]',
+      "admin-answers:spoke:check-the-copy": answer,
+    };
+    const page = open("index", kept);
+    const doc = page.document;
+    const shown = () =>
+      [...doc.querySelectorAll("[data-repo]")].filter((r) => !r.closest("[hidden]")).length;
+    expect(shown()).toBe(0);
+    expect(doc.querySelector('[data-kind-button="all"] [data-kind-count]')!.textContent).toBe("0");
+    expect(doc.querySelector("[data-repo-count]")!.textContent).toBe("0 of 1");
+    expect(doc.querySelector("[data-repo-said]")!.textContent).toBe("1 repository hidden: spoke.");
+    expect(
+      doc.querySelector('[data-repo-row="spoke"] [data-repo-off]')!.hasAttribute("hidden"),
+    ).toBe(false);
+    // The choice is no answer: the copy holds the one answer alone.
+    const copy = (doc.getElementById("copy") as DomElement).dataset.hwCopy!;
+    expect(copy).toBe("Answers from the admin pages:\nspoke:check-the-copy: fine");
+    // A search finding rows only there says so.
+    const search = doc.getElementById("admin-search") as DomInput;
+    search.value = "monthly";
+    search.dispatchEvent(new page.Event("input"));
+    expect(doc.getElementById("admin-nohit")!.textContent).toMatch(/rows? in hidden repositories/);
+    search.value = "";
+    search.dispatchEvent(new page.Event("input"));
+    // A link to an item there opens it.
+    page.location.hash = "#spoke:pick-a-variant";
+    page.dispatchEvent(new page.Event("hashchange"));
+    expect(!!doc.getElementById("spoke:pick-a-variant")!.closest("[hidden]")).toBe(false);
+    // Another page hides nothing by repository.
+    const decisions = open("spoke/decisions", kept);
+    expect(decisions.document.querySelector("details.item:not([hidden])")).not.toBeNull();
+    // "Show all" brings every row back and forgets the choice.
+    (doc.querySelector("[data-repo-all]") as unknown as HTMLButtonElement).click();
+    expect(shown()).toBeGreaterThan(0);
+    expect(page.localStorage.getItem("admin-answers:repos")).toBeNull();
+    expect(doc.querySelector("[data-repo-said]")!.textContent).toBe("");
+    // Unchecking the box hides it again and keeps the choice.
+    const box = doc.querySelector('[data-repo-box][value="spoke"]') as unknown as DomInput;
+    box.checked = false;
+    box.dispatchEvent(new page.Event("change"));
+    // All but the row the address names.
+    expect(shown()).toBe(1);
+    expect(page.localStorage.getItem("admin-answers:repos")).toBe('["spoke"]');
+  });
+
   test("a new visit starts on the hub's user; a link to an item gone says so", () => {
     const hours = (h: number) => String(Date.now() - h * 36e5);
     const pressed = (w: Window) =>

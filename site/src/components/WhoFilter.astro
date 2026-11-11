@@ -1,13 +1,17 @@
 ---
 // admin.js reads data-who-button and data-kind-button, and counts each kind of open row for the
-// selected person.
+// selected person. On the hub, data-repo-box hides a repository's rows, and the line beside the
+// button says which are hidden.
 import { data } from "../data";
 
 interface Props {
   /** The id of the fold that lists assumptions, which their count links to. */
   assumed?: string;
+  /** The choice of repositories, on the hub. */
+  repos?: boolean;
 }
-const { assumed } = Astro.props;
+const { assumed, repos } = Astro.props;
+const keys = data().repos.map((r) => r.key);
 const kinds = [
   ["all", "All"],
   ["decision", "To decide"],
@@ -36,6 +40,44 @@ const kinds = [
       ))}
     </div>
   </div>
+  {repos && (
+    <div class="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        class="hw-button"
+        data-variant="secondary"
+        popovertarget="admin-repo-choice"
+        aria-expanded="false"
+        aria-controls="admin-repo-choice"
+      >
+        Which repositories{" "}
+        <span class="tabular-nums" data-repo-count>
+          {keys.length}
+        </span>
+      </button>
+      <div
+        id="admin-repo-choice"
+        popover
+        class="hw-popover"
+        role="dialog"
+        aria-label="Which repositories"
+      >
+        <p class="hw-popover-title">Show on the hub</p>
+        <div class="grid grid-cols-2 gap-x-4">
+          {keys.map((k) => (
+            <label class="flex min-w-0 items-start gap-2 py-1 break-all">
+              <input type="checkbox" class="hw-check" data-repo-box value={k} checked />
+              {k}
+            </label>
+          ))}
+        </div>
+      </div>
+      <p class="text-ui" role="status" data-repo-said></p>
+      <button type="button" class="hw-button" data-variant="secondary" data-repo-all hidden>
+        Show all
+      </button>
+    </div>
+  )}
   {assumed && (
     <p class="text-ui" data-assumed hidden>
       <a class="hw-link" href={`#${assumed}`} data-assumed-count></a>{" "}

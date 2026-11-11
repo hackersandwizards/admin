@@ -168,7 +168,14 @@ dashboard list open items people other than the hub's user own under "Waiting on
 hub's user is the machine's git identity by first name where an owner writes it, else the person
 with the most open questions. On the hub and Decisions a row of buttons for every person who owns
 an open item, the hub's user first, filters the items by owner, and a second row by kind, each
-with its count of open items for that person; a new visit starts on the hub's user again. A row
+with its count of open items for that person; a new visit starts on the hub's user again. On the hub
+a third control, "Which repositories", opens a box per repository: one unchecked hides that
+repository's rows from every list on the hub, whatever person and kind are chosen, and the kind
+counts count only the repositories shown. The choice stays in this browser across visits; while
+any is hidden, the button counts the shown ones ("11 of 14"), the line beside it names the hidden
+ones with "Show all", and the Repositories table, which keeps every repository, marks them hidden.
+A link to an item in a hidden repository still opens it, and a repository's own pages hide
+nothing. A row
 whose item file changed since the visit before, a run of page views under an hour apart in this
 browser, says so, and whether its question or options changed; each fold counts such rows. An
 opened question shows its first paragraph, its options and its buttons before the rest of its
