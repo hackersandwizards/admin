@@ -45,7 +45,7 @@ export type ServeOptions = { root: string; rescanMs?: number };
 
 // A fetch that moves no ref changes no page but the fetch time it prints, which each request
 // fills in (stamp below), so only whether it was ever fetched is part of the state.
-export async function stateOf(repo: string) {
+async function stateOf(repo: string) {
   const [refs, fetched] = await Promise.all([
     gitAsync(repo, ["show-ref", "--head"]),
     fetchedAt(repo),
@@ -346,6 +346,8 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const key = [new Date(Date.now()).toDateString(), ...states.map(([p, s]) => `${p} ${s}`)].join(
       "\n",
     );
+    // Back at the state of its last read, a failed read since then no longer applies.
+    for (const [p, s] of states) if (read.get(p)?.state === s) unread.delete(p);
     const due = [...unread.values()].some((u) => !settled(u.at));
     if (site?.key === key && !due) return site;
     // A repository that fails to read keeps its last pages, or is left out.

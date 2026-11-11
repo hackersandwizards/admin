@@ -1,7 +1,7 @@
 export const WORK_DIR = "docs/agent-work";
 export const ITEMS_DIR = `${WORK_DIR}/items`;
-export const KINDS = ["decision", "review", "work", "goal"] as const;
-export const STATUSES = ["open", "assumed", "decided"] as const;
+const KINDS = ["decision", "review", "work", "goal"] as const;
+const STATUSES = ["open", "assumed", "decided"] as const;
 
 export type Option = {
   key: string;
@@ -183,8 +183,9 @@ export function usable(item: Item): Item {
     ...item,
     ...Object.fromEntries(TEXTS.map((f) => [f, text(item[f])])),
     priority: [1, 2, 3].includes(item.priority as number) ? item.priority : undefined,
+    order: typeof item.order === "number" ? item.order : undefined,
     due: isDay(item.due) ? String(item.due) : undefined,
-    recommended: item.recommended === undefined ? undefined : [item.recommended].flat().map(String),
+    recommended: item.recommended == null ? undefined : [item.recommended].flat().map(String),
     options: Array.isArray(item.options)
       ? item.options
           .filter((o) => optionKey(o?.key))
@@ -225,7 +226,7 @@ export function compareItems(a: Item & { changed?: number }, b: Item & { changed
   );
 }
 
-export const imagePath = (id: string, src: string) =>
+const imagePath = (id: string, src: string) =>
   src.includes("/") ? src : `${ITEMS_DIR}/${id}/${src}`;
 
 export function imagesOf(item: Item): Record<string, { src: string; caption?: string }[]> {

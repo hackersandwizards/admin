@@ -32,6 +32,7 @@ import {
 } from "../src/items.ts";
 import {
   fetchedAt,
+  fileHref,
   gitEnv,
   readItems,
   readRepo,
@@ -56,6 +57,17 @@ const sh = (cwd: string, ...cmd: string[]) => {
   const r = Bun.spawnSync(cmd, { cwd, stderr: "pipe", env: gitEnv });
   if (r.exitCode) throw new Error(`${cmd.join(" ")}: ${r.stderr}`);
   return r.stdout.toString();
+};
+// Runs a check in another time zone, then restores the process's own, unset included.
+const inZone = (zone: string, check: () => void) => {
+  const tz = process.env.TZ;
+  process.env.TZ = zone;
+  try {
+    check();
+  } finally {
+    if (tz === undefined) delete process.env.TZ;
+    else process.env.TZ = tz;
+  }
 };
 const commit = (cwd: string, message: string) =>
   sh(
@@ -108,13 +120,18 @@ describe("item files", () => {
       "ranked",
       "far",
     ]);
+    // An order that is no number is its item's defect and ranks as none, never every row's sort.
+    const odd = usable({ ...valid, id: "odd", order: "soon" as never });
+    expect([odd, far, ranked].sort(compareItems).map((i) => i.id)).toEqual([
+      "ranked",
+      "far",
+      "odd",
+    ]);
   });
 
   test("a due date comes within a week by local day, also just after midnight", () => {
     // East of UTC, half past midnight is still the day before in UTC.
-    const tz = process.env.TZ;
-    process.env.TZ = "Europe/Berlin";
-    try {
+    inZone("Europe/Berlin", () => {
       const night = new Date();
       night.setHours(0, 30, 0, 0);
       const local = (n: number) => {
@@ -124,9 +141,7 @@ describe("item files", () => {
       };
       expect(dueSoon(local(DUE_SOON_DAYS), night.getTime())).toBe(true);
       expect(dueSoon(local(DUE_SOON_DAYS + 1), night.getTime())).toBe(false);
-    } finally {
-      process.env.TZ = tz;
-    }
+    });
   });
 
   test("parse reads front matter, title and body", () => {
@@ -360,6 +375,18 @@ describe("admin-check", () => {
     expect(u!.agent).toBe(false);
   });
 
+  test("a ? in a file's name stays in its path, and an admin link's query stays its query", async () => {
+    expect(fileHref("/r/docs/what?.md")).toBe("file:///r/docs/what%3F.md");
+    const files: Record<string, string> = {
+      "package.json": JSON.stringify({ admin: { links: [{ label: "A", href: "a.html?v=1#t" }] } }),
+    };
+    const { links } = await readRepo("/nonexistent/x", {
+      paths: Object.keys(files),
+      read: (f) => files[f],
+    });
+    expect(links[0]!.href).toBe("file:///nonexistent/x/a.html?v=1#t");
+  });
+
   test("a stray % in a Markdown link stays as written", () => {
     expect(renderMarkdown("/r", "docs/a.md", "[half](50%.md)")).toContain("docs/50%25.md");
   });
@@ -413,6 +440,44 @@ describe("admin-check", () => {
     expect(
       html.match(/class="task-list-item-checkbox hw-check" data-readonly disabled/g),
     ).toHaveLength(2);
+  });
+
+  test("each task box is named by its own line, tight, nested or loose", () => {
+    const box = '<input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly';
+    const tight = renderMarkdown("/r", "docs/a.md", "- [x] done **now**\n  - [ ] nested\n");
+    expect(tight).toContain(
+      `<label>${box} disabled checked>done <strong>now</strong></label>\n<ul>`,
+    );
+    expect(tight).toContain(`<label>${box} disabled>nested</label></li>`);
+    const loose = renderMarkdown("/r", "docs/a.md", "- [ ] loose\n\n  more\n\n- [x] next\n");
+    expect(loose).toContain(`<p><label>${box} disabled>loose</label></p>\n<p>more</p>`);
+    const quote = renderMarkdown("/r", "docs/a.md", "- [ ] see\n  > quoted\n");
+    expect(quote).toContain(`<label>${box} disabled>see</label>\n<blockquote`);
+    const wrapped = renderMarkdown("/r", "docs/a.md", "- [ ] a [link\n  **b**](x.md) end\n");
+    expect(wrapped).toContain("</strong></a> end</label>");
+    const fence = renderMarkdown("/r", "docs/a.md", "- [ ] run\n  ```\n  x\n  ```\n");
+    expect(fence).toContain(`<label>${box} disabled>run</label>\n<pre`);
+  });
+
+  test("a doc, a script or a key the hub reads costs no rescan per character and stays in its folder", async () => {
+    const run = "x".repeat(160_000);
+    const files: Record<string, string> = {
+      "package.json": JSON.stringify({ name: "x", admin: { name: "../../spoke" } }),
+      "docs/src.md": `<div>\n<img src="${run}\n</div>\n`,
+      "docs/h1.md": `<div>\n${"<h1>".repeat(40_000)}\n</div>\n`,
+      "docs/input.md": `<div>\n${'<input type="checkbox" class="task-list-item-checkbox"'.repeat(40_000)}\n</div>\n`,
+      "scripts/a.ts": `// a${" ".repeat(160_000)}b\n`,
+    };
+    const start = performance.now();
+    const repo = await readRepo("/nonexistent/x", {
+      paths: Object.keys(files),
+      read: (f) => files[f],
+    });
+    expect(performance.now() - start).toBeLessThan(3_000);
+    expect(repo.key).toBe("x");
+    expect(repo.defects).toContain(
+      'package.json: admin.name "../../spoke" is not one path segment without a colon: its pages are under x',
+    );
   });
 });
 
@@ -719,6 +784,8 @@ describe("pages", () => {
     const variant = html.match(/id="spoke:pick-a-variant"[\s\S]*?<\/details>/)![0];
     expect(variant.indexOf('value="a"')).toBeLessThan(variant.indexOf(">Context<"));
     expect(variant.indexOf("Pick recommended")).toBeLessThan(variant.indexOf(">Context<"));
+    // Its options form one group, named by the question they answer.
+    expect(variant).toMatch(/role="radiogroup" aria-label="[^"]+"[^>]*>\s*<label/);
     // The hub's provenance names the checkouts behind and says when it is from.
     expect(html).toMatch(/class="admin-provenance[^>]*>[^<]*· as of <span data-stamp>\d/);
     expect(html).toContain("Decide P2");
@@ -731,6 +798,10 @@ describe("pages", () => {
     expect(dueOf("2026-11-03", now).text).toStartWith("was due 3 Nov");
     expect(dueOf("2026-11-13", now).tone).toBe("soon");
     expect(dueOf("2026-12-13", now).tone).toBe("later");
+    // West of UTC too, the pill names the day written.
+    inZone("America/New_York", () =>
+      expect(dueOf("2026-11-20", new Date(2026, 10, 10, 12).getTime()).text).toBe("due 20 Nov"),
+    );
     expect(inline("use `a-b` & <i>, see http://127.0.0.1:4329/x.")).toBe(
       'use <code class="hw-inline-code">a-b</code> &amp; &lt;i&gt;, see <a class="hw-link" href="http://127.0.0.1:4329/x">http://127.0.0.1:4329/x</a>.',
     );
@@ -789,10 +860,17 @@ describe("admin.js", () => {
   let code = "";
   const opened: Window[] = [];
   afterAll(() => Promise.all(opened.map((w) => w.happyDOM.close())));
-  const open = (page: string, storage: Record<string, string>) => {
+  // Storage null is a browser that blocks site data: reading localStorage throws.
+  const open = (page: string, storage: Record<string, string> | null) => {
     const window = new Window({ url: `http://admin.localhost/${page}` });
     opened.push(window);
-    for (const [k, v] of Object.entries(storage)) window.localStorage.setItem(k, v);
+    if (!storage)
+      Object.defineProperty(window, "localStorage", {
+        get: () => {
+          throw new Error("SecurityError: site data blocked");
+        },
+      });
+    for (const [k, v] of Object.entries(storage ?? {})) window.localStorage.setItem(k, v);
     window.document.write(
       readFileSync(join(out, `${page}.html`), "utf8").replace(/<script[^>]*><\/script>/g, ""),
     );
@@ -806,6 +884,16 @@ describe("admin.js", () => {
     await buildSite(siteData([await readRepo(repoFrom("spoke"))]), out);
     code = await script();
   }, 60_000);
+
+  test("a browser that blocks site data still filters its rows", () => {
+    const doc = open("index", null).document;
+    (doc.querySelector('[data-kind-button="decision"]') as unknown as HTMLElement).click();
+    const kinds = [...doc.querySelectorAll("[data-row]")]
+      .filter((r) => !r.closest("[hidden]"))
+      .map((r) => (r as unknown as HTMLElement).dataset.kind);
+    expect(kinds).toContain("decision");
+    expect(kinds.filter((k) => k && k !== "decision")).toEqual([]);
+  });
 
   test("a copied answer leaves with its item, never while the item stays", () => {
     const at = (h: number) => new Date(Date.UTC(2026, 0, 1, h)).toISOString();
@@ -1426,6 +1514,14 @@ describe("serve", () => {
     } finally {
       Date.now = now;
     }
+    // A read failing at a new state, then the state its last read was taken at again: the notice
+    // goes, since the pages show that state.
+    rmSync(object);
+    sh(second, "git", "tag", "t");
+    expect(await get("/")).toContain("second could not be read");
+    writeFileSync(object, bytes);
+    sh(second, "git", "tag", "-d", "t");
+    expect(await get("/")).not.toContain("could not be read");
   }, 120_000);
 
   test("two checkouts with one key, or a key the hub's pages take, each keep their own pages", async () => {

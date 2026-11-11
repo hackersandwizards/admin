@@ -5,19 +5,46 @@ import { enhance } from "@hackersandwizards/brand/elements/behaviour.ts";
 
 enhance();
 
+// A browser that blocks site data throws on localStorage itself: the page then keeps its state
+// for this visit only, and every control still works.
+class Memory {
+  getItem(k) {
+    return Object.hasOwn(this, k) ? this[k] : null;
+  }
+  setItem(k, v) {
+    this[k] = String(v);
+  }
+  removeItem(k) {
+    delete this[k];
+  }
+  key(i) {
+    return Object.keys(this)[i] ?? null;
+  }
+  get length() {
+    return Object.keys(this).length;
+  }
+}
+const storage = (() => {
+  try {
+    return window.localStorage;
+  } catch {
+    return new Memory();
+  }
+})();
+
 const STORE =
   "adminCatalog" in document.documentElement.dataset ? "admin-catalog:" : "admin-answers:";
 const read = (k) => {
   try {
-    return JSON.parse(localStorage.getItem(STORE + k)) || null;
+    return JSON.parse(storage.getItem(STORE + k)) || null;
   } catch {
     return null;
   }
 };
 const write = (k, v) => {
   try {
-    if (v) localStorage.setItem(STORE + k, JSON.stringify(v));
-    else localStorage.removeItem(STORE + k);
+    if (v) storage.setItem(STORE + k, JSON.stringify(v));
+    else storage.removeItem(STORE + k);
     return true;
   } catch {
     return false;
@@ -30,14 +57,14 @@ const items = [...document.querySelectorAll("details.item[data-k]")];
 // A page that names every item of its repositories knows which answers lost their item.
 const live = new Set(document.body.dataset.answers?.split(" ").filter(Boolean));
 const liveRepos = new Set([...live].map((k) => k.split(":")[0]));
-const copied = localStorage.getItem(STORE + "copied") || "";
-for (let i = localStorage.length - 1; i >= 0; i--) {
-  const k = localStorage.key(i);
+const copied = storage.getItem(STORE + "copied") || "";
+for (let i = storage.length - 1; i >= 0; i--) {
+  const k = storage.key(i);
   if (!isAnswer(k)) continue;
   const id = k.slice(STORE.length);
   const a = read(id);
   if (liveRepos.has(id.split(":")[0]) && !live.has(id))
-    if (!a || !a.at || a.at <= copied) localStorage.removeItem(k);
+    if (!a || !a.at || a.at <= copied) storage.removeItem(k);
 }
 // A visit is a run of page views under an hour apart: an item whose file changed since the one
 // before says so on its row, and what changed: its question or options, or the rest of its file.
@@ -51,27 +78,27 @@ const MARKS = {
 let updatedSince = 0;
 try {
   const now = Date.now();
-  const seen = Number(localStorage.getItem(STORE + "seen")) || 0;
-  const versions = JSON.parse(localStorage.getItem(STORE + "versions") || "{}");
+  const seen = Number(storage.getItem(STORE + "seen")) || 0;
+  const versions = JSON.parse(storage.getItem(STORE + "versions") || "{}");
   if (now - seen > 36e5) {
-    localStorage.setItem(STORE + "visit", String(seen));
-    localStorage.setItem(STORE + "before", JSON.stringify(versions));
-    localStorage.removeItem(STORE + "who");
+    storage.setItem(STORE + "visit", String(seen));
+    storage.setItem(STORE + "before", JSON.stringify(versions));
+    storage.removeItem(STORE + "who");
     // A question put off is asked again: its row keeps only a note written beside it.
-    for (const k of Object.keys(localStorage)) {
+    for (const k of Object.keys(storage)) {
       const a = isAnswer(k) && read(k.slice(STORE.length));
       if (a?.later)
         if (a.note)
-          localStorage.setItem(
+          storage.setItem(
             k,
             JSON.stringify({ ...a, later: false, at: new Date(now).toISOString() }),
           );
-        else localStorage.removeItem(k);
+        else storage.removeItem(k);
     }
   }
-  localStorage.setItem(STORE + "seen", String(now));
-  const since = Number(localStorage.getItem(STORE + "visit")) || 0;
-  const before = JSON.parse(localStorage.getItem(STORE + "before") || "{}");
+  storage.setItem(STORE + "seen", String(now));
+  const since = Number(storage.getItem(STORE + "visit")) || 0;
+  const before = JSON.parse(storage.getItem(STORE + "before") || "{}");
   for (const r of document.querySelectorAll("[data-k][data-version]")) {
     // A version stored before v1.24.0 holds the file's hash alone.
     const [file, asked] = (before[r.dataset.k] || "").split(" ");
@@ -88,7 +115,7 @@ try {
   }
   for (const k of Object.keys(versions))
     if (liveRepos.has(k.split(":")[0]) && !live.has(k)) delete versions[k];
-  localStorage.setItem(STORE + "versions", JSON.stringify(versions));
+  storage.setItem(STORE + "versions", JSON.stringify(versions));
 } catch {
   /* storage blocked: no row says what changed */
 }
@@ -101,7 +128,7 @@ const moment = (iso) =>
     hour: "2-digit",
     minute: "2-digit",
   });
-const copiedAt = () => localStorage.getItem(STORE + "copied") || "";
+const copiedAt = () => storage.getItem(STORE + "copied") || "";
 const label = (d, key) =>
   d?.querySelector(`input[data-option][value="${CSS.escape(key)}"]`)?.dataset.label;
 const picked = (a) => (a?.option ? a.option.split(",") : []);
@@ -221,7 +248,7 @@ function save(d) {
 const answered = () => {
   const order = [...new Set([...document.querySelectorAll("[data-k]")].map((r) => r.dataset.k))];
   const at = (k) => (order.includes(k) ? order.indexOf(k) : order.length);
-  return Object.keys(localStorage)
+  return Object.keys(storage)
     .filter(isAnswer)
     .map((k) => k.slice(STORE.length))
     .filter((k) => read(k) && !read(k).later)
@@ -256,20 +283,21 @@ function state(relabel = true) {
     fresh.length || old.length ? keys.filter((k) => fresh.includes(k) || old.includes(k)) : keys;
   copy.dataset.hwCopy = block(send);
   copy.disabled = !keys.length;
+  const done = !fresh.length && !old.length;
   const s = (n) => (n === 1 ? "" : "s");
   if (relabel)
     copy.textContent = !keys.length
       ? "Copy answers"
-      : send === keys && !fresh.length && !old.length
+      : done
         ? `Copy ${keys.length} answer${s(keys.length)} again`
         : `Copy ${send.length} answer${s(send.length)}`;
   // Once all is copied the button steps back, so it no longer reads as work left.
-  if (keys.length && !fresh.length && !old.length) copy.dataset.variant = "secondary";
+  if (keys.length && done) copy.dataset.variant = "secondary";
   else delete copy.dataset.variant;
   if (status)
     status.textContent = !keys.length
       ? idle
-      : fresh.length || old.length
+      : !done
         ? [
             fresh.length ? `${fresh.length} not copied yet` : "",
             old.length
@@ -323,7 +351,7 @@ copy?.addEventListener("hw-copy", (e) => {
   pending = Math.max(0, pending - 1);
   if (!e.detail?.ok) return;
   try {
-    if (pressedAt > copiedAt()) localStorage.setItem(STORE + "copied", pressedAt);
+    if (pressedAt > copiedAt()) storage.setItem(STORE + "copied", pressedAt);
   } catch {
     /* storage blocked: the copy still happened */
   }
@@ -336,7 +364,7 @@ const search = document.getElementById("admin-search");
 // rows unseen. The filter starts on the first person, the hub's user where they answer a question.
 const buttons = [...document.querySelectorAll("[data-who-button]")];
 const kinds = [...document.querySelectorAll("[data-kind-button]")];
-const stored = localStorage.getItem(STORE + "who");
+const stored = storage.getItem(STORE + "who");
 let who = buttons.some((b) => b.dataset.whoButton === stored)
   ? stored
   : buttons[0]?.dataset.whoButton || "all";
@@ -436,7 +464,7 @@ for (const b of buttons)
   b.addEventListener("click", () => {
     who = b.dataset.whoButton;
     try {
-      localStorage.setItem(STORE + "who", who);
+      storage.setItem(STORE + "who", who);
     } catch {
       /* storage blocked: the filter still applies on this page */
     }

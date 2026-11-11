@@ -10,7 +10,7 @@ import {
   type Item,
 } from "./items.ts";
 
-export const LEGACY = ["GOAL.md"];
+const LEGACY = ["GOAL.md"];
 
 export type Source = { paths: string[]; read: (path: string) => string | undefined };
 
@@ -40,7 +40,7 @@ export const gitAsync = async (cwd: string, args: string[], stdin = "") =>
   (await gitBytes(cwd, args, stdin))?.toString() ?? "";
 
 // A git call that fails throws, so a repository that cannot be read never shows as an empty one.
-export async function headSource(repo: string): Promise<Source> {
+async function headSource(repo: string): Promise<Source> {
   const listed = await gitBytes(repo, ["ls-tree", "-r", "-z", "HEAD"]);
   if (!listed) throw new Error("git ls-tree HEAD failed");
   // "<mode> <type> <object>\t<path>": the batch asks by object, so a path holding a newline reads
@@ -205,10 +205,10 @@ export const when = (ms: number) =>
     hour: "2-digit",
     minute: "2-digit",
   });
-// "#" would end the path, and an "&" or "'" left as is comes out of the pages' attributes escaped,
+// "#" or "?" would end the path, and an "&" or "'" left as is comes out of the pages' attributes escaped,
 // where the hub's link rewriting no longer finds it.
 export const encodeFile = (path: string) =>
-  encodeURI(path).replace(/[#&']/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  encodeURI(path).replace(/[#?&']/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 export const fileHref = (abs: string) => "file://" + encodeFile(abs);
 // A path whose every segment is encoded, so a "#", "%" or "?" in a name stays in its path.
 export const encodePath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
@@ -228,7 +228,9 @@ export const thumbnail = (href: string) => ({
 
 // brand's prose block asks for tables, quotes and code blocks to be not-prose. A link keeps hw-link
 // for an item's text, which no prose block holds. A task list gets no marker beside its checkboxes,
-// and its boxes are brand's read-only hw-check, a state shown rather than a control.
+// and its boxes are brand's read-only hw-check, a state shown rather than a control, each in a
+// <label> with its line's text up to the next block, which names the box; a loose item's label sits
+// inside its <p>. The text stops before the next <input, so a run of them costs no rescan each.
 // A <meta> tag shows as text, since csp() in serve.ts cannot stop its refresh. The opening is
 // escaped rather than the attributes matched, which quoting would defeat.
 export const withElements = (html: string) =>
@@ -239,8 +241,9 @@ export const withElements = (html: string) =>
     .replace(/<a href=/g, '<a class="hw-link" href=')
     .replace(/<ul>(?!\s*<li class="task-list-item")/g, '<ul class="hw-marker-list">')
     .replace(
-      /class="task-list-item-checkbox"/g,
-      'class="task-list-item-checkbox hw-check" data-readonly',
+      /<input type="checkbox" class="task-list-item-checkbox"([^<>]*)>(\n<p>)?((?:(?!<input)[\s\S])*?)(?=<\/p>|\n<(?:[uo]l|blockquote|pre|table|hr|div|h[1-6]|p)\b|<\/li>|<input)/g,
+      (_, attrs: string, p = "", text: string) =>
+        `${p}<label><input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly${attrs}>${text}</label>`,
     )
     .replace(/<pre>/g, '<pre class="hw-code not-prose">')
     .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');
@@ -263,7 +266,7 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
     Bun.markdown.html(body, item ? { noHtmlSpans: true, noHtmlBlocks: true } : {}),
   );
   return html.replace(
-    /(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"?#]*)([^"]*)"/gi,
+    /(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"?#]*)((?:[?#][^"]*)?)"/gi,
     (_, attr, rel: string, rest: string) => {
       let path = rel;
       try {
@@ -279,7 +282,8 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
 // A page's title is its first rendered h1, which leaves the article since the title shows above it.
 function titled(repo: string, path: string, text: string, fallback: string) {
   const html = renderMarkdown(repo, path, text);
-  const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>\n?/);
+  // From the first <h1 on: an unanchored search would scan to the end once per <h1.
+  const h1 = html.slice(Math.max(html.indexOf("<h1"), 0)).match(/^<h1[^>]*>([\s\S]*?)<\/h1>\n?/);
   // Bun's renderer decodes every other entity itself.
   const title = h1?.[1]
     ?.replace(/<[^>]*>/g, "")
@@ -294,9 +298,10 @@ function titled(repo: string, path: string, text: string, fallback: string) {
 }
 
 function firstComment(text: string) {
-  for (const line of text.split("\n").slice(0, 12)) {
-    const m = line.match(/^\s*(?:\/\/|#(?!!)|\/\*+|\*)\s?(.*?)\s*(?:\*\/)?$/);
-    if (m && m[1]) return m[1];
+  for (const line of text.split("\n", 12)) {
+    const m = line.match(/^\s*(?:\/\/|#(?!!)|\/\*+|\*)\s?(.*)/);
+    const comment = m?.[1].trimEnd().replace(/\*\/$/, "").trimEnd();
+    if (comment) return comment;
   }
   return "";
 }
@@ -398,12 +403,19 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     return Object.fromEntries(kept) as Record<string, string>;
   };
   const admin = (isObject(pkg.admin) ? pkg.admin : {}) as AdminConfig;
-  const key = typeof admin.name === "string" ? admin.name : basename(repo);
+  // A key is one path segment: a slash or a dot segment in it would write pages outside the build,
+  // and admin.js reads the repository of an answer's key up to its first colon.
+  const named = typeof admin.name === "string" ? admin.name : undefined;
+  const key = named && /^(?!\.+$)[^/\\:]+$/.test(named) ? named : basename(repo);
+  if (named !== undefined && key !== named)
+    defects.push(
+      `package.json: admin.name "${named}" is not one path segment without a colon: its pages are under ${key}`,
+    );
   const scriptsMap = texts("scripts");
   const href = (h: string) => {
     if (/^[a-z][\w+.-]*:/i.test(h)) return h;
-    const [path, hash] = h.split("#");
-    return fileHref(join(repo, path!)) + (hash ? `#${hash}` : "");
+    const [, path, rest] = h.match(/^([^?#]*)(.*)$/s)!;
+    return fileHref(join(repo, path!)) + rest;
   };
   const dependencies = { ...texts("dependencies"), ...texts("devDependencies") };
   const dev = astrobookDev(src, scriptsMap);

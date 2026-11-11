@@ -6,16 +6,16 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { peerDependencies, peerDependenciesMeta } from "../package.json";
+import { peerDependencies } from "../package.json";
 import { stylesheet } from "../src/build.ts";
 import { createHub } from "../src/serve.ts";
 
-// Stop with what to pin on a missing peer, or on an optional one outside its range: bun does not
-// check a Git pin's range, and the optional peers are held to theirs here too.
+// Stop with what to pin on a peer missing or outside its range: every peer is optional, and bun
+// checks no optional peer's range.
 const missing = Object.entries(peerDependencies).filter(([p, range]) => {
   try {
     const { version } = createRequire(import.meta.url)(`${p}/package.json`);
-    return p in peerDependenciesMeta && !Bun.semver.satisfies(version, range);
+    return !Bun.semver.satisfies(version, range);
   } catch {
     return true;
   }

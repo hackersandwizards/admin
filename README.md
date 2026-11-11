@@ -41,7 +41,9 @@ Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repos
 `bun run dev` in this checkout runs `admin-serve`, the one hub: open `http://admin.localhost:4329`.
 One repository's own pages open at `http://admin.localhost:4329/<repo>`, such as `/website`,
 which leads to its dashboard with only its items. `<repo>` is the folder name, or `admin.name` in
-its `package.json`; where two checkouts share it, or it names a page of the hub (`index`,
+its `package.json` where that is one path segment without a colon (otherwise a defect, and the
+folder name stays);
+where two checkouts share it, or it names a page of the hub (`index`,
 `architecture`, `catalog`), the parent folder's name goes before it and the repository shows a
 defect. The hub's rail and its Repositories table link every repository's dashboard.
 The engine's own catalog, every page and component on an invented repository, opens at

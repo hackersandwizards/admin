@@ -1,20 +1,10 @@
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { compareItems, imagesOf, ITEMS_DIR, type Item } from "./items.ts";
 import { docSlug, fileHref, renderMarkdown, type Doc, type RepoData } from "./repo.ts";
 
 export const PKG = join(import.meta.dirname, "..");
-export const VERSION = JSON.parse(readFileSync(join(PKG, "package.json"), "utf8"))
-  .version as string;
+const VERSION = JSON.parse(readFileSync(join(PKG, "package.json"), "utf8")).version as string;
 
 export type ViewItem = Item & {
   // The item file's last commit, in seconds.
@@ -278,9 +268,6 @@ export async function script() {
 // Builds the pages into `outDir`. Astro writes absolute /_astro/ URLs; each page gets them
 // relative, so the folder opens from disk and can move.
 export async function buildSite(data: SiteData, outDir: string) {
-  const existing = existsSync(outDir) ? readdirSync(outDir) : [];
-  if (existing.length && !existing.includes("index.html"))
-    throw new Error(`${outDir} holds files but no admin build: name an empty or earlier output`);
   // Astro bundles a prerender entry beside its output when that sits inside the working
   // directory, and resolves its packages from there, so the build runs in a folder inside this
   // package, where node resolution reaches the package's dependencies, nested or hoisted. Its
@@ -317,8 +304,6 @@ export async function buildSite(data: SiteData, outDir: string) {
     });
     rmSync(join(built, ".prerender"), { recursive: true, force: true });
     relativize(built);
-    rmSync(outDir, { recursive: true, force: true });
-    mkdirSync(dirname(outDir), { recursive: true });
     cpSync(built, outDir, { recursive: true });
   } finally {
     process.chdir(cwd);

@@ -16,6 +16,8 @@ const k = keyOf(i);
 const options = i.options ?? [];
 const shots = (key: string) => i.optionImages[key] ?? [];
 const carded = options.some((o) => shots(o.key).length);
+// The options answer the item's question, which names their group for a screen reader.
+const group = i.multiple ? "group" : "radiogroup";
 // The item's own images: above the answer where it has no options, else after the context.
 const loose = shots("");
 const score = (o: (typeof options)[number]) =>
@@ -123,7 +125,12 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
     )}
     {lead && <div class={body} set:html={lead} />}
     {i.status === "assumed" && (
-      <div class="hw-card p-0!" data-hw-exception="option-list">
+      <div
+        class="hw-card p-0!"
+        data-hw-exception="option-list"
+        role="radiogroup"
+        aria-label={`${i.title}: agree or veto`}
+      >
         {[
           ["agree", "Agree", "The assumption stands."],
           [
@@ -165,6 +172,8 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
     {carded && (
       <div
         class={`grid gap-2 ${options.length > 1 ? "md:grid-cols-2" : ""} ${options.length > 2 ? "xl:grid-cols-3" : ""}`}
+        role={group}
+        aria-label={i.title}
       >
         {options.map((o) => (
           <label class="hw-card flex cursor-pointer flex-col gap-2 has-checked:border-accent">
@@ -183,7 +192,7 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
       </div>
     )}
     {options.length > 0 && !carded && (
-      <div class="hw-card p-0!" data-hw-exception="option-list">
+      <div class="hw-card p-0!" data-hw-exception="option-list" role={group} aria-label={i.title}>
         {options.map((o) => (
           <label
             class="flex cursor-pointer border-b border-border px-3 py-1.5 last:border-b-0 has-checked:bg-muted"

@@ -56,7 +56,7 @@
     margin: 0;
     font-family: var(--font-mono);
     font-size: var(--text-page);
-    line-height: 1.25;
+    line-height: var(--text-page--line-height);
   }
   /* Copy answers stays in view under the header while the page scrolls. */
   .admin-action {
@@ -87,7 +87,7 @@
     --hw-pill-hue-night: var(--color-red-night);
   }
   .admin-due-today {
-    --hw-pill-hue: var(--color-amber);
+    --hw-pill-hue: var(--color-amber-dark);
     --hw-pill-hue-night: var(--color-amber);
   }
   .task-list-item-checkbox {

@@ -355,6 +355,7 @@ const leads: Partial<Record<Page["type"], string>> = {
                 <span class="font-mono text-foreground/70">{day(c.time)}</span> {c.subject}
               </li>
             ))}
+            {!repo.trackingLog.length && <li class="text-foreground/70">No changes yet.</li>}
           </ul>
         </section>
       </div>
@@ -474,7 +475,7 @@ const leads: Partial<Record<Page["type"], string>> = {
       <section>
         <h2 class="mb-2 font-mono font-semibold text-heading">Reports</h2>
         {!repo.reports.length && <p class="text-ui text-foreground/70">No reports yet.</p>}
-        <table class="hw-table w-full">
+        <table class="hw-table w-full" hidden={!repo.reports.length}>
           <tbody>
             {repo.reports.map((r) => (
               <tr data-row>
@@ -564,7 +565,7 @@ const leads: Partial<Record<Page["type"], string>> = {
   )}
 
   {page.type === "product" && product && (
-    <div class="hw-card flex max-w-prose flex-col gap-2 text-ui">
+    <div class="hw-card flex max-w-measure flex-col gap-2 text-ui">
       <p>
         <a class="hw-link" href={product.href}>
           Open {product.label}
@@ -648,9 +649,6 @@ const leads: Partial<Record<Page["type"], string>> = {
       ) : (
         <p class="text-ui">No check script in package.json.</p>
       )}
-      <p class="text-ui text-foreground/70">
-        The last gate result appears here once the gate stores it; this page lists the steps.
-      </p>
     </>
   )}
 

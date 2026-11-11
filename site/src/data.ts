@@ -13,7 +13,7 @@ export function data(): SiteData {
   return cached;
 }
 
-export const fileOf = (path: string) => `${path}.html`;
+const fileOf = (path: string) => `${path}.html`;
 
 // Relative, so the output opens from disk.
 export function href(from: string, to: string) {
@@ -48,7 +48,7 @@ export const askedOf = (i: ViewItem) =>
       (i.options ?? []).map((o) => [o.key, o.label, o.detail ?? ""]),
     ]),
   ).toString(36);
-export const isQuestion = (i: ViewItem) => i.kind === "decision" || i.kind === "review";
+const isQuestion = (i: ViewItem) => i.kind === "decision" || i.kind === "review";
 // An item's full row on its repository's page.
 export const itemHref = (from: string, i: ViewItem) =>
   `${href(from, `${i.repo}/${isQuestion(i) ? "decisions" : "work"}`)}#${keyOf(i)}`;
@@ -72,7 +72,8 @@ export const day = (seconds: number) =>
 // own teal, later neutral (layout.css).
 export function dueOf(due: string, now = Date.now()) {
   const today = new Date(now).toLocaleDateString("sv-SE");
-  const date = day(Date.parse(due) / 1000);
+  // The day as a local midnight: a bare date parses as UTC, a day early west of it.
+  const date = day(Date.parse(`${due}T00:00`) / 1000);
   if (due < today) return { text: `was due ${date}`, tone: "overdue" };
   if (due === today) return { text: "due today", tone: "today" };
   return { text: `due ${date}`, tone: dueSoon(due, now) ? "soon" : "later" };
