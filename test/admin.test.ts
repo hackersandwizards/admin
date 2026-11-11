@@ -873,6 +873,19 @@ describe("pages", () => {
       ["x&y", false],
       ["Kim", false],
     ]);
+    // A person's name ends at any other mark, an agent's word may hold a hyphen, and an owner
+    // opening with a bracket names no company.
+    const marks = ["Sam.", "Kim's team", "claude-code", "agent:", "(tbd)"];
+    const marked = siteData([{ ...repo, items: [...repo.items, ...marks.map(owned)] }]);
+    expect(marked.others).toEqual(["Kim", "Sam"]);
+    const at = (id: string) => marked.repos[0]!.items.find((i) => i.id === id)!;
+    expect(marks.map((m) => [at(m).who, at(m).agent])).toEqual([
+      ["Sam", false],
+      ["Kim", false],
+      ["claude-code", true],
+      ["agent", true],
+      ["(tbd)", true],
+    ]);
   });
   test("leaving a page asks nothing: answers are stored as they are typed", () => {
     const script = readFileSync(join(import.meta.dir, "../site/src/admin.js"), "utf8");
@@ -1240,7 +1253,7 @@ describe("admin.js", () => {
     // "Show all" brings every row back and forgets the choice.
     (doc.querySelector("[data-repo-all]") as unknown as HTMLButtonElement).click();
     expect(shown()).toBeGreaterThan(0);
-    expect(page.localStorage.getItem("admin-answers:repos")).toBeNull();
+    expect(stored(page)["admin-answers:repos"]).toBeUndefined();
     expect(doc.querySelector("[data-repo-said]")!.textContent).toBe("");
     // Unchecking the box hides it again and keeps the choice.
     const box = doc.querySelector('[data-repo-box][value="spoke"]') as unknown as DomInput;
@@ -1248,7 +1261,11 @@ describe("admin.js", () => {
     box.dispatchEvent(new page.Event("change"));
     // All but the row the address names.
     expect(shown()).toBe(1);
-    expect(page.localStorage.getItem("admin-answers:repos")).toBe('["spoke"]');
+    expect(stored(page)["admin-answers:repos"]).toBe('["spoke"]');
+    // Once the address names another row, the row it named before hides with its repository.
+    page.location.hash = "";
+    page.dispatchEvent(new page.Event("hashchange"));
+    expect(shown()).toBe(0);
   });
 
   test("a new visit starts on the hub's user; a link to an item gone says so", () => {

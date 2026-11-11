@@ -375,7 +375,27 @@ let kind = "all";
 // shown again. Elsewhere no row hides by its repository.
 const repoBoxes = [...document.querySelectorAll("[data-repo-box]")];
 const allRepos = repoBoxes.map((b) => b.value);
-let off = new Set([].concat(read("repos") || []).filter((k) => allRepos.includes(k)));
+const off = new Set();
+// What is hidden shows beside the button, on the button's count and in the Repositories table.
+// `stored` reads the choice from storage first, as on load and when another tab changed it.
+function showRepos(stored = false) {
+  if (!repoBoxes.length) return;
+  if (stored) {
+    off.clear();
+    for (const k of [].concat(read("repos") || [])) if (allRepos.includes(k)) off.add(k);
+  }
+  const names = allRepos.filter((k) => off.has(k));
+  for (const b of repoBoxes) b.checked = !off.has(b.value);
+  for (const r of document.querySelectorAll("[data-repo-row]"))
+    r.querySelector("[data-repo-off]").hidden = !off.has(r.dataset.repoRow);
+  document.querySelector("[data-repo-said]").textContent = names.length
+    ? `${plural(names.length, "repository", "repositories")} hidden: ${names.join(", ")}.`
+    : "";
+  document.querySelector("[data-repo-all]").hidden = !names.length;
+  document.querySelector("[data-repo-count]").textContent = names.length
+    ? `${allRepos.length - names.length} of ${allRepos.length}`
+    : allRepos.length;
+}
 // A link to an item opens it and shows it whatever person the filter is on.
 const named = () => {
   try {
@@ -415,8 +435,9 @@ function apply(picked = false) {
     const hit = !term || textOf(r).includes(term);
     const ofKind = kind === "all" || !r.dataset.kind || r.dataset.kind === kind;
     r.hidden = !mine(r) || !ofKind || !hit;
-    if (term && hit && ofKind && away(r)) unseen++;
-    else if (term && hit && ofKind && !mine(r)) elsewhere++;
+    if (term && hit && ofKind && !mine(r))
+      if (away(r)) unseen++;
+      else elsewhere++;
     // Options narrow only where one matches: a row found by its title keeps all of them.
     const options = [...r.querySelectorAll("[data-option-row]")];
     const hits = options.map((o) => !!term && o.textContent.toLowerCase().includes(term));
@@ -458,20 +479,6 @@ function apply(picked = false) {
     veto.querySelector("[data-assumed-count]").textContent =
       `${plural(n, "assumption")} agents made`;
   }
-  // What is hidden shows beside the button, on the button's count and in the Repositories table.
-  if (repoBoxes.length) {
-    const names = allRepos.filter((k) => off.has(k));
-    for (const b of repoBoxes) b.checked = !off.has(b.value);
-    for (const r of document.querySelectorAll("[data-repo-row]"))
-      r.querySelector("[data-repo-off]").hidden = !off.has(r.dataset.repoRow);
-    document.querySelector("[data-repo-said]").textContent = names.length
-      ? `${plural(names.length, "repository", "repositories")} hidden: ${names.join(", ")}.`
-      : "";
-    document.querySelector("[data-repo-all]").hidden = !names.length;
-    document.querySelector("[data-repo-count]").textContent = names.length
-      ? `${allRepos.length - names.length} of ${allRepos.length}`
-      : allRepos.length;
-  }
   const none = document.getElementById("admin-nohit");
   if (none) {
     const empty = !!term && !rows().some((r) => !r.hidden && shown(r));
@@ -500,19 +507,21 @@ for (const b of kinds)
     kind = b.dataset.kindButton;
     apply(true);
   });
-// Storage blocked, the choice still applies on this page.
-const keep = () => write("repos", off.size ? [...off] : null);
+// Storage tells the hub's other tabs; blocked, the choice holds for this page.
+const keep = () => {
+  write("repos", off.size ? [...off] : null);
+  showRepos();
+  apply(true);
+};
 for (const b of repoBoxes)
   b.addEventListener("change", () => {
     if (b.checked) off.delete(b.value);
     else off.add(b.value);
     keep();
-    apply(true);
   });
 document.querySelector("[data-repo-all]")?.addEventListener("click", () => {
-  off = new Set();
+  off.clear();
   keep();
-  apply(true);
 });
 search?.addEventListener("input", () => apply());
 addEventListener("keydown", (e) => {
@@ -525,6 +534,8 @@ addEventListener("keydown", (e) => {
 addEventListener("storage", () => {
   for (const d of items) load(d);
   state();
+  showRepos(true);
+  apply();
 });
 for (const g of document.querySelectorAll("details[data-group]")) {
   const n = g.querySelectorAll("[data-updated]:not([hidden])").length;
@@ -544,17 +555,19 @@ if (since && marked) {
   since.hidden = false;
   since.textContent = `${plural(marked, "item")} on this page changed since your last visit, ${moment(updatedSince)}.`;
 }
+showRepos(true);
 apply();
 state();
 function reveal() {
   target = document.getElementById(named());
-  // A link followed on the page shows its row whatever the filters hid.
+  // A link followed on the page shows its row whatever the filters hid, and a row it named before
+  // hides again where its repository is hidden.
   if (target?.closest("[hidden]")) {
     if (target.dataset.who && buttons.length) who = whoFor(target);
     kind = "all";
     if (search) search.value = "";
-    apply();
   }
+  apply();
   for (let e = target; e; e = e.parentElement?.closest("details")) e.open = true;
   target?.scrollIntoView();
   const gone = document.getElementById("admin-gone");

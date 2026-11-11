@@ -52,7 +52,8 @@ export type Page = {
 export type SiteData = {
   version: string;
   people: string[];
-  // People other than the hub's user who own an open item: its "Waiting on others".
+  // People other than the hub's user, and companies and teams, who own an open item: its
+  // "Waiting on others".
   others: string[];
   repos: (Omit<RepoData, "items" | "workFiles"> & {
     items: ViewItem[];
@@ -96,40 +97,45 @@ export const firstWord = (owner = "") => owner.match(/^[\p{L}\p{N}-]+/u)?.[0] ??
 
 // `you` is the hub's user where an item owner names them, else the first person.
 export function siteData(repos: RepoData[], you?: string): SiteData {
-  // An owner's first word up to a space, comma or bracket is an agent where it is lower-case ("an
-  // agent", "orchestrating session"), an article, "Agent", an agent runtime's own name (Claude,
-  // Codex) or a name an agent definition gives. A person is the hub's user or a name, upper-case
-  // and whole, that opens some open item's owner and is no agent's. An item is the first person
-  // its owner names anywhere, so "Ivo drafts, Kim sends" is Kim's. An owner naming none is an
-  // agent's by its first word, else a company's or a team's ("B+L", "eBike Works"), named by the
-  // owner up to its first comma or bracket.
+  // An owner's first word is an agent's where it is lower-case ("an agent", "claude-code"), an
+  // article, "Agent", an agent runtime's own name (Claude, Codex) or a name an agent definition
+  // gives. A person is the hub's user or an upper-case first word of some open item's owner that is
+  // no agent's, and an item is the first person its owner names anywhere, so "Ivo drafts, Kim
+  // sends" is Kim's. A first word joined to the next by "+" or "&" is part of a company's name. An
+  // owner naming no person and starting no agent's way is a company's or a team's ("B+L", "eBike
+  // Works"), named by the owner up to its first comma or bracket.
   const agents = new Set(repos.flatMap((r) => r.agents));
   const isAgent = (w: string) =>
-    /^\p{Ll}+$/u.test(w) || /^(a|an|the|agent|claude|codex)$/i.test(w) || agents.has(w);
+    /^\p{Ll}[\p{Ll}\p{N}-]*$/u.test(w) ||
+    /^(a|an|the|agent|claude|codex)$/i.test(w) ||
+    agents.has(w);
   const open = repos.flatMap((r) => r.items.filter((i) => i.status === "open"));
-  const whole = (owner = "") => owner.match(/^[\p{L}\p{N}-]+(?=$|[\s,;(])/u)?.[0] ?? "";
-  const names = [...new Set([you ?? "", ...open.map((i) => whole(i.owner))])]
+  const joined = (owner: string) => /^[+&]/.test(owner.slice(firstWord(owner).length));
+  const names = [
+    ...new Set([you ?? "", ...open.map((i) => (joined(i.owner ?? "") ? "" : firstWord(i.owner)))]),
+  ]
     .filter((p) => /^\p{Lu}/u.test(p) && !isAgent(p))
     .map((p) => ({ p, re: new RegExp(`(?<![\\p{L}\\p{N}-])${p}(?![\\p{L}\\p{N}-])`, "u") }));
-  const named = (owner = "") =>
-    names
+  const ownerOf = (owner = "") => {
+    const person = names
       .map(({ p, re }) => ({ p, at: owner.search(re) }))
       .filter((x) => x.at >= 0)
       .sort((a, b) => a.at - b.at)[0]?.p;
-  const ofAgent = (owner = "") => isAgent(owner.match(/^[^\s,;()]*/)![0]);
-  const whoOf = (owner = "") =>
-    named(owner) ?? (ofAgent(owner) ? firstWord(owner) : owner.split(/[,;(]/)[0]!.trim());
+    if (person) return { who: person, as: "person" };
+    const party = owner.split(/[,;(]/)[0]!.trim();
+    return !party || (!joined(owner) && isAgent(firstWord(owner)))
+      ? { who: firstWord(owner), as: "agent" }
+      : { who: party, as: "party" };
+  };
   // The filter offers every person who owns an open item: the hub's user first, then whoever owns
   // the most open questions, then the most items; it starts on the first.
   const asked = new Map<string, number>();
   const owned = new Map<string, number>();
   const parties = new Set<string>();
   for (const i of open) {
-    const p = named(i.owner);
-    if (!p) {
-      if (i.owner && !ofAgent(i.owner)) parties.add(whoOf(i.owner));
-      continue;
-    }
+    const { who: p, as } = ownerOf(i.owner);
+    if (as === "party") parties.add(p);
+    if (as !== "person") continue;
     owned.set(p, (owned.get(p) ?? 0) + 1);
     if (i.kind === "decision" || i.kind === "review") asked.set(p, (asked.get(p) ?? 0) + 1);
   }
@@ -155,13 +161,13 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
     const prefix = `${r.key}/`;
     const items = [...r.items].sort(compareItems).map((i) => {
       const recommendedKeys = [i.recommended ?? []].flat();
-      const who = whoOf(i.owner);
+      const { who, as } = ownerOf(i.owner);
       return {
         ...i,
         repo: r.key,
         who,
         html: itemHtml(r, byKey, files, i.body),
-        agent: !!i.owner && !named(i.owner) && ofAgent(i.owner),
+        agent: !!i.owner && as === "agent",
         optionImages: Object.fromEntries(
           Object.entries(imagesOf(i)).map(([k, list]) => [
             k,
