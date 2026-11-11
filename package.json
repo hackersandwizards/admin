@@ -50,7 +50,7 @@
     "@tailwindcss/vite": "4.3.5",
     "@types/bun": "1.4.4",
     "@typescript/native": "npm:typescript@7.0.2",
-    "astro": "7.4.8",
+    "astro": "7.4.10",
     "astrobook": "0.13.3",
     "eslint": "10.14.0",
     "happy-dom": "21.0.4",
@@ -103,7 +103,7 @@
     }
   },
   "overrides": {
-    "minimatch": "11.0.5",
-    "postcss-selector-parser": "7.1.7"
+    "minimatch": "11.0.7",
+    "postcss-selector-parser": "7.2.0"
   }
 }
