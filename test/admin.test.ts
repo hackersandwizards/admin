@@ -16,9 +16,12 @@ import { basename, dirname, join, resolve } from "node:path";
 import { peerDependenciesMeta } from "../package.json";
 import {
   Window,
+  type Element as DomEl,
   type HTMLElement as DomElement,
   type HTMLInputElement as DomInput,
+  type Node as DomNode,
 } from "happy-dom";
+import { tableScroll as brandTableScroll } from "@hackersandwizards/brand/elements/table.ts";
 import { buildSite, PAGE_TYPES, script, siteData } from "../src/build.ts";
 import { findRepos } from "../src/hub.ts";
 import {
@@ -635,19 +638,65 @@ describe("hub", () => {
   });
 
   test("a table's wrapper is named as brand's tableScroll names it", () => {
-    const names = (text: string) =>
-      [
-        ...renderMarkdown("/r", "docs/a.md", text).matchAll(
-          /<div class="hw-table-scroll"([^>]*)>/g,
-        ),
-      ].map(([, attrs]) => attrs!.match(/aria-label="([^"]*)"/)?.[1] ?? null);
+    type Hast = {
+      type: string;
+      tagName?: string;
+      value?: string;
+      properties?: Record<string, unknown>;
+      children?: Hast[];
+    };
+    const dom = (html: string) => {
+      const body = new Window().document.body;
+      body.innerHTML = html;
+      return body;
+    };
+    const hast = (n: DomNode): Hast => {
+      if (n.nodeType === 3) return { type: "text", value: n.textContent ?? "" };
+      if (n.nodeType !== 1) return { type: "comment" };
+      const el = n as DomEl;
+      const children = [...el.childNodes].map(hast);
+      return {
+        type: "element",
+        tagName: el.localName,
+        properties: { className: [...el.classList] },
+        children,
+      };
+    };
+    const wrappers = (n: Hast): Hast[] => [
+      ...([n.properties?.className].flat().includes("hw-table-scroll") ? [n] : []),
+      ...(n.children ?? []).flatMap(wrappers),
+    ];
     const table = (head: string) => `| ${head} | B |\n| - | - |\n| 1 | 2 |\n\n`;
+    const text = `${table("A **b**")}## Prices\n\n${table("x")}${table("y")}<H3>Raw "q" &amp; <i>it</i></H3>\n\n${table("z")}# Next\n\n| |\n|-|\n|1|\n`;
+    const ours = [
+      ...dom(renderMarkdown("/r", "docs/a.md", text)).querySelectorAll(".hw-table-scroll"),
+    ].map((w) => w.getAttribute("aria-label"));
+    const root: Hast = {
+      type: "root",
+      children: [...dom(Bun.markdown.html(text)).childNodes].map(hast),
+    };
+    brandTableScroll()(root);
+    expect(ours).toEqual(
+      wrappers(root).map((w) => (w.properties!.ariaLabel as string | undefined) ?? null),
+    );
+    expect(ours).toEqual(["A b B", "Prices", "Prices (2)", 'Raw "q" & it', "Next"]);
     expect(
-      names(
-        `${table("A")}## Prices\n\n${table("x")}${table("y")}<h3>Raw "q"</h3>\n\n${table("z")}| |\n|-|\n|1|\n`,
-      ),
-    ).toEqual(["A B", "Prices", "Prices (2)", "Raw &quot;q&quot;", "Raw &quot;q&quot; (2)"]);
-    expect(names("| |\n|-|\n|1|\n")).toEqual([null]);
+      [
+        ...dom(renderMarkdown("/r", "docs/a.md", "| |\n|-|\n|1|\n")).querySelectorAll(
+          ".hw-table-scroll",
+        ),
+      ].map((w) => w.getAttribute("aria-label")),
+    ).toEqual([null]);
+  });
+
+  test("a table holding another leaves the wrapper to the inner one", () => {
+    const html = renderMarkdown(
+      "/r",
+      "docs/a.md",
+      "<table><tr><td><table><tr><td>in</td></tr></table></td><td>x</td></tr></table>\n",
+    );
+    expect(html).toContain('<td><div class="hw-table-scroll"');
+    expect(html).toContain("</table></div></td>");
   });
 
   test("reads at HEAD, not the working tree", async () => {
@@ -734,15 +783,11 @@ describe("pages", () => {
     const docPath = join(out, "spoke/doc/docs/agent-work/2026-01-15-sample-topic.html");
     const doc = readFileSync(docPath, "utf8");
     expect(doc).toContain('<article class="prose hw-prose');
-    for (const el of ["hw-table", "hw-quote", "hw-code"])
-      expect(doc).toContain(`class="${el} not-prose"`);
-    // Each table in brand's scroll wrapper, named by the heading above it, else by its column heads.
+    for (const el of ["hw-quote", "hw-code"]) expect(doc).toContain(`class="${el} not-prose"`);
     expect(doc).toContain(
       '<div class="hw-table-scroll" tabindex="0" role="region" aria-label="Scores by reader"><table class="hw-table not-prose">',
     );
-    expect(doc).not.toMatch(
-      /(?<!<div class="hw-table-scroll"[^>]*>)<table class="hw-table not-prose"/,
-    );
+    expect(doc).not.toContain("<table>");
     expect(doc).toContain('<a class="hw-link" href=');
     expect(doc).not.toMatch(/<a [^>]*not-prose/);
     // The title shows above the article, so the article opens on what follows it.

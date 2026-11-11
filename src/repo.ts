@@ -232,32 +232,31 @@ const plain = (html: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-// brand's tableScroll (elements/table.ts), which takes a hast tree, for the HTML string Bun
-// renders: each table in a hw-table-scroll named as brand names it, by the heading above it,
-// numbered from its second table under that heading, else by its column heads. The text keeps
-// Bun's entities, which the attribute decodes; a quote from raw HTML is escaped.
+// brand's tableScroll (elements/table.ts) takes a hast tree: this is the same step on Bun's HTML
+// string, held to brand's names by a test. Entities stay encoded, which the attribute decodes. A
+// table holding another is left to the inner one, so no wrapper closes inside a cell; a raw table
+// with attributes is wrapped as written.
 function tableScroll(html: string) {
   let title = "";
   let under = 0;
   return html.replace(
-    /<(h[1-6])\b[^>]*>([\s\S]*?)<\/\1>|<table>([\s\S]*?<\/table>)/g,
-    (all, h: string | undefined, heading: string, table: string) => {
+    /<(h[1-6])\b[^>]*>((?:(?!<h[1-6]\b)[\s\S])*?)<\/\1>|<table\b([^>]*)>((?:(?!<table\b)[\s\S])*?<\/table>)/gi,
+    (all, h: string | undefined, heading: string, attrs: string, table: string) => {
       if (h) {
         [title, under] = [plain(heading), 0];
         return all;
       }
       if (title) under++;
-      const heads = [
-        ...(table.match(/<tr>([\s\S]*?)<\/tr>/)?.[1] ?? "").matchAll(
-          /<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/g,
-        ),
-      ]
-        .map(([, cell]) => plain(cell!))
-        .filter(Boolean)
-        .join(" ");
-      const name = !title ? heads : under > 1 ? `${title} (${under})` : title;
+      const name = title
+        ? under > 1
+          ? `${title} (${under})`
+          : title
+        : [...table.split(/<\/tr>/i, 1)[0]!.matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)]
+            .map(([, cell]) => plain(cell!))
+            .filter(Boolean)
+            .join(" ");
       const region = name ? ` role="region" aria-label="${name.replaceAll('"', "&quot;")}"` : "";
-      return `<div class="hw-table-scroll" tabindex="0"${region}><table class="hw-table not-prose">${table}</div>`;
+      return `<div class="hw-table-scroll" tabindex="0"${region}><table${attrs || ' class="hw-table not-prose"'}>${table}</div>`;
     },
   );
 }
@@ -319,13 +318,12 @@ function titled(repo: string, path: string, text: string, fallback: string) {
   // From the first <h1 on: an unanchored search would scan to the end once per <h1.
   const h1 = html.slice(Math.max(html.indexOf("<h1"), 0)).match(/^<h1[^>]*>([\s\S]*?)<\/h1>\n?/);
   // Bun's renderer decodes every other entity itself.
-  const title = h1?.[1]
-    ?.replace(/<[^>]*>/g, "")
-    .replace(
+  const title =
+    h1?.[1] &&
+    plain(h1[1]).replace(
       /&(quot|lt|gt|amp);/g,
       (_, e: string) => ({ quot: '"', lt: "<", gt: ">", amp: "&" })[e]!,
-    )
-    .trim();
+    );
   // An h1 without text, such as a lone image, stays in the article.
   if (!h1 || !title) return { path, title: fallback, html };
   return { path, title, html: html.replace(h1[0], "") };
