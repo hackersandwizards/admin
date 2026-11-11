@@ -65,6 +65,8 @@ Other sessions share this working tree and its index.
   commit <path>` answering `no changes added to commit` usually means another session swept your
   edit into its own commit: find it with `git log -m -S` before editing again,
   since a plain `-S` skips merge diffs.
+- In a public repository a commit message carries no company data and no person's words: name
+  what a request asked, never quote it, a brief's verbatim quotation included.
 - The commit author is the machine's git identity for every session. An agent commit is marked only
   by its `Co-Authored-By` line, so git history never says who decided a change: that evidence is a
   message, a record body or a run transcript, and is often unrecorded.
