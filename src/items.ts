@@ -2,7 +2,7 @@ export const WORK_DIR = "docs/agent-work";
 export const ITEMS_DIR = `${WORK_DIR}/items`;
 const KINDS = ["decision", "review", "work", "goal"] as const;
 const STATUSES = ["open", "assumed", "decided"] as const;
-// The parallel-session skill's list: a value outside it would open a group of its own on the page.
+// The parallel-session skill's area values, copied: the package cannot read the skill.
 const AREAS = [
   "backoffice",
   "company",
