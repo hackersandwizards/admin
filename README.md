@@ -160,7 +160,10 @@ decided items come last, under "Settled", each saying what was assumed or decide
 Work an agent owns shows collapsed under "Agents on it", each row a link to its repository's
 page. An item belongs to the first person its `owner` names anywhere ("Ivo drafts, Kim sends" is
 Kim's), a person being the hub's user or a name that opens some open item's owner, and never an
-agent's name, one an agent definition gives or Claude or Codex; a name matches only whole. The hub and each
+agent's name, one an agent definition gives or Claude or Codex; a name matches only whole. An owner
+naming no person and not starting like an agent ("an agent", "Agent (…)") is a company or a team,
+such as `B+L` or `eBike Works`: it keeps its name up to the first comma or bracket, has no button,
+and its items wait under "Waiting on others" and show under "All". The hub and each
 dashboard list open items people other than the hub's user own under "Waiting on others"; the
 hub's user is the machine's git identity by first name where an owner writes it, else the person
 with the most open questions. On the hub and Decisions a row of buttons for every person who owns

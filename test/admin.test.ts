@@ -860,6 +860,19 @@ describe("pages", () => {
     ).toBe("Zoe");
     // The filter offers every person who owns an open item, work alone included.
     expect(siteData([repo]).people.toSorted()).toEqual(["Alex", "Kim", "Sam"]);
+    // An owner that is a company or a team keeps its whole name, gets no button of its own, and
+    // waits under "Waiting on others": neither a person cut at a "+" nor an agent.
+    const parties = ["B+L", "eBike Works", "x&y", "eBike Works, then Kim"];
+    const firms = siteData([{ ...repo, items: [...repo.items, ...parties.map(owned)] }]);
+    expect(firms.people.toSorted()).toEqual(["Alex", "Kim", "Sam"]);
+    expect(firms.others).toEqual(["B+L", "Kim", "Sam", "eBike Works", "x&y"]);
+    const of = (id: string) => firms.repos[0]!.items.find((i) => i.id === id)!;
+    expect(parties.map((p) => [of(p).who, of(p).agent])).toEqual([
+      ["B+L", false],
+      ["eBike Works", false],
+      ["x&y", false],
+      ["Kim", false],
+    ]);
   });
   test("leaving a page asks nothing: answers are stored as they are typed", () => {
     const script = readFileSync(join(import.meta.dir, "../site/src/admin.js"), "utf8");
