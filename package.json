@@ -20,6 +20,7 @@
     "site/src",
     "catalog/*.ts",
     "catalog/*.astro",
+    "!catalog/.astro",
     "catalog/stories",
     "brand-elements.json",
     "docs/*.md",
