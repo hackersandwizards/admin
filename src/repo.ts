@@ -212,8 +212,8 @@ export const when = (ms: number) =>
     hour: "2-digit",
     minute: "2-digit",
   });
-// "#" or "?" would end the path, and an "&" or "'" left as is comes out of the pages' attributes escaped,
-// where the hub's link rewriting no longer finds it.
+// "#" or "?" would end the path, and an "&" or "'" left as is comes out of the pages' attributes
+// escaped, where the hub's link rewriting no longer finds it.
 export const encodeFile = (path: string) =>
   encodeURI(path).replace(/[#?&']/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 export const fileHref = (abs: string) => "file://" + encodeFile(abs);

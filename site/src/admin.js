@@ -376,7 +376,6 @@ let kind = "all";
 const repoBoxes = [...document.querySelectorAll("[data-repo-box]")];
 const allRepos = repoBoxes.map((b) => b.value);
 const off = new Set();
-// What is hidden shows beside the button, on the button's count and in the Repositories table.
 // `stored` reads the choice from storage first, as on load and when another tab changed it.
 function showRepos(stored = false) {
   if (!repoBoxes.length) return;

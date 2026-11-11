@@ -1,7 +1,7 @@
 # Performance, 11 November 2026
 
 Measured by the polish since d2481c6 on an Apple-silicon Mac with 16 cores, each pair back to back:
-before is `ef2a7cb` in a detached worktree, after is `96eed23`. The hub ran on its own port with
+before is `4b0e37e` in a detached worktree, after is `96eed23`. The hub ran on its own port with
 the invented `test/fixtures/spoke` as its one repository.
 
 ## The table step on committed text
