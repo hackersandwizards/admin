@@ -403,13 +403,14 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     return Object.fromEntries(kept) as Record<string, string>;
   };
   const admin = (isObject(pkg.admin) ? pkg.admin : {}) as AdminConfig;
-  // A key is one path segment: a slash or a dot segment in it would write pages outside the build,
-  // and admin.js reads the repository of an answer's key up to its first colon.
+  // A key is letters, digits, ".", "_" and "-", never only dots: a slash, a dot segment or one
+  // percent-encoded would write pages outside the build, a "?" or "#" breaks its addresses, and
+  // admin.js reads the repository of an answer's key up to its first colon.
   const named = typeof admin.name === "string" ? admin.name : undefined;
-  const key = named && /^(?!\.+$)[^/\\:]+$/.test(named) ? named : basename(repo);
+  const key = named && /^(?!\.+$)[\w.-]+$/.test(named) ? named : basename(repo);
   if (named !== undefined && key !== named)
     defects.push(
-      `package.json: admin.name "${named}" is not one path segment without a colon: its pages are under ${key}`,
+      `package.json: admin.name "${named}" is not letters, digits, ".", "_" and "-": its pages are under ${key}`,
     );
   const scriptsMap = texts("scripts");
   const href = (h: string) => {

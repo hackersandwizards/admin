@@ -10,8 +10,8 @@ import { peerDependencies } from "../package.json";
 import { stylesheet } from "../src/build.ts";
 import { createHub } from "../src/serve.ts";
 
-// Stop with what to pin on a peer missing or outside its range: every peer is optional, and bun
-// checks no optional peer's range.
+// Stop with what to pin on a peer missing or outside its range: bun does not check a Git pin's
+// range, and every peer is optional.
 const missing = Object.entries(peerDependencies).filter(([p, range]) => {
   try {
     const { version } = createRequire(import.meta.url)(`${p}/package.json`);

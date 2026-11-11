@@ -476,8 +476,21 @@ describe("admin-check", () => {
     expect(performance.now() - start).toBeLessThan(3_000);
     expect(repo.key).toBe("x");
     expect(repo.defects).toContain(
-      'package.json: admin.name "../../spoke" is not one path segment without a colon: its pages are under x',
+      'package.json: admin.name "../../spoke" is not letters, digits, ".", "_" and "-": its pages are under x',
     );
+    // A dot segment percent-encoded, a route, a colon or a query take the folder name too.
+    for (const name of ["%2e%2e", "_astro/x", "a:b", "a?b", ".."]) {
+      const pkg = JSON.stringify({ admin: { name } });
+      const read = await readRepo("/nonexistent/x", {
+        paths: ["package.json"],
+        read: () => pkg,
+      });
+      expect(read.key).toBe("x");
+    }
+    const kept = JSON.stringify({ admin: { name: "web-site_2.0" } });
+    expect(
+      (await readRepo("/nonexistent/x", { paths: ["package.json"], read: () => kept })).key,
+    ).toBe("web-site_2.0");
   });
 });
 
@@ -1308,6 +1321,7 @@ describe("serve", () => {
     const repo = repoFrom("spoke");
     const hub = createHub({ root: dirname(repo) });
     const get = (path: string) => hub.fetch(new Request(`http://admin.localhost${path}`));
+    const asked = Date.now();
     const first = await (await get("/")).text();
     expect(first).toContain("Which variant ships?");
     expect(first).not.toContain("file://");
@@ -1368,8 +1382,9 @@ describe("serve", () => {
       expect([r.status, (await r.text()).includes("admin-missing-path")]).toEqual([404, false]);
     }
     expect(await (await get("/a/<b>")).text()).toContain("answers at /a/%3Cb%3E:");
-    // The hub says it is current as of the request.
-    expect(first).toContain(`· as of <span data-stamp>${when(Date.now())}</span>`);
+    // The hub says it is current as of the request, in the minute it was asked or the next.
+    const stamp = first.match(/· as of <span data-stamp>([^<]*)<\/span>/)?.[1];
+    expect([when(asked), when(Date.now())]).toContain(stamp!);
     // So does the hub's other page, a day after its build.
     const later = Date.now() + 864e5;
     const clock = spyOn(Date, "now").mockReturnValue(later);
