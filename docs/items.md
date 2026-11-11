@@ -3,7 +3,7 @@
 The item format, its fields and how agents use items: the `parallel-session` skill,
 [`.claude/skills/parallel-session/SKILL.md`](../.claude/skills/parallel-session/SKILL.md). This
 file adds what `admin-check` enforces and how the hub treats item files. It does not check the
-skill's conventions, such as the list of `area` values or JPEG images at most 1600 px wide.
+skill's conventions, such as JPEG images at most 1600 px wide.
 
 One Markdown file per item in `docs/agent-work/items/<id>.md`, its images beside it in
 `docs/agent-work/items/<id>/`. Git history is the log. A decided or finished item is deleted, with
@@ -17,7 +17,7 @@ kind: decision # decision | review | work | goal
 status: open # open | assumed | decided
 priority: 2 # 1 to 3, 1 costs most if missed; not on a goal
 owner: Alex # who answers, or for work who moves next
-area: product # optional
+area: product # optional, one of the values below
 recommended: a # optional, an option key; a list where multiple is true
 multiple: false # optional, true lets the person pick several options
 options:
@@ -58,6 +58,8 @@ The question's context, in Markdown.
 - An `assumed` item states `assumption` or `recommended`. A `decided` item states `decision` and
   `by`, and may quote the person in `quote`.
 - Work and goals are only ever `open`.
+- `area` is one of backoffice, company, marketing, sales, delivery, finance, people, product,
+  legal, software-engineering, brand.
 - `due` is a calendar day as an ISO date. `order` and `evidence` are optional.
 - A table, such as scores per criterion, goes in the body as Markdown.
 - No `GOAL.md` or `docs/tracking/decisions/items.js` remains.

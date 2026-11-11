@@ -221,7 +221,11 @@ describe("item files", () => {
     const defects = (more: object) => itemDefects({ ...valid, ...more } as Item, exists);
     expect(defects({ due: "2026-13-45" })).toContain("due 2026-13-45 not ISO");
     expect(defects({ due: "2028-02-29" })).toEqual([]);
-    expect(defects({ area: { a: 1 } })).toContain("area is not text");
+    expect(defects({ area: { a: 1 } })).toEqual(["area is not text"]);
+    expect(defects({ area: "software-engineering" })).toEqual([]);
+    expect(defects({ area: "Product" })).toEqual([
+      "area Product is not one of backoffice, company, marketing, sales, delivery, finance, people, product, legal, software-engineering, brand",
+    ]);
     const options = (a: object) => ({
       options: [
         { key: "a", label: "A", ...a },
