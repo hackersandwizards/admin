@@ -26,9 +26,8 @@ them when they are missing or outside their range.
 
 ## Addresses
 
-`bun run dev` in this checkout runs `admin-serve`, the one hub: open `http://admin.localhost:4329`.
 One repository's own pages open at `http://admin.localhost:4329/<repo>`, such as `/website`,
-which leads to its dashboard with only its items. `<repo>` is the folder name, or `admin.name` in
+which leads to its dashboard with only its items. `<repo>` is the folder name, any character but letters, digits, `.`, `_` and `-` as `-`, or `admin.name` in
 its `package.json` where that holds only letters, digits, `.`, `_` and `-`, and not only dots
 (otherwise a defect, and the folder name stays); where two checkouts share it, or it names a page
 or route of the hub (`index`, `architecture`, `404`, `catalog`, `_astro`, `_file`), the parent
@@ -43,7 +42,7 @@ A repository shows in the hub when its HEAD has `docs/agent-work/items/` or its 
 ## The admin area
 
 Dashboard, Decisions, Work, Reviews (open review requests and open decisions between images, then
-each `docs/agent-work/<date>-<topic>/` folder with its images and report), Docs (reports and the rest of `docs/`, a fold per folder, open where it holds ten docs or fewer), Catalog, the repository's products,
+each `docs/agent-work/<date>-<topic>/` folder with its images and report), Docs (reports, the rest of `docs/` and the Markdown files at the root, a fold per folder, open where it holds ten docs or fewer), Catalog, the repository's products,
 Architecture (package, pins, scripts with their first comment line), Checks (the steps of
 `check:all` or `check`) and Log.
 
@@ -56,7 +55,7 @@ page. An item belongs to the first person its `owner` names anywhere ("Ivo draft
 Kim's), a person being the hub's user or a name that opens some open item's owner, and never an
 agent's name, one an agent definition gives or Claude or Codex; a name matches only whole. An owner
 naming no person and not starting like an agent ("an agent", "Agent (…)") is a company or a team,
-such as `B+L` or `eBike Works`: it keeps its name up to the first comma or bracket, has no button,
+such as `B+L` or `eBike Works`: it keeps its name up to the first comma, semicolon or `(`, has no button,
 and its items wait under "Waiting on others" and show under "All". The hub and each
 dashboard list open items people other than the hub's user own under "Waiting on others"; the
 hub's user is the machine's git identity by first name where an owner writes it, else the person
@@ -144,5 +143,5 @@ A repository configures what convention cannot find under `admin` in its `packag
 }
 ```
 
-An `href` without a scheme is a path in the repository: the hub serves it from HEAD, and a file it
+A product's optional `description` leads its page. An `href` without a scheme is a path in the repository: the hub serves it from HEAD, and a file it
 links under `node_modules/` from the installed package.

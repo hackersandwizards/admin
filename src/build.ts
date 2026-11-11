@@ -103,7 +103,7 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
   // no agent's, and an item is the first person its owner names anywhere, so "Ivo drafts, Kim
   // sends" is Kim's. A first word joined to the next by "+" or "&" is part of a company's name. An
   // owner naming no person and starting no agent's way is a company's or a team's ("B+L", "eBike
-  // Works"), named by the owner up to its first comma or bracket.
+  // Works"), named by the owner up to its first comma, semicolon or "(".
   const agents = new Set(repos.flatMap((r) => r.agents));
   const isAgent = (w: string) =>
     /^\p{Ll}[\p{Ll}\p{N}-]*$/u.test(w) ||

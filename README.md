@@ -11,7 +11,7 @@ it belongs to.
 | to write an item file                                    | [docs/items.md](docs/items.md): where it goes, every field, what the check rejects                                                       |
 | to answer the open decisions                             | [Run the hub](#run-the-hub), then [Answers](docs/hub.md#answers)                                                                         |
 | what the hub shows, what it loads and what you configure | [docs/hub.md](docs/hub.md), with [Configuration](docs/hub.md#configuration) and [What a page may load](docs/hub.md#what-a-page-may-load) |
-| every page and component, on invented data               | the catalog, opened from the hub as in [Run the hub](#run-the-hub)                                                                       |
+| every page and component, on invented data               | the catalog, linked in the hub's rail: [docs/hub.md](docs/hub.md#addresses)                                                              |
 | to change the engine                                     | [Work on the package](#work-on-the-package)                                                                                              |
 
 ## Install
@@ -33,7 +33,7 @@ Requirements: bun 1.4 or newer, and Git on the `PATH`: every command reads repos
 ## Commands
 
 - `admin-check [<repo>...]` checks the item files in the working tree, default the current directory. Exit 1 on a defect.
-- `admin-serve [--root <dir>] [--port <n>]` serves the hub at `http://admin.localhost:4329` for the repositories under `~/dev`, each from its HEAD.
+- `admin-serve` serves the hub: [docs/hub.md](docs/hub.md#run-it).
 
 ## Check your items
 
@@ -47,10 +47,8 @@ it prints `ok: <n> item(s) in <repo>`, or each defect and exit 1. What it enforc
 ## Run the hub
 
 Clone this repository, run `bun install`, then `bun run dev`: it runs `admin-serve`, the one hub.
-Open `http://admin.localhost:4329`. A repository shows in the hub when its HEAD has
-`docs/agent-work/items/` or its `package.json` names an `@hackersandwizards` package, so an item
-shows once committed. One repository's own pages open at `http://admin.localhost:4329/<repo>`, the
-engine's catalog at `/catalog/`.
+Open `http://admin.localhost:4329`. Which repositories it shows and their addresses:
+[docs/hub.md](docs/hub.md#addresses).
 
 "Copy answers" on the hub puts your answers on the clipboard. Paste them into an agent session in
 one of the repositories: the agent writes each answer for that repository into its item and hands the

@@ -414,7 +414,9 @@ const said = new Map();
 const textOf = (r) => {
   if (!said.has(r)) {
     const copy = r.cloneNode(true);
-    for (const x of copy.querySelectorAll("[data-updated], .mark, .saved, [data-stale]"))
+    for (const x of copy.querySelectorAll(
+      "[data-updated], .mark, .saved, [data-stale], [data-repo-off]",
+    ))
       x.remove();
     said.set(r, copy.textContent.toLowerCase());
   }
@@ -449,6 +451,12 @@ function apply(picked = false) {
     g.hidden = !n || (filtered && g.dataset.whoGroup === who);
     const c = g.querySelector(":scope > summary [data-count]");
     if (c) c.textContent = n;
+    const u = g.querySelector(":scope > summary [data-updated-count]");
+    const changed = g.querySelectorAll("[data-row]:not([hidden]) [data-updated]:not([hidden])");
+    if (u) {
+      u.hidden = !changed.length;
+      u.textContent = `· ${changed.length} updated`;
+    }
     if (term && n) g.open = true;
   }
   // A section left without a row to show steps aside, but the one holding the filters.
@@ -479,6 +487,7 @@ function apply(picked = false) {
     veto.querySelector("[data-assumed-count]").textContent =
       `${plural(n, "assumption")} agents made`;
   }
+  sinceLine();
   const none = document.getElementById("admin-nohit");
   if (none) {
     const empty = !!term && !rows().some((r) => !r.hidden && shown(r));
@@ -531,29 +540,30 @@ addEventListener("keydown", (e) => {
     search?.focus();
   }
 });
-addEventListener("storage", () => {
-  for (const d of items) load(d);
+// Another tab's write reloads only what it changed, so a note being typed here keeps its text.
+// A null key is storage cleared.
+addEventListener("storage", (e) => {
+  for (const d of items) if (e.key === null || e.key === STORE + d.dataset.k) load(d);
   state();
-  showRepos(true);
-  apply();
-});
-for (const g of document.querySelectorAll("details[data-group]")) {
-  const n = g.querySelectorAll("[data-updated]:not([hidden])").length;
-  const c = g.querySelector(":scope > summary [data-updated-count]");
-  if (c && n) {
-    c.hidden = false;
-    c.textContent = `· ${n} updated`;
+  if (e.key === null || e.key === STORE + "repos") {
+    showRepos(true);
+    apply();
   }
-}
-const since = document.getElementById("admin-since");
-const marked = new Set(
-  [...document.querySelectorAll("[data-updated]:not([hidden])")].map(
-    (m) => m.closest("[data-k]").dataset.k,
-  ),
-).size;
-if (since && marked) {
-  since.hidden = false;
-  since.textContent = `${plural(marked, "item")} on this page changed since your last visit, ${moment(updatedSince)}.`;
+});
+// The rows of hidden repositories do not count.
+function sinceLine() {
+  const since = document.getElementById("admin-since");
+  if (!since) return;
+  const marked = new Set(
+    [...document.querySelectorAll("[data-updated]:not([hidden])")]
+      .map((m) => m.closest("[data-k]"))
+      .filter((r) => !off.has(r.dataset.repo))
+      .map((r) => r.dataset.k),
+  ).size;
+  since.hidden = !marked;
+  since.textContent = marked
+    ? `${plural(marked, "item")} on this page changed since your last visit, ${moment(updatedSince)}.`
+    : "";
 }
 showRepos(true);
 apply();

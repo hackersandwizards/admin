@@ -5,7 +5,7 @@ import { statSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { ITEMS_DIR } from "./items.ts";
-import { gitAsync, type RepoData } from "./repo.ts";
+import { asKey, gitAsync, type RepoData } from "./repo.ts";
 
 const SKIP = new Set(["node_modules", "dist", "build", "target", "vendor", "venv", "coverage"]);
 
@@ -63,7 +63,7 @@ export function uniqueKeys(repos: RepoData[]): RepoData[] {
   const used = new Set(repos.map((r) => r.key));
   return repos.map((r) => {
     if (counts.get(r.key) === 1 && !RESERVED.has(r.key)) return r;
-    const base = `${basename(dirname(r.path))}-${r.key}`;
+    const base = `${asKey(basename(dirname(r.path)))}-${r.key}`;
     let key = base;
     for (let n = 2; used.has(key) || RESERVED.has(key); n++) key = `${base}-${n}`;
     used.add(key);

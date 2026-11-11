@@ -476,6 +476,8 @@ describe("admin-check", () => {
       "docs/h1.md": `<div>\n${"<h1>".repeat(40_000)}\n</div>\n`,
       "docs/input.md": `<div>\n${'<input type="checkbox" class="task-list-item-checkbox"'.repeat(40_000)}\n</div>\n`,
       "scripts/a.ts": `// a${" ".repeat(160_000)}b\n`,
+      "docs/table.md": `<div>\n${"<table ".repeat(40_000)}\n</div>\n`,
+      "docs/h2.md": `<div>\n<h2>${"<".repeat(160_000)}</h2>\n</div>\n`,
     };
     const start = performance.now();
     const repo = await readRepo("/nonexistent/x", {
@@ -496,6 +498,10 @@ describe("admin-check", () => {
       });
       expect(read.key).toBe("x");
     }
+    // A folder's name keeps its other characters as "-".
+    expect((await readRepo("/nonexistent/a#b c:d", { paths: [], read: () => "" })).key).toBe(
+      "a-b-c-d",
+    );
     const kept = JSON.stringify({ admin: { name: "web-site_2.0" } });
     expect(
       (await readRepo("/nonexistent/x", { paths: ["package.json"], read: () => kept })).key,
@@ -703,6 +709,12 @@ describe("hub", () => {
     );
     expect(html).toContain('<td><div class="hw-table-scroll"');
     expect(html).toContain("</table></div></td>");
+    // A raw table keeps its own attributes.
+    expect(
+      renderMarkdown("/r", "docs/a.md", '<table class="x"><tr><td>a</td></tr></table>\n'),
+    ).toContain(
+      '<div class="hw-table-scroll" tabindex="0" role="region" aria-label="a"><table class="x">',
+    );
   });
 
   test("reads at HEAD, not the working tree", async () => {
@@ -885,6 +897,9 @@ describe("pages", () => {
     expect(dueOf("2026-11-03", now).text).toStartWith("was due 3 Nov");
     expect(dueOf("2026-11-13", now).tone).toBe("soon");
     expect(dueOf("2026-12-13", now).tone).toBe("later");
+    // A day more than 300 days away names its year, ahead as behind.
+    const ahead = new Date(Date.now() + 400 * 864e5).toLocaleDateString("sv-SE");
+    expect(dueOf(ahead).text).toMatch(/ \d{4}$/);
     // West of UTC too, the pill names the day written.
     inZone("America/New_York", () =>
       expect(dueOf("2026-11-20", new Date(2026, 10, 10, 12).getTime()).text).toBe("due 20 Nov"),
@@ -936,7 +951,7 @@ describe("pages", () => {
     expect(siteData([repo]).people.toSorted()).toEqual(["Alex", "Kim", "Sam"]);
     // An owner that is a company or a team keeps its whole name, gets no button of its own, and
     // waits under "Waiting on others": neither a person cut at a "+" nor an agent.
-    const parties = ["B+L", "eBike Works", "x&y", "eBike Works, then Kim"];
+    const parties = ["B+L", "eBike Works", "x&y", "eBike Works, then Kim", "B+L; next week"];
     const firms = siteData([{ ...repo, items: [...repo.items, ...parties.map(owned)] }]);
     expect(firms.people.toSorted()).toEqual(["Alex", "Kim", "Sam"]);
     expect(firms.others).toEqual(["B+L", "Kim", "Sam", "eBike Works", "x&y"]);
@@ -946,6 +961,7 @@ describe("pages", () => {
       ["eBike Works", false],
       ["x&y", false],
       ["Kim", false],
+      ["B+L", false],
     ]);
     // A person's name ends at any other mark, an agent's word may hold a hyphen, and an owner
     // opening with a bracket names no company.
@@ -1340,6 +1356,21 @@ describe("admin.js", () => {
     page.location.hash = "";
     page.dispatchEvent(new page.Event("hashchange"));
     expect(shown()).toBe(0);
+    // Another tab showing it again shows it here, and a write of anything else leaves a note being
+    // typed as it is.
+    page.localStorage.removeItem("admin-answers:repos");
+    page.dispatchEvent(new page.StorageEvent("storage", { key: "admin-answers:repos" }));
+    expect(shown()).toBeGreaterThan(0);
+    const note = doc.querySelector(
+      '[data-k="spoke:check-the-copy"] textarea',
+    ) as unknown as DomInput;
+    note.value = "fine ";
+    page.dispatchEvent(new page.StorageEvent("storage", { key: "admin-answers:seen" }));
+    expect(note.value).toBe("fine ");
+    // The word on a repository's "hidden" mark is no text a search finds.
+    search.value = "hidden";
+    search.dispatchEvent(new page.Event("input"));
+    expect(doc.querySelector('[data-repo-row="spoke"]')!.hasAttribute("hidden")).toBe(true);
   });
 
   test("a new visit starts on the hub's user; a link to an item gone says so", () => {
@@ -1384,6 +1415,13 @@ describe("admin.js", () => {
     expect(back.document.getElementById("admin-since")!.textContent).toContain(
       "changed since your last visit",
     );
+    // A hidden repository's rows count nowhere.
+    const away = open("index", {
+      "admin-answers:seen": hours(2),
+      "admin-answers:repos": '["spoke"]',
+    });
+    expect(away.document.querySelector("[data-updated-count]:not([hidden])")).toBeNull();
+    expect(away.document.getElementById("admin-since")!.hasAttribute("hidden")).toBe(true);
   });
 
   test("a row shown on the visit before compares its file, not its commit time", () => {

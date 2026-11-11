@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Checks a repository's item files in docs/agent-work/items (fields, status, options, images and
-// image folders) from the working tree, and fails while a legacy GOAL.md or items.js remains.
+// image folders) from the working tree, and fails while a legacy GOAL.md or docs/tracking/ remains.
 import { existsSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WORK_DIR } from "../src/items.ts";

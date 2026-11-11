@@ -65,7 +65,7 @@ export const day = (seconds: number) =>
   new Date(seconds * 1000).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
-    year: Date.now() - seconds * 1000 > 300 * DAY ? "numeric" : undefined,
+    year: Math.abs(Date.now() - seconds * 1000) > 300 * DAY ? "numeric" : undefined,
   });
 
 // A due date as a row says it: past in the error's red, today in amber, within a week in the pill's

@@ -12,6 +12,12 @@ import {
 
 const LEGACY = ["GOAL.md"];
 
+// A key is letters, digits, ".", "_" and "-", never only dots: a slash, a dot segment or one
+// percent-encoded would write pages outside the build, a "?" or "#" breaks its addresses, and
+// admin.js reads the repository of an answer's key up to its first colon. A folder's name keeps
+// its other characters as "-".
+export const asKey = (folder: string) => folder.replace(/[^\w.-]/g, "-");
+
 export type Source = { paths: string[]; read: (path: string) => string | undefined };
 
 // A hook exports GIT_DIR, GIT_INDEX_FILE and the like, which point git at the hook's repository
@@ -228,19 +234,20 @@ export const thumbnail = (href: string) => ({
 
 const plain = (html: string) =>
   html
-    .replace(/<[^>]*>/g, "")
+    .replace(/<[^<>]*>/g, "")
     .replace(/\s+/g, " ")
     .trim();
 
 // brand's tableScroll (elements/table.ts) takes a hast tree: this is the same step on Bun's HTML
 // string, held to brand's names by a test. Entities stay encoded, which the attribute decodes. A
 // table holding another is left to the inner one, so no wrapper closes inside a cell; a raw table
-// with attributes is wrapped as written.
+// with attributes is wrapped as written. A tag ends before the next "<", so an unclosed one costs
+// no scan to the end of the text.
 function tableScroll(html: string) {
   let title = "";
   let under = 0;
   return html.replace(
-    /<(h[1-6])\b[^>]*>((?:(?!<h[1-6]\b)[\s\S])*?)<\/\1>|<table\b([^>]*)>((?:(?!<table\b)[\s\S])*?<\/table>)/gi,
+    /<(h[1-6])\b[^<>]*>((?:(?!<h[1-6]\b)[\s\S])*?)<\/\1>|<table\b([^<>]*)>((?:(?!<table\b)[\s\S])*?<\/table>)/gi,
     (all, h: string | undefined, heading: string, attrs: string, table: string) => {
       if (h) {
         [title, under] = [plain(heading), 0];
@@ -251,7 +258,11 @@ function tableScroll(html: string) {
         ? under > 1
           ? `${title} (${under})`
           : title
-        : [...table.split(/<\/tr>/i, 1)[0]!.matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)]
+        : [
+            ...table
+              .split(/<\/tr>/i, 1)[0]!
+              .matchAll(/<t[hd]\b[^<>]*>((?:(?!<t[hd]\b)[\s\S])*?)<\/t[hd]>/gi),
+          ]
             .map(([, cell]) => plain(cell!))
             .filter(Boolean)
             .join(" ");
@@ -435,11 +446,8 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     return Object.fromEntries(kept) as Record<string, string>;
   };
   const admin = (isObject(pkg.admin) ? pkg.admin : {}) as AdminConfig;
-  // A key is letters, digits, ".", "_" and "-", never only dots: a slash, a dot segment or one
-  // percent-encoded would write pages outside the build, a "?" or "#" breaks its addresses, and
-  // admin.js reads the repository of an answer's key up to its first colon.
   const named = typeof admin.name === "string" ? admin.name : undefined;
-  const key = named && /^(?!\.+$)[\w.-]+$/.test(named) ? named : basename(repo);
+  const key = named && /^(?!\.+$)[\w.-]+$/.test(named) ? named : asKey(basename(repo));
   if (named !== undefined && key !== named)
     defects.push(
       `package.json: admin.name "${named}" is not letters, digits, ".", "_" and "-": its pages are under ${key}`,
