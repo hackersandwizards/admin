@@ -17,7 +17,7 @@ kind: decision # decision | review | work | goal
 status: open # open | assumed | decided
 priority: 2 # 1 to 3, 1 costs most if missed; not on a goal
 owner: Alex # who answers, or for work who moves next
-area: product # optional
+area: product # optional, free text
 recommended: a # optional, an option key; a list where multiple is true
 multiple: false # optional, true lets the person pick several options
 options:
@@ -58,7 +58,6 @@ The question's context, in Markdown.
 - An `assumed` item states `assumption` or `recommended`. A `decided` item states `decision` and
   `by`, and may quote the person in `quote`.
 - Work and goals are only ever `open`.
-- `area` is one of the values the skill lists; the defect names them.
 - `due` is a calendar day as an ISO date. `order` and `evidence` are optional.
 - A table, such as scores per criterion, goes in the body as Markdown.
 - No `GOAL.md` or `docs/tracking/decisions/items.js` remains.

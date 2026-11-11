@@ -2,20 +2,6 @@ export const WORK_DIR = "docs/agent-work";
 export const ITEMS_DIR = `${WORK_DIR}/items`;
 const KINDS = ["decision", "review", "work", "goal"] as const;
 const STATUSES = ["open", "assumed", "decided"] as const;
-// The parallel-session skill's area values, copied: the package cannot read the skill.
-const AREAS = [
-  "backoffice",
-  "company",
-  "marketing",
-  "sales",
-  "delivery",
-  "finance",
-  "people",
-  "product",
-  "legal",
-  "software-engineering",
-  "brand",
-];
 
 export type Option = {
   key: string;
@@ -124,8 +110,6 @@ export function itemDefects(item: Item, exists: (path: string) => boolean): stri
   if (item.order !== undefined && typeof item.order !== "number") d.push(`order ${item.order}`);
   if (kind !== "goal" && !item.owner) d.push("lacks owner");
   for (const f of TEXTS) if (item[f] !== undefined && !isText(item[f])) d.push(`${f} is not text`);
-  if (isText(item.area) && !AREAS.includes(String(item.area)))
-    d.push(`area ${item.area} is not one of ${AREAS.join(", ")}`);
   if (item.due !== undefined && !isDay(item.due)) d.push(`due ${item.due} not ISO`);
   if ((kind === "work" || kind === "goal") && status !== "open") d.push(`${kind} is ${status}`);
   const options = item.options ?? [];
