@@ -1288,7 +1288,6 @@ describe("serve", () => {
     const packages = await (await get("/architecture")).text();
     clock.mockRestore();
     expect(packages).toContain(`· as of <span data-stamp>${when(later)}</span>`);
-    // Every script, on the hub and on a nested page, resolves under the one path the policy runs.
     const nested = await decisions.text();
     // A page travels gzipped where the browser takes it, and a hashed asset stays in its cache.
     const zipped = await hub.fetch(
@@ -1301,6 +1300,7 @@ describe("serve", () => {
     const css = first.match(/href="\.\/(_astro\/[^"]+\.css)"/)![1]!;
     expect((await get(`/${css}`)).headers.get("cache-control")).toContain("immutable");
     expect(decisions.headers.get("cache-control")).toBe("no-store");
+    // Every script, on the hub and on a nested page, resolves under the one path the policy runs.
     for (const [page, html] of [
       ["/", first],
       ["/spoke/decisions", nested],
@@ -1549,7 +1549,8 @@ describe("serve", () => {
     expect((await new Bun.Image(await small.bytes()).metadata()).width).toBe(480);
     const tall = await new Bun.Image(await (await get("tall.png?w=480")).bytes()).metadata();
     expect([tall.width, tall.height]).toEqual([54, 270]);
-    // The full file: no width, a width the hub does not offer, or an image that already fits.
+    // The full file: no width, a width the hub does not offer, an image that already fits, or a
+    // file that is no image.
     for (const q of ["wide.png", "wide.png?w=123", "small.png?w=480", "broken.png?w=480"])
       expect((await get(q)).headers.get("content-type")).toBe("image/png");
     const repeat = await get("wide.png?w=480", { "if-none-match": small.headers.get("etag")! });

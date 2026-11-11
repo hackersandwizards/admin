@@ -1,7 +1,6 @@
 // Runs on every admin page. src/build.ts bundles it with brand's element script into one classic
 // script, not a module, so a page opened from disk loads it; a file of its own, since admin-serve's
 // Content-Security-Policy runs no inline script.
-// A copied answer to an item gone from its repository is dropped.
 import { enhance } from "@hackersandwizards/brand/elements/behaviour.ts";
 
 enhance();
@@ -219,7 +218,6 @@ function save(d) {
   if (write(d.dataset.k, a)) mark(d, a);
   state();
 }
-// In page order, then the answers to items not on this page.
 const answered = () => {
   const order = [...new Set([...document.querySelectorAll("[data-k]")].map((r) => r.dataset.k))];
   const at = (k) => (order.includes(k) ? order.indexOf(k) : order.length);
@@ -247,8 +245,7 @@ const copy = document.getElementById("copy");
 const status = document.getElementById("state");
 const idle = status?.textContent.trim();
 // brand's copy button (enhance(), data-hw-copy) copies the block and says on itself how it went:
-// a copy passes relabel false, so that label stays. A copy holds what was not copied yet, and
-// every answer again once nothing is new.
+// a copy passes relabel false, so that label stays.
 function state(relabel = true) {
   if (!copy) return;
   const keys = answered();
@@ -407,7 +404,6 @@ function apply(picked = false) {
   }
   for (const b of buttons) b.setAttribute("aria-pressed", String(b.dataset.whoButton === who));
   for (const b of kinds) b.setAttribute("aria-pressed", String(b.dataset.kindButton === kind));
-  // Each kind's open rows for the person, and the assumptions they may veto.
   const open = [...document.querySelectorAll("details.item[data-status=open]")].filter(mine);
   for (const b of kinds) {
     const n = open.filter(
@@ -463,7 +459,6 @@ addEventListener("storage", () => {
   for (const d of items) load(d);
   state();
 });
-// Each fold says how many of its rows changed since the last visit, and the page how many in all.
 for (const g of document.querySelectorAll("details[data-group]")) {
   const n = g.querySelectorAll("[data-updated]:not([hidden])").length;
   const c = g.querySelector(":scope > summary [data-updated-count]");
@@ -484,8 +479,6 @@ if (since && marked) {
 }
 apply();
 state();
-// A link to a row opens it and every disclosure around it; one to an item no page lists any more
-// says so.
 function reveal() {
   target = document.getElementById(named());
   // A link followed on the page shows its row whatever the filters hid.

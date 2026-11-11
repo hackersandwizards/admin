@@ -94,7 +94,7 @@ const packages =
     ? [...new Set(d.repos.flatMap((r) => pins(r).map(([n]) => n)))].sort()
     : [];
 const answersAll = page.type === "decisions" || page.type === "hub";
-// A folder of docs this small opens, so a short list reads as before; a larger one waits closed.
+// A folder of docs this small opens; a larger one waits closed.
 const FOLDER_OPEN = 10;
 // Every page with answerable rows hands its answers over from where they were given.
 const answerable = answersAll || ["dashboard", "work", "reviews"].includes(page.type);

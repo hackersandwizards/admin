@@ -331,7 +331,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
       else (paths = next).catch(() => (paths = undefined));
     }
     const current = await paths;
-    // A repository gone from the search leaves no entry for /_file/ to find under its key.
+    // A repository gone from the search keeps no entry: its failed read would stay in the notice.
     for (const p of read.keys()) if (!current.includes(p)) read.delete(p);
     for (const p of unread.keys()) if (!current.includes(p)) unread.delete(p);
     for (const p of fetchedNow.keys()) if (!current.includes(p)) fetchedNow.delete(p);
