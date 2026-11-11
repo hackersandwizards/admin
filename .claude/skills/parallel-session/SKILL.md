@@ -138,7 +138,9 @@ remains.
 
 An unattended `claude -p` run starts detached through `${CLAUDE_SKILL_DIR}/run.sh`;
 `net-watch.sh` beside it relaunches one a dropped connection ended, `watch.sh` prints each that
-finished. Each script's first lines give its usage.
+finished. A start of `net-watch.sh` replaces the one already watching that run folder; it reads
+`runs` every minute and exits once every run it lists has ended, so a changed list needs no
+restart and a later wave a new start. Each script's first lines give its usage.
 
 ## Shared checkout or worktree
 
