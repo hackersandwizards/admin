@@ -452,8 +452,8 @@ function apply(picked = false) {
     const c = g.querySelector(":scope > summary [data-count]");
     if (c) c.textContent = n;
     const u = g.querySelector(":scope > summary [data-updated-count]");
-    const changed = g.querySelectorAll("[data-row]:not([hidden]) [data-updated]:not([hidden])");
     if (u) {
+      const changed = g.querySelectorAll("[data-row]:not([hidden]) [data-updated]:not([hidden])");
       u.hidden = !changed.length;
       u.textContent = `· ${changed.length} updated`;
     }
@@ -487,7 +487,20 @@ function apply(picked = false) {
     veto.querySelector("[data-assumed-count]").textContent =
       `${plural(n, "assumption")} agents made`;
   }
-  sinceLine();
+  // The page's changed items, but those a hidden repository holds.
+  const since = document.getElementById("admin-since");
+  if (since) {
+    const marked = new Set(
+      [...document.querySelectorAll("[data-updated]:not([hidden])")]
+        .map((m) => m.closest("[data-k]"))
+        .filter((r) => !away(r))
+        .map((r) => r.dataset.k),
+    ).size;
+    since.hidden = !marked;
+    since.textContent = marked
+      ? `${plural(marked, "item")} on this page changed since your last visit, ${moment(updatedSince)}.`
+      : "";
+  }
   const none = document.getElementById("admin-nohit");
   if (none) {
     const empty = !!term && !rows().some((r) => !r.hidden && shown(r));
@@ -540,31 +553,18 @@ addEventListener("keydown", (e) => {
     search?.focus();
   }
 });
-// Another tab's write reloads only what it changed, so a note being typed here keeps its text.
-// A null key is storage cleared.
+// Another tab's write reloads only what it changed, so a note being typed here keeps its text;
+// a copy there marks the rows copied. A null key is storage cleared.
 addEventListener("storage", (e) => {
-  for (const d of items) if (e.key === null || e.key === STORE + d.dataset.k) load(d);
+  for (const d of items)
+    if (e.key === null || e.key === STORE + d.dataset.k) load(d);
+    else if (e.key === STORE + "copied") mark(d, read(d.dataset.k));
   state();
   if (e.key === null || e.key === STORE + "repos") {
     showRepos(true);
     apply();
   }
 });
-// The rows of hidden repositories do not count.
-function sinceLine() {
-  const since = document.getElementById("admin-since");
-  if (!since) return;
-  const marked = new Set(
-    [...document.querySelectorAll("[data-updated]:not([hidden])")]
-      .map((m) => m.closest("[data-k]"))
-      .filter((r) => !off.has(r.dataset.repo))
-      .map((r) => r.dataset.k),
-  ).size;
-  since.hidden = !marked;
-  since.textContent = marked
-    ? `${plural(marked, "item")} on this page changed since your last visit, ${moment(updatedSince)}.`
-    : "";
-}
 showRepos(true);
 apply();
 state();

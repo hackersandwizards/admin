@@ -52,15 +52,14 @@ The question's context, in Markdown.
 - An image is a file name in the item's folder, or `{src, caption}`; a value with a slash is read
   from the repository root, as items written before the folder did. Every image exists, and an
   image folder whose item is gone is a defect.
-- The file name is the id: lower-case letters, digits and `-`. `docs/agent-work/items/` holds only
+- The file name is the id: lower-case letters, digits and `-`, starting with no `-`. `docs/agent-work/items/` holds only
   `<id>.md` files and `<id>/` image folders, and the body starts with `# <title>`.
-- An option's `key` is one word, without a comma or space, and no two options share one; `multiple`
-  is `true` or `false`. `label`, `detail`, `area`, `owner`,
+- An option's `key` is one word, without a comma or space, and no two options share one. `label`, `detail`, `area`, `owner`,
   `assumption`, `decision`, `by`, `quote` and `evidence` are text.
-- `score` and `noise` are numbers; `noise` needs a `score`.
+- `score`, `noise` and `order` are numbers, `multiple` is `true` or `false`; `noise` needs a `score`.
 - An `assumed` item states `assumption` or `recommended`. A `decided` item states `decision` and
   `by`, and may quote the person in `quote`.
 - Work and goals are only ever `open`.
-- `due` is a calendar day as an ISO date, `order` a number. `order` and `evidence` are optional.
+- `due` is a calendar day as an ISO date. `order` and `evidence` are optional.
 - A table, such as scores per criterion, goes in the body as Markdown.
 - No `GOAL.md` and no file under `docs/tracking/` remains.

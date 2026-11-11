@@ -61,11 +61,11 @@ export const forPerson = (items: ViewItem[]) =>
   items.filter((i) => i.kind === "work" && data().people.includes(i.who));
 
 const DAY = 864e5;
-export const day = (seconds: number) =>
+export const day = (seconds: number, now = Date.now()) =>
   new Date(seconds * 1000).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
-    year: Math.abs(Date.now() - seconds * 1000) > 300 * DAY ? "numeric" : undefined,
+    year: Math.abs(now - seconds * 1000) > 300 * DAY ? "numeric" : undefined,
   });
 
 // A due date as a row says it: past in the error's red, today in amber, within a week in the pill's
@@ -73,7 +73,7 @@ export const day = (seconds: number) =>
 export function dueOf(due: string, now = Date.now()) {
   const today = new Date(now).toLocaleDateString("sv-SE");
   // The day as a local midnight: a bare date parses as UTC, a day early west of it.
-  const date = day(Date.parse(`${due}T00:00`) / 1000);
+  const date = day(Date.parse(`${due}T00:00`) / 1000, now);
   if (due < today) return { text: `was due ${date}`, tone: "overdue" };
   if (due === today) return { text: "due today", tone: "today" };
   return { text: `due ${date}`, tone: dueSoon(due, now) ? "soon" : "later" };

@@ -27,9 +27,9 @@ them when they are missing or outside their range.
 ## Addresses
 
 One repository's own pages open at `http://admin.localhost:4329/<repo>`, such as `/website`,
-which leads to its dashboard with only its items. `<repo>` is the folder name, any character but letters, digits, `.`, `_` and `-` as `-`, or `admin.name` in
-its `package.json` where that holds only letters, digits, `.`, `_` and `-`, and not only dots
-(otherwise a defect, and the folder name stays); where two checkouts share it, or it names a page
+which leads to its dashboard with only its items. `<repo>` is `admin.name` in its
+`package.json` where that holds only letters, digits, `.`, `_` and `-`, and not only dots
+(otherwise a defect); else the folder name, every other character as `-`; where two checkouts share it, or it names a page
 or route of the hub (`index`, `architecture`, `404`, `catalog`, `_astro`, `_file`), the parent
 folder's name goes before it and the repository shows a defect. The hub's rail and its Repositories table link every repository's dashboard.
 The engine's own catalog, every page and component on an invented repository, opens at

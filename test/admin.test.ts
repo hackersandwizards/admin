@@ -498,10 +498,12 @@ describe("admin-check", () => {
       });
       expect(read.key).toBe("x");
     }
-    // A folder's name keeps its other characters as "-".
-    expect((await readRepo("/nonexistent/a#b c:d", { paths: [], read: () => "" })).key).toBe(
-      "a-b-c-d",
-    );
+    // A folder's name keeps its other characters as "-", and its letters, composed or not.
+    const keyOf = async (folder: string) =>
+      (await readRepo(`/nonexistent/${folder}`, { paths: [], read: () => "" })).key;
+    expect(await keyOf("a#b c:d")).toBe("a-b-c-d");
+    for (const folder of ["Größe", "Größe".normalize("NFD")])
+      expect(await keyOf(folder)).toBe(folder);
     const kept = JSON.stringify({ admin: { name: "web-site_2.0" } });
     expect(
       (await readRepo("/nonexistent/x", { paths: ["package.json"], read: () => kept })).key,
@@ -898,8 +900,7 @@ describe("pages", () => {
     expect(dueOf("2026-11-13", now).tone).toBe("soon");
     expect(dueOf("2026-12-13", now).tone).toBe("later");
     // A day more than 300 days away names its year, ahead as behind.
-    const ahead = new Date(Date.now() + 400 * 864e5).toLocaleDateString("sv-SE");
-    expect(dueOf(ahead).text).toMatch(/ \d{4}$/);
+    expect(dueOf("2027-12-01", now).text).toBe("due 1 Dec 2027");
     // West of UTC too, the pill names the day written.
     inZone("America/New_York", () =>
       expect(dueOf("2026-11-20", new Date(2026, 10, 10, 12).getTime()).text).toBe("due 20 Nov"),
@@ -1227,6 +1228,13 @@ describe("admin.js", () => {
     expect(
       done.document.getElementById("spoke:pick-a-logo")!.querySelector(".mark")!.textContent,
     ).toContain("copied");
+    // A copy made in another tab marks the rows here too.
+    const mark = () =>
+      page.document.getElementById("spoke:check-the-copy")!.querySelector(".mark")!.textContent;
+    expect(mark()).not.toContain("copied");
+    page.localStorage.setItem("admin-answers:copied", at(14));
+    page.dispatchEvent(new page.StorageEvent("storage", { key: "admin-answers:copied" }));
+    expect(mark()).toContain("copied");
   });
 
   test("the filters: kinds counted per person, own rows once, the first fold opens, a search finds what a row says", () => {
@@ -1422,6 +1430,10 @@ describe("admin.js", () => {
     });
     expect(away.document.querySelector("[data-updated-count]:not([hidden])")).toBeNull();
     expect(away.document.getElementById("admin-since")!.hasAttribute("hidden")).toBe(true);
+    // But the row a link opens there.
+    away.location.hash = "#spoke:check-the-copy";
+    away.dispatchEvent(new away.Event("hashchange"));
+    expect(away.document.getElementById("admin-since")!.textContent).toStartWith("1 item ");
   });
 
   test("a row shown on the visit before compares its file, not its commit time", () => {

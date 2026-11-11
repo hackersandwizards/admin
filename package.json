@@ -23,7 +23,8 @@
     "!catalog/.astro",
     "catalog/stories",
     "brand-elements.json",
-    "docs/*.md",
+    "docs/hub.md",
+    "docs/items.md",
     "test/fixtures/spoke"
   ],
   "scripts": {

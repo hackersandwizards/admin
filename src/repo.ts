@@ -15,8 +15,9 @@ const LEGACY = ["GOAL.md"];
 // A key is letters, digits, ".", "_" and "-", never only dots: a slash, a dot segment or one
 // percent-encoded would write pages outside the build, a "?" or "#" breaks its addresses, and
 // admin.js reads the repository of an answer's key up to its first colon. A folder's name keeps
-// its other characters as "-".
-export const asKey = (folder: string) => folder.replace(/[^\w.-]/g, "-");
+// its other characters as "-"; the hub finds no folder whose name starts with a dot.
+const KEY = /^(?!\.+$)[\p{L}\p{M}\p{N}_.-]+$/u;
+export const asKey = (folder: string) => folder.replace(/[^\p{L}\p{M}\p{N}_.-]/gu, "-");
 
 export type Source = { paths: string[]; read: (path: string) => string | undefined };
 
@@ -447,7 +448,7 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
   };
   const admin = (isObject(pkg.admin) ? pkg.admin : {}) as AdminConfig;
   const named = typeof admin.name === "string" ? admin.name : undefined;
-  const key = named && /^(?!\.+$)[\w.-]+$/.test(named) ? named : asKey(basename(repo));
+  const key = named && KEY.test(named) ? named : asKey(basename(repo));
   if (named !== undefined && key !== named)
     defects.push(
       `package.json: admin.name "${named}" is not letters, digits, ".", "_" and "-": its pages are under ${key}`,
