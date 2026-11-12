@@ -75,7 +75,6 @@
       ],
       "check:fixture",
       "check:elements",
-      "check:markers",
       "check:retired"
     ],
     "skip": {

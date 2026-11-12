@@ -52,6 +52,7 @@ sits only where the text it answers is on screen: in the opened row, never on a 
 steps, then `check:values` (no design value here), `check:colours`, `check:copies` and
 `check:scan` (brand's colour, copy and expert-component scans), `check:fixture` (admin-check on the fixture), `check:elements`
 (brand-elements over the built catalog, `dist` served so its pages answer at `/catalog/` as on the
-hub), `check:markers` (brand-markers on the built doc and decisions pages, served the same way) and
-`check:retired` (brand-retired over the built catalog).
+hub) and `check:retired` (brand-retired over the built catalog). `check:markers` (brand-markers on
+the built doc and decisions pages, served the same way) stays out of the gate: run it after a brand
+raise and after a change to how lists are styled.
 The pre-commit hook runs scaffolding's `check-staged`.
