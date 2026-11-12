@@ -92,7 +92,10 @@ const commit = (cwd: string, message: string) =>
   );
 // A repository holding only a package.json with this admin configuration.
 const configured = (dir: string, admin: Record<string, unknown>) =>
-  readRepo(dir, { paths: ["package.json"], read: () => JSON.stringify({ admin }) });
+  readRepo(dir, {
+    paths: ["package.json"],
+    read: (p) => (p === "package.json" ? JSON.stringify({ admin }) : undefined),
+  });
 
 function repoFrom(fixture: string, name = "spoke") {
   const dir = join(scratch(), name);
@@ -522,9 +525,9 @@ describe("admin-check", () => {
     ).toBe("web-site_2.0");
     // A label names the repository to a person and leaves its key; one that is not text is a defect.
     const labelled = (label: unknown) => configured("/nonexistent/x", { label });
-    expect(await labelled("Pilot requirements")).toMatchObject({
+    expect(await labelled("Sample label")).toMatchObject({
       key: "x",
-      label: "Pilot requirements",
+      label: "Sample label",
       defects: [],
     });
     expect(await labelled(undefined)).toMatchObject({ key: "x", label: undefined, defects: [] });
@@ -535,6 +538,40 @@ describe("admin-check", () => {
     });
     // The hub names a repository without one by its key.
     expect(siteData([await labelled(undefined)]).repos[0]!.label).toBe("x");
+  });
+
+  test("a repository whose package.json cannot carry admin sets it in docs/agent-work/admin.json", async () => {
+    // Read at HEAD, as the hub reads it: no package.json, the file committed beside the items.
+    const repo = repoFrom("spoke");
+    rmSync(join(repo, "package.json"));
+    const file = join(repo, "docs/agent-work/admin.json");
+    const at = async (text: string, pkg?: object) => {
+      writeFileSync(file, text);
+      if (pkg) writeFileSync(join(repo, "package.json"), JSON.stringify(pkg));
+      sh(repo, "git", "add", "-A");
+      commit(repo, "admin");
+      return readRepo(repo);
+    };
+    const read = await at('{ "label": "Sample notes" }');
+    expect([read.key, read.label, read.defects]).toEqual(["spoke", "Sample notes", []]);
+    // No doc, report or review row shows it, and admin-check passes it.
+    const shown = [...read.docs, ...read.reports].map((d) => d.path);
+    expect(shown.filter((p) => p.endsWith(".json"))).toEqual([]);
+    expect(read.reviews.flatMap((v) => [v.dir, ...v.images])).not.toContain("admin.json");
+    expect(readItems(treeSource(repo)).defects).toEqual([]);
+    expect((await at('{ "label": 3 }')).defects).toEqual([
+      "docs/agent-work/admin.json: label is not text",
+    ]);
+    for (const text of ["{", "[]"])
+      expect(await at(text)).toMatchObject({
+        label: undefined,
+        defects: ["docs/agent-work/admin.json: not a JSON object"],
+      });
+    // package.json's own admin wins, and the file says it is ignored.
+    expect(await at('{ "label": "Sample notes" }', { admin: { label: "Own" } })).toMatchObject({
+      label: "Own",
+      defects: ["docs/agent-work/admin.json: ignored, package.json holds admin"],
+    });
   });
 });
 

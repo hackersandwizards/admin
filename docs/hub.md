@@ -156,9 +156,11 @@ Repositories and Packages tables, and the box of "Which repositories", which sho
 it; repositories list in the order of their labels, and where two checkouts share a key, each
 label gets its parent folder in brackets. The key stays the address, the `repo` of every answer
 line, the key answers are stored under and the checkout's name in each page's provenance line, so a
-label changes nothing typed. A repository
-without a `package.json` adds one holding only `{ "admin": { "label": "…" } }`; it needs no
-dependency.
+label changes nothing typed.
+
+A repository with no `package.json`, or one another party owns, sets the same object in
+`docs/agent-work/admin.json` instead, such as `{ "label": "…" }`; it needs no dependency, and a
+`package.json` holding `admin` wins over it.
 
 A product's optional `description` leads its page. An `href` without a scheme is a path in the repository: the hub serves it from HEAD, and a file it
 links under `node_modules/` from the installed package.

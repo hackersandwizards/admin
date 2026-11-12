@@ -66,7 +66,12 @@ async function headSource(repo: string): Promise<Source> {
   const cache = new Map<string, string>();
   const wanted = entries.filter(
     ({ path: p }) =>
-      p === "package.json" || ASTRO_CONFIG.test(p) || isDoc(p) || SCRIPT.test(p) || AGENT.test(p),
+      p === "package.json" ||
+      p === ADMIN_FILE ||
+      ASTRO_CONFIG.test(p) ||
+      isDoc(p) ||
+      SCRIPT.test(p) ||
+      AGENT.test(p),
   );
   const batch = await gitBytes(
     repo,
@@ -185,6 +190,9 @@ export type RepoData = {
   log: Commit[];
 };
 
+// What a repository whose package.json cannot carry admin, having none or another party owning it,
+// sets there instead.
+const ADMIN_FILE = `${WORK_DIR}/admin.json`;
 const AGENT = /^\.claude\/agents\/[^/]+\.md$/;
 const SCRIPT = /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/;
 // A Markdown file at the root or under docs/: a report or a doc, unless an item file.
@@ -453,15 +461,27 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
       defects.push(`package.json: ${field} holds a value that is not text`);
     return Object.fromEntries(kept) as Record<string, string>;
   };
-  const admin = (isObject(pkg.admin) ? pkg.admin : {}) as AdminConfig;
+  let admin = (isObject(pkg.admin) ? pkg.admin : {}) as AdminConfig;
+  // Where admin comes from, as a defect names it.
+  let from = "package.json: admin.";
+  const own = src.read(ADMIN_FILE);
+  if (own !== undefined) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(own);
+    } catch {}
+    if (!isObject(parsed)) defects.push(`${ADMIN_FILE}: not a JSON object`);
+    else if (isObject(pkg.admin)) defects.push(`${ADMIN_FILE}: ignored, package.json holds admin`);
+    else [admin, from] = [parsed as AdminConfig, `${ADMIN_FILE}: `];
+  }
   const named = typeof admin.name === "string" ? admin.name : undefined;
   const key = named && KEY.test(named) ? named : asKey(basename(repo));
   if (named !== undefined && key !== named)
     defects.push(
-      `package.json: admin.name "${named}" is not letters, digits, ".", "_" and "-": its pages are under ${key}`,
+      `${from}name "${named}" is not letters, digits, ".", "_" and "-": its pages are under ${key}`,
     );
   if (admin.label !== undefined && typeof admin.label !== "string")
-    defects.push("package.json: admin.label is not text");
+    defects.push(`${from}label is not text`);
   const label = (typeof admin.label === "string" && admin.label.trim()) || undefined;
   const scriptsMap = texts("scripts");
   const href = (h: string) => {
