@@ -481,14 +481,19 @@ describe("admin-check", () => {
       '<a href="https://a.test/">see [x](javascript:x)',
       '<map><area href="javascript:x"></map>',
       '<svg><a xlink:href="javascript:x"><text>t</text></a></svg>',
+      '<svg><a href="" xlink:href="javascript:x"><text>t</text></a></svg>',
+      '<svg><a><set attributeName="href" to="javascript:x"/><text>t</text></a></svg>',
+      '<svg><a><animate attributeName="xlink:href" values="javascript:x"/><text>t</text></a></svg>',
     ])
-      expect(renderMarkdown("/r", "docs/a.md", raw)).not.toMatch(/href\s*=\s*(?!["']?\s*https:)/i);
+      expect(renderMarkdown("/r", "docs/a.md", raw)).not.toMatch(
+        /href\s*=\s*(?!["']?\s*https:)|javascript/i,
+      );
     const ok = renderMarkdown(
       "/r",
       "docs/a.md",
-      "[h](https://a.test/) [i](HTTP://a.test/) [m](mailto:x@a.test) [p](b.md#t) [q](/b.md) [s](#t) [a](q&a.md)",
+      "[h](https://a.test/) [i](HTTP://a.test/) [m](mailto:x@a.test) [p](b.md#t) [q](/b.md) [s](#t) [a](q&a.md) [t](10:30.md)",
     );
-    expect(ok.match(/<a /g)).toHaveLength(7);
+    expect(ok.match(/<a /g)).toHaveLength(8);
     expect(ok).toContain('href="file:///r/docs/b.md#t"');
   });
 

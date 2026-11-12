@@ -303,23 +303,40 @@ export const withElements = (html: string) =>
     .replace(/<pre>/g, '<pre class="hw-code not-prose">')
     .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');
 
+// A URL's scheme, as a browser reads one: a letter, then letters, digits, "+", "." or "-".
+// Also takes "_", which leaves such a path text rather than a link.
+const SCHEME = /^[a-z][\w+.-]*:/i;
+
 // A link goes out only over http(s), to mailto or to a path; any other scheme shows its text,
 // since pages buildSite writes open from disk under no policy, where a javascript: link from a
 // scanned repository would run. HTMLRewriter reads tags as a browser does, a doc's raw HTML
-// included. The browser decodes an href's entities and drops spaces and control characters (all
-// below "!") before it reads the scheme, so the test does too; a named entity other than &amp; before the
-// first / ? or # leaves the link text. A doc's raw HTML can still run script on disk.
-const links = new HTMLRewriter().on("a[href], area[href], a[xlink\\:href]", {
-  element(el) {
-    const h = (el.getAttribute("href") ?? el.getAttribute("xlink:href"))!
-      .replace(/&#(?:x([\da-f]+)|(\d+));?/gi, (_, hex?: string, dec?: string) =>
-        String.fromCodePoint(Math.min(parseInt(hex ?? dec!, hex ? 16 : 10), 0x10ffff)),
-      )
-      .replace(/[^!-\uffff]/g, "");
-    if (!/^(?:https?|mailto):/i.test(h) && /:|&(?!amp;)/.test(h.match(/^[^/?#]*/)![0]))
-      el.removeAndKeepContent();
-  },
-});
+// included. A browser decodes an href's entities, trims spaces and control characters around it
+// and drops tabs and newlines inside before it reads the scheme; the test decodes the numeric
+// entities and drops every character below "!", and a named entity other than &amp; before the
+// first / ? or # leaves the link text. An SVG <set> or <animate> could write an href after this
+// test, so one aimed at href goes. A doc's raw HTML can still run script on disk.
+const unsafe = (href: string) => {
+  const h = href
+    .replace(/&#(?:x([\da-f]+)|(\d+));?/gi, (_, hex?: string, dec?: string) =>
+      String.fromCodePoint(Math.min(parseInt(hex ?? dec!, hex ? 16 : 10), 0x10ffff)),
+    )
+    .replace(/[^!-\uffff]/g, "");
+  return (
+    !/^(?:https?|mailto):/i.test(h) && (SCHEME.test(h) || /&(?!amp;)/.test(h.match(/^[^/?#]*/)![0]))
+  );
+};
+const links = new HTMLRewriter()
+  .on("a, area", {
+    element(el) {
+      const hrefs = [el.getAttribute("href"), el.getAttribute("xlink:href")];
+      if (hrefs.some((h) => h !== null && unsafe(h))) el.removeAndKeepContent();
+    },
+  })
+  .on("set, animate", {
+    element(el) {
+      if (/href$/i.test(el.getAttribute("attributeName") ?? "")) el.remove();
+    },
+  });
 
 // Front matter is a leading YAML mapping between --- lines; a leading rule renders, since "---"
 // above a paragraph is no mapping. An item's body has no front matter and no HTML: a placeholder
@@ -517,7 +534,7 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
   // run script.
   const href = (h: string, field: string) => {
     if (/^https?:/i.test(h)) return h;
-    if (/^[a-z][\w+.-]*:/i.test(h)) {
+    if (SCHEME.test(h)) {
       defects.push(`${from}${field}: scheme not allowed, not linked`);
       return undefined;
     }
