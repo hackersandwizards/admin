@@ -307,13 +307,16 @@ export const withElements = (html: string) =>
 // Also takes "_", which leaves such a path text rather than a link.
 const SCHEME = /^[a-z][\w+.-]*:/i;
 
-// An attribute's text as a browser reads it, in one pass: numeric entities and &amp;, the ones a
-// link holds.
+// An attribute's text as a browser reads it, in one pass: numeric entities and the named ones
+// Bun's renderer and hand-written HTML put in a link.
+const NAMED: Record<string, string> = { amp: "&", quot: '"', lt: "<", gt: ">", apos: "'" };
 const entities = (v: string) =>
-  v.replace(/&(?:#x([\da-f]+);?|#(\d+);?|amp;)/gi, (_, hex?: string, dec?: string) =>
-    hex || dec
-      ? String.fromCodePoint(Math.min(parseInt(hex ?? dec!, hex ? 16 : 10), 0x10ffff))
-      : "&",
+  v.replace(
+    /&(?:#x([\da-f]+);?|#(\d+);?|(amp|quot|lt|gt|apos);)/gi,
+    (_, hex?: string, dec?: string, name?: string) =>
+      name
+        ? NAMED[name.toLowerCase()]!
+        : String.fromCodePoint(Math.min(parseInt(hex ?? dec!, hex ? 16 : 10), 0x10ffff)),
   );
 
 // A link goes out only over http(s), to mailto or to a path; any other scheme shows its text,

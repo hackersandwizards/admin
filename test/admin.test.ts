@@ -930,6 +930,10 @@ describe("pages", () => {
         `<img alt='src="y?&#39; onerror=alert(1) x=&#39;"' src=z.png>`,
     );
     expect(html).not.toMatch(/<a |' onerror/);
+    // A named entity in the fragment keeps the character it names.
+    expect(renderMarkdown("/r", "docs/x.md", `<a href="x.md#a&quot;b">r</a>`)).toContain(
+      'href="file:///r/docs/x.md#a&#34;b"',
+    );
   });
   test("a doc's javascript: link renders as text in the pages built to disk", async () => {
     const out = join(scratch(), "out");
