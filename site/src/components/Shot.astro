@@ -9,17 +9,38 @@ interface Props {
 }
 const { src, caption, alt, small = false } = Astro.props;
 // A small shot, at most 12rem tall, loads a thumbnail, whose 270 and 540 px boxes cover it at one
-// and two device pixels per px; a large one, up to 36rem, loads the file.
+// and two device pixels per px; a large one, up to 36rem, loads the file. Either opens the file in
+// Layout's one image dialog, which sits outside every option's label, so viewing never picks.
 ---
 
 <span class="flex flex-col gap-1">
-  <a href={src} target="_blank">
+  <button
+    type="button"
+    class="relative block w-full cursor-zoom-in"
+    data-hw-open="admin-zoom"
+    data-zoom={src}
+    data-alt={alt}
+    aria-label={`${alt}: open large`}
+  >
     <img
       loading="lazy"
       {...(small ? thumbnail(src) : { src })}
       alt={alt}
       class={`w-full rounded-brand bg-muted object-contain ${small ? "max-h-48" : "max-h-144"}`}
     />
-  </a>
+    {/* Lucide's maximize-2 (ISC). */}
+    <span class="hw-icon-button absolute top-2 right-2" data-on="picture" aria-hidden="true">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path>
+      </svg>
+    </span>
+  </button>
   {caption && <span class="text-micro text-foreground/70">{caption}</span>}
 </span>

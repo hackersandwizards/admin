@@ -234,6 +234,21 @@ const entries = [
         )}
       </main>
     </div>
+    <dialog class="hw-dialog" data-size="full" id="admin-zoom">
+      <img alt="" class="size-full cursor-zoom-out object-contain" data-hw-close />
+      <button type="button" class="hw-icon-button hw-dialog-close" data-hw-close aria-label="Close">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="M6 18 18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </dialog>
     <script is:inline nonce={d.nonce} src={adminScript}></script>
   </body>
 </html>

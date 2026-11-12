@@ -5,6 +5,22 @@ import { enhance } from "@hackersandwizards/brand/elements/behaviour.ts";
 
 enhance();
 
+// A shot's button names its file to Layout's image dialog, in the capture phase, so the file is
+// set before brand's data-hw-open opens the dialog.
+const zoom = document.getElementById("admin-zoom");
+document.addEventListener(
+  "click",
+  (e) => {
+    const shot = e.target.closest?.("[data-zoom]");
+    if (!shot || !zoom) return;
+    const img = zoom.querySelector("img");
+    img.src = shot.dataset.zoom;
+    img.alt = shot.dataset.alt;
+    zoom.setAttribute("aria-label", shot.dataset.alt);
+  },
+  true,
+);
+
 // A browser that blocks site data throws on localStorage itself: the page then keeps its state
 // for this visit only, and every control still works.
 class Memory {

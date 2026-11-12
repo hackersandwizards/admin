@@ -1196,8 +1196,12 @@ describe("pages", () => {
     // options in view below it at 900 px. Several stand two beside each other from sm up, one per
     // row on a phone.
     expect(row).toMatch(
-      /<div class="grid gap-3">\s*<span[^>]*>\s*<a href="[^"]*shown\/variant-b[^>]*>\s*<img[^>]*max-h-144/,
+      /<div class="grid gap-3">\s*<span[^>]*>\s*<button[^>]*data-zoom="[^"]*shown\/variant-b[^>]*>\s*<img[^>]*max-h-144/,
     );
+    // Each image opens in the page's one image dialog, which stands outside every option's label,
+    // so a click on the large image picks nothing.
+    expect(html.match(/id="admin-zoom"/g)).toHaveLength(1);
+    expect(html.indexOf('id="admin-zoom"')).toBeGreaterThan(html.lastIndexOf("</label>"));
     expect(rowOf("pair")).toContain('<div class="grid gap-3 sm:grid-cols-2">');
     // Opened, the row's own recommendation badge says what the closed line said.
     expect(row).toMatch(/<span class="[^"]*group-open:hidden">Recommended:/);

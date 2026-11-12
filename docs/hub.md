@@ -80,7 +80,8 @@ whose item file changed since the visit before, a run of page views under an hou
 browser, says so, and whether its question or options changed; each fold counts such rows. An
 opened question shows its first paragraph, the item's own images, its options, each with its key
 where that is a letter (`b`, `c2`) as the item's text names it, and its buttons before the rest of
-its text. A row a link opens starts below the "Copy answers" bar, which on a
+its text. Each of its images opens large over the page from its corner control or a click on it,
+and closes on its close control, a click or Escape, picking no option. A row a link opens starts below the "Copy answers" bar, which on a
 phone keeps one line beside its button. A page left open over an hour says so.
 
 When a build fails or a repository cannot be read at its HEAD, every page says so above its
