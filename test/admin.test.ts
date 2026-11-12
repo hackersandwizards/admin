@@ -15,7 +15,11 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { peerDependenciesMeta } from "../package.json";
 import puppeteer from "puppeteer-core";
-import { chromeBinary, INSTALL_HINT, NO_KEYCHAIN } from "@hackersandwizards/scaffolding/chrome";
+import {
+  chromeBinaryAsync,
+  INSTALL_HINT,
+  NO_KEYCHAIN,
+} from "@hackersandwizards/scaffolding/chrome";
 import {
   Window,
   type Element as DomEl,
@@ -773,12 +777,12 @@ describe("pages", () => {
     const dashboard = readFileSync(join(out, "spoke/dashboard.html"), "utf8");
     expect(dashboard).toContain("Sort the sample files");
     // Most urgent lists the hub's user's own rows; other people's wait under their own heading.
-    const urgent = dashboard.slice(
-      dashboard.indexOf(">Most urgent</h2>"),
-      dashboard.indexOf("Waiting on others"),
-    );
+    const [from, to] = [">Most urgent</h2>", "Waiting on others"].map((x) => dashboard.indexOf(x));
+    expect(0 < from! && from! < to!).toBe(true);
+    const urgent = dashboard.slice(from, to);
     expect(urgent).toContain("data-who=");
-    expect(urgent).not.toMatch(/data-who="(Kim|Sam)"/);
+    const others = siteData([await readRepo(repo)]).others;
+    for (const who of others) expect(urgent).not.toContain(`data-who="${who}"`);
     // On a phone the repositories table keeps three columns; the most urgent item goes under the
     // repository's name.
     const table = html.slice(html.indexOf(">Repositories</h2>"));
@@ -870,6 +874,16 @@ describe("pages", () => {
     const spoke = await readRepo(repoFrom("spoke"));
     const base = spoke.items.find((i) => i.id === "ask-the-printer")!;
     const late = { ...base, id: "late", owner: "Alex", order: 80 };
+    // Kim's, ranked first in its repository: the Repositories table's Most urgent names the hub's
+    // user's own, as the dashboard does.
+    const kims = {
+      ...base,
+      id: "kims",
+      title: "The printers proof, Kim alone",
+      owner: "Kim",
+      priority: 1 as const,
+      due: "2020-01-01",
+    };
     // An assumption stated by its recommended option alone.
     const picked = spoke.items.find((i) => i.id === "pick-a-variant")!;
     const bare = { ...picked, id: "bare", status: "assumed" as const };
@@ -880,12 +894,18 @@ describe("pages", () => {
       items: [{ ...base, id: "early", owner: "Alex", order: 20 }],
     };
     const out = join(scratch(), "out");
-    await buildSite(siteData([{ ...spoke, items: [...spoke.items, late, bare] }, other]), out);
+    await buildSite(
+      siteData([{ ...spoke, items: [...spoke.items, late, bare, kims] }, other]),
+      out,
+    );
     const html = readFileSync(join(out, "index.html"), "utf8");
     // Opened, it still says what was assumed, where the closed line leaves.
     const bareRow = html.match(/id="spoke:bare"[\s\S]*?<\/details>/)![0];
     expect(bareRow).toMatch(/<p class="hw-callout"><b>Assumed:<\/b>\s*Variant A/);
     expect(html.indexOf('id="other:early"')).toBeLessThan(html.indexOf('id="spoke:late"'));
+    const spokeRow = html.match(/<tr data-row data-repo-row="spoke">[\s\S]*?<\/tr>/)![0];
+    expect(spokeRow).not.toContain(kims.title);
+    expect(spokeRow).toMatch(/<td class="max-w-md max-sm:hidden">[^<]+<\/td>/);
     // Each row names its repository.
     expect(html).toMatch(/id="other:early"[\s\S]*?<\/summary>/);
     expect(html.match(/id="other:early"[\s\S]*?<\/summary>/)![0]).toContain("other · to do");
@@ -1054,7 +1074,7 @@ describe("pages", () => {
       (owner) => ({ ...spoke.items.find((i) => i.id === "ask-the-printer")!, id: owner, owner }),
     );
     await buildSite(siteData([{ ...spoke, items: [...spoke.items, ...more] }]), out);
-    const executablePath = chromeBinary();
+    const executablePath = await chromeBinaryAsync();
     if (!executablePath) throw new Error(INSTALL_HINT);
     const browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
     try {
@@ -1089,10 +1109,27 @@ describe("pages", () => {
           const line = document.querySelector<HTMLElement>(
             '[data-status="assumed"] summary .line-clamp-2',
           )!;
+          line.closest<HTMLDetailsElement>("details[data-group]")!.open = true;
+          document.querySelector<HTMLElement>('[data-who-button="all"]')!.click();
           line.textContent = "Assumed: a long assumption. ".repeat(40);
           return line.offsetHeight / parseFloat(getComputedStyle(line).lineHeight);
         });
+        expect(lines).toBeGreaterThan(0.5);
         expect(lines).toBeLessThan(2.5);
+        // A row without a recommendation or an answer leaves no empty line where Reset waits: the
+        // next line sits one gap below the one before.
+        await page.goto(`file://${out}/spoke/work.html#spoke:ask-the-printer`);
+        const gaps = await page.evaluate(() => {
+          const line = document
+            .getElementById("spoke:ask-the-printer")!
+            .querySelector(".clear")!.parentElement!;
+          const box = (e: Element) => e.getBoundingClientRect();
+          return [
+            box(line.nextElementSibling!).top - box(line.previousElementSibling!).bottom,
+            parseFloat(getComputedStyle(line.parentElement!).rowGap),
+          ];
+        });
+        expect(gaps[0]).toBe(gaps[1]);
       }
     } finally {
       await browser.close();
@@ -1188,6 +1225,15 @@ describe("admin.js", () => {
     reset.click();
     expect(reset.hidden).toBe(true);
     expect(page.document.activeElement === row.querySelector("input[data-option]")).toBe(true);
+    // Where a search hid the first option, focus goes to the first one shown.
+    (page.document.querySelector('[data-who-button="all"]') as DomElement).click();
+    const list = page.document.getElementById("spoke:pick-recipients")!;
+    const second = list.querySelectorAll("input[data-option]")[1] as DomInput;
+    second.checked = true;
+    list.dispatchEvent(new page.Event("change"));
+    (list.querySelector("[data-option-row]") as DomElement).hidden = true;
+    (list.querySelector(".clear") as DomElement).click();
+    expect(page.document.activeElement === second).toBe(true);
   });
 
   test("an opened row picks its recommendation, an assumption takes agree or veto, and a question put off copies nothing until the next visit", () => {

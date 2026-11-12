@@ -341,8 +341,8 @@ for (const d of items) {
     write(d.dataset.k, null);
     load(d);
     state();
-    // Reset hides itself: focus goes to the row's first answer rather than the page's top.
-    d.querySelector(`${ANSWER}, textarea`)?.focus();
+    // Reset hides itself: focus goes to the row's first answer shown rather than the page's top.
+    [...d.querySelectorAll(`${ANSWER}, textarea`)].find((e) => !e.closest("[hidden]"))?.focus();
   });
 }
 // brand's button reads its text on the press and reports each press as hw-copy, detail { ok }, once
