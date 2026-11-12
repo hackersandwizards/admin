@@ -629,10 +629,10 @@ describe("hub", () => {
     const owned = await readRepo(
       bare("owned", {
         name: "owned",
-        admin: { designSystem: "catalogue.html", products: [{ label: "A", href: "a.html#x" }] },
+        admin: { designSystem: "catalog.html", products: [{ label: "A", href: "a.html#x" }] },
       }),
     );
-    expect(owned.designSystem).toBe(`file://${owned.path}/catalogue.html`);
+    expect(owned.designSystem).toBe(`file://${owned.path}/catalog.html`);
     expect(owned.designSystemDev).toBeUndefined();
     expect(owned.products[0]!.href).toBe(`file://${owned.path}/a.html#x`);
   });
