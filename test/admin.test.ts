@@ -932,8 +932,16 @@ describe("pages", () => {
     expect(html).not.toMatch(/<a |' onerror/);
     // A named entity in the fragment keeps the character it names.
     expect(renderMarkdown("/r", "docs/x.md", `<a href="x.md#a&quot;b">r</a>`)).toContain(
-      'href="file:///r/docs/x.md#a&#34;b"',
+      'href="file:///r/docs/x.md#a&quot;b"',
     );
+    // An address or a fragment behind a leading space stays as written, as a browser reads it.
+    const lead = renderMarkdown(
+      "/r",
+      "docs/x.md",
+      `<a href="&#32;https://a.test/">a</a><a href="&#9;#t">t</a>`,
+    );
+    expect(lead).toContain('href="&#32;https://a.test/"');
+    expect(lead).toContain('href="&#9;#t"');
   });
   test("a doc's javascript: link renders as text in the pages built to disk", async () => {
     const out = join(scratch(), "out");

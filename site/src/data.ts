@@ -29,6 +29,14 @@ export const hasPage = (path: string) =>
 
 // What a hub page may load besides the scripts `scripts` names: the served hub's header (csp in
 // serve.ts) and a built page's <meta> (Layout.astro), which a page opened from disk runs under.
+// Docs render committed raw HTML, and /_file/ serves every committed file from the hub's origin,
+// so only the pages' own scripts may run, with no <base> to repoint them, else that markup could
+// read every repository through /_file/. Nor may it post a form or frame a page from elsewhere,
+// which would put an outside login inside the hub; withElements in repo.ts defuses the meta
+// refresh no policy stops, and a refresh inside a frame stays under frame-src. Reports lay
+// themselves out in raw HTML, so inline styles stay, but nothing loads from elsewhere: an image or
+// a stylesheet's url() would report each view and could read the page's attributes out. Only a
+// catalog's dev server on this machine is asked whether it runs (admin.js).
 export const policy = (scripts: string) =>
   [
     "default-src 'self'",

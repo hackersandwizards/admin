@@ -24,7 +24,8 @@ exported file is a release whose commit names the change.
   `site/src/admin.js`, bundled at start), `bun run build` writes it to `dist/catalog/`. Every component and page type has a story, guarded by `admin.test.ts`.
   `bun run dev` runs the hub (`admin-serve`) on 4329. `brand-elements.json` lists the brand
   elements the site uses and the ones it keeps, and holds the catalog's Content-Security-Policy
-  (`csp`), which `serve.ts` sends and extends for the hub's pages.
+  (`csp`), which `serve.ts` sends for the catalog and `policy()` in `site/src/data.ts` extends for the
+  hub's pages.
 - `test/`: `admin.test.ts` and its invented fixtures; `no-values.ts`, the check that no design value
   lives here.
 - `docs/`: `items.md`, what `admin-check` enforces, and `hub.md`, what the hub does and reads from a

@@ -55,17 +55,10 @@ async function stateOf(repo: string) {
 
 const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
 
-// Docs render committed raw HTML, and /_file/ serves every committed file from this
-// origin, so only the site's own build under /_astro/ may run, with no <base> to repoint it, else
-// that markup could read every repository through /_file/. Nor may it post a form or frame a page
-// from elsewhere, which would put an outside login inside the hub; withElements in repo.ts defuses
-// the meta refresh no policy stops, and a refresh inside a frame stays under frame-src. Reports lay
-// themselves out in raw HTML, so inline styles stay, but nothing loads from elsewhere: an image or
-// a stylesheet's url() would report each view and could read the page's attributes out. Only a
-// catalog's dev server on this machine is asked whether it runs (admin.js). The catalog is the
-// package's own pages, with the inline scripts Astrobook and the catalog shell write and no
-// committed markup from a repository, so it gets the rest without script-src or default-src:
-// brand-elements.json "csp", which brand-elements and brand-markers render the catalog under.
+// The catalog is the package's own pages, with the inline scripts Astrobook and the catalog shell
+// write and no committed markup from a repository, so it gets brand-elements.json "csp" alone,
+// which brand-elements and brand-markers render the catalog under; every other page policy() in
+// site/src/data.ts, which only the site's own build under /_astro/ may run.
 const catalogCsp = elements.csp;
 export const csp = (origin: string) => `${policy(`${origin}/_astro/`)}; frame-ancestors 'self'`;
 

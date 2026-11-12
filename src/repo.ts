@@ -307,15 +307,16 @@ export const withElements = (html: string) =>
 // Also takes "_", which leaves such a path text rather than a link.
 const SCHEME = /^[a-z][\w+.-]*:/i;
 
-// An attribute's text as a browser reads it, in one pass: numeric entities and the named ones
-// Bun's renderer and hand-written HTML put in a link.
+// An attribute's or a title's text as a browser reads it, in one pass: numeric entities and the
+// named ones Bun's renderer and hand-written HTML put there, which a browser reads in lower case
+// only.
 const NAMED: Record<string, string> = { amp: "&", quot: '"', lt: "<", gt: ">", apos: "'" };
 const entities = (v: string) =>
   v.replace(
-    /&(?:#x([\da-f]+);?|#(\d+);?|(amp|quot|lt|gt|apos);)/gi,
+    /&(?:#[xX]([\da-fA-F]+);?|#(\d+);?|(amp|quot|lt|gt|apos);)/g,
     (_, hex?: string, dec?: string, name?: string) =>
       name
-        ? NAMED[name.toLowerCase()]!
+        ? NAMED[name]!
         : String.fromCodePoint(Math.min(parseInt(hex ?? dec!, hex ? 16 : 10), 0x10ffff)),
   );
 
@@ -369,7 +370,8 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
       (all, attr: string, value: string) => {
         // "q&a.md" arrives as "q&amp;a.md", "roll's.md" as "roll&#x27;s.md".
         const text = entities(value);
-        if (/^(?:[a-z][\w+.-]*:|#|\/)/i.test(text)) return all;
+        // Read as a browser does, without the spaces and controls around it and tabs or newlines.
+        if (/^(?:[a-z][\w+.-]*:|#|\/)/i.test(text.replace(/^[\0- ]+|[\t\n\r]/g, ""))) return all;
         let [, path, rest] = text.match(/^([^?#]*)(.*)$/s)!;
         try {
           path = decodeURIComponent(path!);
@@ -377,7 +379,7 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
           // A stray % in a hand-written link stays as written.
         }
         // Every markup character stays an entity, since this replace also reaches text.
-        rest = rest!.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+        rest = Bun.escapeHTML(rest!);
         return `${attr}="${fileHref(join(dir, path!))}${rest}"`;
       },
     );
@@ -389,12 +391,7 @@ function titled(repo: string, path: string, text: string, fallback: string) {
   // From the first <h1 on: an unanchored search would scan to the end once per <h1.
   const h1 = html.slice(Math.max(html.indexOf("<h1"), 0)).match(/^<h1[^>]*>([\s\S]*?)<\/h1>\n?/);
   // Bun's renderer decodes every other entity itself.
-  const title =
-    h1?.[1] &&
-    plain(h1[1]).replace(
-      /&(quot|lt|gt|amp);/g,
-      (_, e: string) => ({ quot: '"', lt: "<", gt: ">", amp: "&" })[e]!,
-    );
+  const title = h1?.[1] && entities(plain(h1[1]));
   // An h1 without text, such as a lone image, stays in the article.
   if (!h1 || !title) return { path, title: fallback, html };
   return { path, title, html: html.replace(h1[0], "") };
