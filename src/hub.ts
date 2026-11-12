@@ -7,7 +7,17 @@ import { basename, dirname, join } from "node:path";
 import { ITEMS_DIR } from "./items.ts";
 import { asKey, gitAsync, type RepoData } from "./repo.ts";
 
-const SKIP = new Set(["node_modules", "dist", "build", "target", "vendor", "venv", "coverage"]);
+// `_archive` holds retired checkouts, at any depth.
+const SKIP = new Set([
+  "node_modules",
+  "dist",
+  "build",
+  "target",
+  "vendor",
+  "venv",
+  "coverage",
+  "_archive",
+]);
 
 export async function findRepos(root: string, depth = 6): Promise<string[]> {
   const checkouts: string[] = [];

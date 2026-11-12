@@ -37,7 +37,9 @@ The engine's own catalog, every page and component on an invented repository, op
 package on its first request, which needs `astrobook` and `@hackersandwizards/scaffolding`
 installed beside the package; without them the address answers 503 and names both.
 A repository shows in the hub when its HEAD has `docs/agent-work/items/` or its `package.json` names an
-`@hackersandwizards` package, so this engine shows itself.
+`@hackersandwizards` package, so this engine shows itself. The search skips folders starting with `.`,
+build output such as `node_modules` and `dist`, and any folder named `_archive`, at any depth, so a
+retired checkout kept there stays out.
 
 ## The admin area
 

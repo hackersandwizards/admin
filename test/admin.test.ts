@@ -677,12 +677,12 @@ describe("hub", () => {
     expect(await findRepos(root)).toEqual([repo]);
   });
 
-  test("finds a repo naming an @hackersandwizards package with no items, and none other", async () => {
+  test("finds a repo naming an @hackersandwizards package with no items, and none other or archived", async () => {
     const repo = repoFrom("spoke");
     const root = dirname(repo);
     const bare = (name: string, pkg: object, files: Record<string, string> = {}) => {
       const dir = join(root, name);
-      Bun.spawnSync(["mkdir", dir]);
+      Bun.spawnSync(["mkdir", "-p", dir]);
       writeFileSync(join(dir, "package.json"), JSON.stringify(pkg));
       for (const [f, text] of Object.entries(files)) {
         Bun.spawnSync(["mkdir", "-p", dirname(join(dir, f))]);
@@ -695,7 +695,9 @@ describe("hub", () => {
     };
     const tool = bare("tool", { name: "@hackersandwizards/tool" });
     bare("other", { name: "other" });
-    expect(await findRepos(root)).toEqual([repo, tool]);
+    const live = bare("group/live", { name: "@hackersandwizards/live" });
+    bare("group/_archive/old", { name: "@hackersandwizards/old" });
+    expect(await findRepos(root)).toEqual([live, repo, tool]);
     expect((await readRepo(tool)).designSystem).toBeUndefined();
     expect(
       (await readRepo(bare("ui", { name: "ui", devDependencies: { astro: "1" } }))).designSystem,
