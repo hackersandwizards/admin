@@ -568,9 +568,13 @@ const leads: Partial<Record<Page["type"], string>> = {
   {page.type === "product" && product && (
     <div class="hw-card flex max-w-measure flex-col gap-2 text-ui">
       <p>
-        <a class="hw-link" href={product.href}>
-          Open {product.label}
-        </a>
+        {product.href ? (
+          <a class="hw-link" href={product.href}>
+            Open {product.label}
+          </a>
+        ) : (
+          `${product.label} has no link: its href is neither http(s) nor a path.`
+        )}
       </p>
     </div>
   )}
