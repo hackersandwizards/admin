@@ -39,10 +39,19 @@ const context = html.slice(lead.length).trim();
 // A decision written as an option's key reads as that option's label.
 const named = options.find((o) => o.key === i.decision?.trim());
 const decided = named ? `${named.label} (${named.key})` : i.decision;
+// What was assumed: the assumption, else on an assumed item its recommended options, every label.
+const assumed =
+  i.assumption ??
+  (i.status === "assumed"
+    ? options
+        .filter((o) => i.recommendedKeys.includes(o.key))
+        .map((o) => o.label)
+        .join(", ") || undefined
+    : undefined);
 // What a settled row's closed line says: what was assumed or decided, never the recommendation.
 const settledAs =
   i.status === "assumed"
-    ? { label: "Assumed", text: i.assumption ?? i.recommendedLabel }
+    ? { label: "Assumed", text: assumed }
     : i.status === "decided"
       ? { label: `Decided by ${i.by}`, text: decided }
       : undefined;
@@ -50,7 +59,7 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
 ---
 
 <details
-  class="item hw-disclosure border-b border-border last:border-b-0"
+  class="item group hw-disclosure border-b border-border last:border-b-0"
   id={k}
   data-k={k}
   data-who={i.agent ? undefined : i.who}
@@ -80,14 +89,12 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
         <span class="block font-medium text-ui">{i.title}</span>
         {settledAs
           ? settledAs.text && (
-              <span class="block text-ui line-clamp-2 [details[open]>summary_&]:hidden">
+              <span class="text-ui line-clamp-2 group-open:hidden">
                 {settledAs.label}: <Fragment set:html={inline(settledAs.text)} />
               </span>
             )
           : i.recommendedLabel && (
-              <span class="block text-ui [details[open]>summary_&]:hidden">
-                Recommended: {i.recommendedLabel}
-              </span>
+              <span class="block text-ui group-open:hidden">Recommended: {i.recommendedLabel}</span>
             )}
         <span class="block text-ui text-foreground/70">
           <span class="text-accent" data-updated hidden>
@@ -116,9 +123,9 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
   </summary>
   <div class="hw-measure flex flex-col gap-4 px-3 pb-4 text-ui lg:pl-16">
     <p class="hw-status" data-tone="warning" data-stale hidden></p>
-    {i.assumption && (
+    {assumed && (
       <p class="hw-callout">
-        <b>Assumed:</b> <Fragment set:html={inline(i.assumption)} />
+        <b>Assumed:</b> <Fragment set:html={inline(assumed)} />
       </p>
     )}
     {i.decision && (
@@ -128,7 +135,7 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
     )}
     {lead && <div class={body} set:html={lead} />}
     {loose.length > 0 && (
-      <div class="grid gap-3 sm:grid-cols-2">
+      <div class:list={["grid gap-3", loose.length > 1 && "sm:grid-cols-2"]}>
         {loose.map((m) => (
           <Shot {...m} alt={m.caption ?? i.title} />
         ))}

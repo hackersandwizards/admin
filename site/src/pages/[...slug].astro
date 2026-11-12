@@ -71,6 +71,8 @@ const provenance = repo
     })();
 const needs = (list: typeof items) =>
   [...openQuestions(list), ...forPerson(list)].sort(compareItems);
+// All but what "Waiting on others" lists.
+const yours = needs(items).filter((i) => !d.others.includes(i.who));
 // The hub's lists of every repository, built on the hub alone.
 const hub = page.type === "hub";
 const allNeeds = hub ? d.repos.flatMap((r) => needs(r.items)).sort(compareItems) : [];
@@ -316,15 +318,13 @@ const leads: Partial<Record<Page["type"], string>> = {
           ))}
         </div>
       </section>
-      {needs(items).length > 0 && (
+      {yours.length > 0 && (
         <section>
           <h2 class="mb-2 font-mono font-semibold text-heading">Most urgent</h2>
           <div class="hw-card p-0!" data-hw-exception="item-list">
-            {needs(items)
-              .slice(0, 5)
-              .map((i) => (
-                <ItemRow item={i} />
-              ))}
+            {yours.slice(0, 5).map((i) => (
+              <ItemRow item={i} />
+            ))}
           </div>
         </section>
       )}

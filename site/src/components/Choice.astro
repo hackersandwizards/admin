@@ -9,7 +9,7 @@ interface Props {
 }
 const { item, option: o, name, score } = Astro.props;
 // An item's text names an option by a letter key, such as "b"; a word key restates its label.
-const key = /^[a-z]\d*$/i.test(o.key);
+const lettered = /^[a-z]\d*$/i.test(o.key);
 ---
 
 <span class="flex w-full items-start gap-2">
@@ -27,7 +27,7 @@ const key = /^[a-z]\d*$/i.test(o.key);
         Recommended
       </span>
     )}{" "}
-    {key && (
+    {lettered && (
       <span class="font-mono text-foreground/70" data-option-key>
         {o.key}
       </span>

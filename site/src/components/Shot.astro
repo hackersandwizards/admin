@@ -9,7 +9,7 @@ interface Props {
 }
 const { src, caption, alt, small = false } = Astro.props;
 // A small shot, at most 12rem tall, loads a thumbnail, whose 270 and 540 px boxes cover it at one
-// and two device pixels per px; a large one, up to 24rem, loads the file.
+// and two device pixels per px; a large one, up to 36rem, loads the file.
 ---
 
 <span class="flex flex-col gap-1">
@@ -18,7 +18,7 @@ const { src, caption, alt, small = false } = Astro.props;
       loading="lazy"
       {...(small ? thumbnail(src) : { src })}
       alt={alt}
-      class={`w-full rounded-brand bg-muted object-contain ${small ? "max-h-48" : "max-h-96"}`}
+      class={`w-full rounded-brand bg-muted object-contain ${small ? "max-h-48" : "max-h-144"}`}
     />
   </a>
   {caption && <span class="text-micro text-foreground/70">{caption}</span>}

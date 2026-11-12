@@ -183,10 +183,7 @@ function mark(d, a) {
     m.classList.toggle("text-error", old);
   }
   const reset = d.querySelector(".clear");
-  if (reset) {
-    reset.hidden = !a;
-    reset.parentElement.hidden = !a && !d.querySelector(".pick");
-  }
+  if (reset) reset.hidden = !a;
   const s = d.querySelector(".saved");
   if (s)
     s.textContent = a ? `saved ${hhmm(a.at)}${sent ? `, copied ${hhmm(copiedAt())}` : ""}` : "";
@@ -344,6 +341,8 @@ for (const d of items) {
     write(d.dataset.k, null);
     load(d);
     state();
+    // Reset hides itself: focus goes to the row's first answer rather than the page's top.
+    d.querySelector(`${ANSWER}, textarea`)?.focus();
   });
 }
 // brand's button reads its text on the press and reports each press as hw-copy, detail { ok }, once
@@ -478,12 +477,12 @@ function apply(picked = false) {
   }
   for (const b of buttons) b.setAttribute("aria-pressed", String(b.dataset.whoButton === who));
   for (const b of kinds) b.setAttribute("aria-pressed", String(b.dataset.kindButton === kind));
-  const opened = [...document.querySelectorAll("details.item[data-status=open]")];
+  const openRows = [...document.querySelectorAll("details.item[data-status=open]")];
   for (const b of buttons)
     b.querySelector("[data-who-count]").textContent = String(
-      opened.filter((r) => of(r, b.dataset.whoButton)).length,
+      openRows.filter((r) => of(r, b.dataset.whoButton)).length,
     );
-  const open = opened.filter(mine);
+  const open = openRows.filter(mine);
   for (const b of kinds) {
     const n = open.filter(
       (r) => b.dataset.kindButton === "all" || r.dataset.kind === b.dataset.kindButton,

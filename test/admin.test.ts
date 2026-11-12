@@ -11,10 +11,11 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { peerDependenciesMeta } from "../package.json";
 import puppeteer from "puppeteer-core";
+import { chromeBinary, INSTALL_HINT, NO_KEYCHAIN } from "@hackersandwizards/scaffolding/chrome";
 import {
   Window,
   type Element as DomEl,
@@ -48,21 +49,6 @@ import { createHub, csp, linker } from "../src/serve.ts";
 import { dueOf, inline, withLinks } from "../site/src/data.ts";
 
 const FIX = join(import.meta.dir, "fixtures");
-// Chrome for Testing, which the gate's brand checks need too: CHROME_BINARY, else puppeteer's
-// newest build.
-const chrome = () => {
-  if (process.env.CHROME_BINARY) return process.env.CHROME_BINARY;
-  const builds = join(homedir(), ".cache/puppeteer/chrome");
-  const mac = process.platform === "darwin";
-  const platform = mac ? (process.arch === "arm64" ? "mac_arm" : "mac") : "linux";
-  const newest = readdirSync(builds)
-    .filter((b) => b.startsWith(`${platform}-`))
-    .sort((x, y) => y.localeCompare(x, "en", { numeric: true }))[0];
-  const app = mac
-    ? "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
-    : "chrome-linux64/chrome";
-  return join(builds, newest!, mac && process.arch !== "arm64" ? app.replace("arm64", "x64") : app);
-};
 const made: string[] = [];
 const scratch = () => {
   const dir = mkdtempSync(join(tmpdir(), "admin-test-"));
@@ -784,9 +770,15 @@ describe("pages", () => {
     expect(html.indexOf('id="spoke:name-the-command"')).toBeGreaterThan(
       html.indexOf(">Settled</h2>"),
     );
-    expect(readFileSync(join(out, "spoke/dashboard.html"), "utf8")).toContain(
-      "Sort the sample files",
+    const dashboard = readFileSync(join(out, "spoke/dashboard.html"), "utf8");
+    expect(dashboard).toContain("Sort the sample files");
+    // Most urgent lists the hub's user's own rows; other people's wait under their own heading.
+    const urgent = dashboard.slice(
+      dashboard.indexOf(">Most urgent</h2>"),
+      dashboard.indexOf("Waiting on others"),
     );
+    expect(urgent).toContain("data-who=");
+    expect(urgent).not.toMatch(/data-who="(Kim|Sam)"/);
     // On a phone the repositories table keeps three columns; the most urgent item goes under the
     // repository's name.
     const table = html.slice(html.indexOf(">Repositories</h2>"));
@@ -878,6 +870,9 @@ describe("pages", () => {
     const spoke = await readRepo(repoFrom("spoke"));
     const base = spoke.items.find((i) => i.id === "ask-the-printer")!;
     const late = { ...base, id: "late", owner: "Alex", order: 80 };
+    // An assumption stated by its recommended option alone.
+    const picked = spoke.items.find((i) => i.id === "pick-a-variant")!;
+    const bare = { ...picked, id: "bare", status: "assumed" as const };
     const other = {
       ...spoke,
       key: "other",
@@ -885,8 +880,11 @@ describe("pages", () => {
       items: [{ ...base, id: "early", owner: "Alex", order: 20 }],
     };
     const out = join(scratch(), "out");
-    await buildSite(siteData([{ ...spoke, items: [...spoke.items, late] }, other]), out);
+    await buildSite(siteData([{ ...spoke, items: [...spoke.items, late, bare] }, other]), out);
     const html = readFileSync(join(out, "index.html"), "utf8");
+    // Opened, it still says what was assumed, where the closed line leaves.
+    const bareRow = html.match(/id="spoke:bare"[\s\S]*?<\/details>/)![0];
+    expect(bareRow).toMatch(/<p class="hw-callout"><b>Assumed:<\/b>\s*Variant A/);
     expect(html.indexOf('id="other:early"')).toBeLessThan(html.indexOf('id="spoke:late"'));
     // Each row names its repository.
     expect(html).toMatch(/id="other:early"[\s\S]*?<\/summary>/);
@@ -903,9 +901,7 @@ describe("pages", () => {
     expect(settled("name-the-command")).not.toContain("Recommended");
     // Closed, that line holds two lines at most; opened, it leaves, since the row's callout says it
     // in full.
-    expect(settled("cache-folder")).toMatch(
-      /<span class="[^"]*line-clamp-2 \[details\[open\]&gt;summary_&amp;\]:hidden">Assumed:/,
-    );
+    expect(settled("cache-folder")).toMatch(/<span class="[^"]*group-open:hidden">Assumed:/);
     // A closed row answers nothing: a control that commits an answer sits beside the text it answers.
     const summaries = html.match(/<summary[\s\S]*?<\/summary>/g)!;
     expect(summaries.length).toBeGreaterThan(5);
@@ -942,24 +938,26 @@ describe("pages", () => {
       recommended: "b2",
       multiple: false,
     };
+    const pair = { ...shown, id: "pair", images: ["a.svg", "b.svg"] };
     const out = join(scratch(), "out");
-    await buildSite(siteData([{ ...spoke, items: [...spoke.items, shown] }]), out);
-    const row = readFileSync(join(out, "spoke/decisions.html"), "utf8").match(
-      /id="spoke:shown"[\s\S]*?<\/details>/,
-    )![0];
+    await buildSite(siteData([{ ...spoke, items: [...spoke.items, shown, pair] }]), out);
+    const html = readFileSync(join(out, "spoke/decisions.html"), "utf8");
+    const rowOf = (id: string) =>
+      html.match(new RegExp(`id="spoke:${id}"[\\s\\S]*?</details>`))![0];
+    const row = rowOf("shown");
     expect(row.indexOf("shown/variant-b.svg")).toBeGreaterThan(0);
     expect(row.indexOf("shown/variant-b.svg")).toBeLessThan(row.indexOf("data-option"));
     expect(row).toMatch(/data-option-key[^>]*>b2<\/span>/);
     expect(row).not.toMatch(/data-option-key[^>]*>ask</);
-    // One image per row on a phone, two beside each other from sm up, so each is large enough to
-    // judge.
+    // A lone image takes the row's width, up to 36rem tall: large enough to judge, with its
+    // options in view below it at 900 px. Several stand two beside each other from sm up, one per
+    // row on a phone.
     expect(row).toMatch(
-      /<div class="grid gap-3 sm:grid-cols-2">\s*<span[^>]*>\s*<a href="[^"]*shown\/variant-b/,
+      /<div class="grid gap-3">\s*<span[^>]*>\s*<a href="[^"]*shown\/variant-b[^>]*>\s*<img[^>]*max-h-144/,
     );
+    expect(rowOf("pair")).toContain('<div class="grid gap-3 sm:grid-cols-2">');
     // Opened, the row's own recommendation badge says what the closed line said.
-    expect(row).toMatch(
-      /<span class="[^"]*\[details\[open\]&gt;summary_&amp;\]:hidden">Recommended:/,
-    );
+    expect(row).toMatch(/<span class="[^"]*group-open:hidden">Recommended:/);
   }, 60_000);
 
   test("a due date says today or overdue, and a one-line field renders its code and links", () => {
@@ -1056,11 +1054,9 @@ describe("pages", () => {
       (owner) => ({ ...spoke.items.find((i) => i.id === "ask-the-printer")!, id: owner, owner }),
     );
     await buildSite(siteData([{ ...spoke, items: [...spoke.items, ...more] }]), out);
-    const browser = await puppeteer.launch({
-      executablePath: chrome(),
-      headless: true,
-      args: ["--use-mock-keychain", "--password-store=basic"],
-    });
+    const executablePath = chromeBinary();
+    if (!executablePath) throw new Error(INSTALL_HINT);
+    const browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
     try {
       const page = await browser.newPage();
       for (const [width, height] of [
@@ -1088,6 +1084,15 @@ describe("pages", () => {
             .map((b) => b.textContent!.trim()),
         );
         expect({ width, cut }).toEqual({ width, cut: [] });
+        // A settled row's closed line holds two lines at most, however long its text.
+        const lines = await page.evaluate(() => {
+          const line = document.querySelector<HTMLElement>(
+            '[data-status="assumed"] summary .line-clamp-2',
+          )!;
+          line.textContent = "Assumed: a long assumption. ".repeat(40);
+          return line.offsetHeight / parseFloat(getComputedStyle(line).lineHeight);
+        });
+        expect(lines).toBeLessThan(2.5);
       }
     } finally {
       await browser.close();
@@ -1166,16 +1171,8 @@ describe("admin.js", () => {
   test("an answer is stored as it is given, and the copy button counts it", () => {
     const page = open("spoke/decisions", {});
     const row = page.document.getElementById("spoke:pick-a-variant")!;
-    // Reset shows only once there is an answer to take back, and a row with nothing else in that
-    // line leaves no empty line.
+    // Reset shows only once there is an answer to take back.
     expect((row.querySelector(".clear") as DomElement).hidden).toBe(true);
-    const other = open("spoke/work", {});
-    const work = other.document.getElementById("spoke:ask-the-printer")!;
-    const line = work.querySelector(".clear")!.parentElement as DomElement;
-    expect(line.hidden).toBe(true);
-    (work.querySelector("input[data-done]") as DomInput).checked = true;
-    work.dispatchEvent(new other.Event("change"));
-    expect(line.hidden).toBe(false);
     const pick = row.querySelector('input[data-option][value="b"]') as DomInput;
     pick.checked = true;
     row.dispatchEvent(new page.Event("change"));
@@ -1184,7 +1181,13 @@ describe("admin.js", () => {
     ).toMatchObject({ option: "b", label: ["Variant B"] });
     expect(row.querySelector(".mark")!.textContent).toBe("✓ Variant B");
     expect(page.document.getElementById("copy")!.textContent).toBe("Copy 1 answer");
-    expect((row.querySelector(".clear") as DomElement).hidden).toBe(false);
+    const reset = row.querySelector(".clear") as DomElement;
+    expect(reset.hidden).toBe(false);
+    // Pressed, it leaves; focus moves to the row's first answer, not back to the page's top.
+    reset.focus();
+    reset.click();
+    expect(reset.hidden).toBe(true);
+    expect(page.document.activeElement === row.querySelector("input[data-option]")).toBe(true);
   });
 
   test("an opened row picks its recommendation, an assumption takes agree or veto, and a question put off copies nothing until the next visit", () => {
