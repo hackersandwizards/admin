@@ -307,22 +307,27 @@ export const withElements = (html: string) =>
 // Also takes "_", which leaves such a path text rather than a link.
 const SCHEME = /^[a-z][\w+.-]*:/i;
 
+// An attribute's text as a browser reads it, in one pass: numeric entities and &amp;, the ones a
+// link holds.
+const entities = (v: string) =>
+  v.replace(/&(?:#x([\da-f]+);?|#(\d+);?|amp;)/gi, (_, hex?: string, dec?: string) =>
+    hex || dec
+      ? String.fromCodePoint(Math.min(parseInt(hex ?? dec!, hex ? 16 : 10), 0x10ffff))
+      : "&",
+  );
+
 // A link goes out only over http(s), to mailto or to a path; any other scheme shows its text,
 // beside the pages' policy, which refuses a javascript: link too. HTMLRewriter reads tags as a browser does, a doc's raw HTML
 // included. A browser decodes an href's entities, trims spaces and control characters around it
 // and drops tabs and newlines inside before it reads the scheme; the test decodes the numeric
-// entities and drops every character below "!", and a named entity other than &amp; before the
+// entities and &amp; and drops every character below "!", and any other named entity before the
 // first / ? or # leaves the link text. An SVG <set> or <animate> could write an href after this
 // test, so one aimed at href goes.
-const numeric = (v: string) =>
-  v.replace(/&#(?:x([\da-f]+)|(\d+));?/gi, (_, hex?: string, dec?: string) =>
-    String.fromCodePoint(Math.min(parseInt(hex ?? dec!, hex ? 16 : 10), 0x10ffff)),
-  );
 const unsafe = (href: string) => {
-  const h = numeric(href).replace(/[^!-\uffff]/g, "");
-  return (
-    !/^(?:https?|mailto):/i.test(h) && (SCHEME.test(h) || /&(?!amp;)/.test(h.match(/^[^/?#]*/)![0]))
-  );
+  const h = entities(href).replace(/[^!-\uffff]/g, "");
+  // Before decoding, since a decoded "&#38;" or "&amp;" is no entity.
+  const named = /&(?!amp;|#)/.test(href.match(/^(?:&#|[^/?#])*/)![0]);
+  return !/^(?:https?|mailto):/i.test(h) && (SCHEME.test(h) || named);
 };
 const links = new HTMLRewriter()
   .on("a, area", {
@@ -357,16 +362,20 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
   return links
     .transform(html)
     .replace(
-      /(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"?#]*)((?:[?#][^"]*)?)"/gi,
-      (_, attr, rel: string, rest: string) => {
-        // The attribute's text, as the browser reads it: "q&a.md" arrives as "q&amp;a.md".
-        let path = numeric(rel).replaceAll("&amp;", "&");
+      /(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"]*)"/gi,
+      (all, attr: string, value: string) => {
+        // "q&a.md" arrives as "q&amp;a.md", "roll's.md" as "roll&#x27;s.md".
+        const text = entities(value);
+        if (/^(?:[a-z][\w+.-]*:|#|\/)/i.test(text)) return all;
+        let [, path, rest] = text.match(/^([^?#]*)(.*)$/s)!;
         try {
-          path = decodeURIComponent(path);
+          path = decodeURIComponent(path!);
         } catch {
           // A stray % in a hand-written link stays as written.
         }
-        return `${attr}="${fileHref(join(dir, path))}${rest}"`;
+        // Every markup character stays an entity, since this replace also reaches text.
+        rest = rest!.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+        return `${attr}="${fileHref(join(dir, path!))}${rest}"`;
       },
     );
 }

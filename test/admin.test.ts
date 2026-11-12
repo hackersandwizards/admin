@@ -97,9 +97,9 @@ const configured = (dir: string, admin: Record<string, unknown>) =>
     read: (p) => (p === "package.json" ? JSON.stringify({ admin }) : undefined),
   });
 
-// A repository read from these files alone, at a path with no checkout.
 // Each build draws its own nonce, so pages from two builds compare without it.
 const sansNonce = (html: string) => html.replace(/nonce(-|=")[\w-]+/g, "nonce$1");
+// A repository read from these files alone, at a path with no checkout.
 const fromFiles = (files: Record<string, string>) =>
   readRepo("/nonexistent/x", { paths: Object.keys(files), read: (f) => files[f] });
 
@@ -922,6 +922,15 @@ describe("pages", () => {
     expect(html).toContain("Prod has no link");
   });
 
+  test("a relative link's decoded query or fragment writes no markup", () => {
+    const html = renderMarkdown(
+      "/r",
+      "docs/x.md",
+      `<p>href="x?&#60;a href=javascript:alert(1)&#62;c&#60;/a&#62;"</p>\n\n` +
+        `<img alt='src="y?&#39; onerror=alert(1) x=&#39;"' src=z.png>`,
+    );
+    expect(html).not.toMatch(/<a |' onerror/);
+  });
   test("a doc's javascript: link renders as text in the pages built to disk", async () => {
     const out = join(scratch(), "out");
     const data = await fromFiles({
@@ -1344,7 +1353,9 @@ describe("pages", () => {
       "docs/x.md": [
         "# X",
         "",
-        "[qa](q&a.md)",
+        "[qa](q&a.md) [roll](<rock & roll's.md>)",
+        "",
+        `<a href="q&#38;a.md">raw</a>`,
         "",
         `<script>document.title += "|inline"</script>`,
         `<script src="evil.js"></script>`,
@@ -1355,6 +1366,7 @@ describe("pages", () => {
       "docs/y.md": `# Y\n\n<script src="evil.js" x="`,
       "docs/evil.js": `document.title += "|file";`,
       "docs/q&a.md": "# Q and A",
+      "docs/rock & roll's.md": "# Rock",
     };
     for (const [f, text] of Object.entries(files)) {
       mkdirSync(dirname(join(repo, f)), { recursive: true });
@@ -1367,8 +1379,11 @@ describe("pages", () => {
     const out = join(scratch(), "out");
     await buildSite(siteData([data]), out);
     const html = readFileSync(join(out, "r/doc/docs/x.html"), "utf8");
+    for (const name of ["qa", "roll", "raw"]) {
+      const to = html.match(new RegExp(`href="([^"]*)">${name}<`))![1]!;
+      expect([name, existsSync(decodeURIComponent(new URL(to).pathname))]).toEqual([name, true]);
+    }
     const qa = html.match(/href="([^"]*)">qa</)![1]!;
-    expect(existsSync(decodeURIComponent(new URL(qa).pathname))).toBe(true);
     expect(linker([data]).pages(`href="${qa}"`)).toBe('href="/r/doc/docs/q%26a"');
     const executablePath = await chromeBinaryAsync();
     if (!executablePath) throw new Error(INSTALL_HINT);
@@ -2316,7 +2331,14 @@ describe("serve", () => {
       "docs/rock & roll's",
     ]) {
       const built = readFileSync(join(out, `spoke/doc/${page}.html`), "utf8");
-      expect(sansNonce(await (await get(`/spoke/doc/${page}`)).text())).toBe(
+      const got = await (await get(`/spoke/doc/${page}`)).text();
+      // A shell's scripts carry the nonce its policy names.
+      const nonce = got.match(/'nonce-([\w-]+)'/)![1];
+      expect([...got.matchAll(/<script nonce="([^"]+)"/g)].map((m) => m[1])).toEqual([
+        nonce,
+        nonce,
+      ]);
+      expect(sansNonce(got)).toBe(
         sansNonce(
           served.files(built.replace(/<article[\s\S]*<\/article>/, (a) => served.pages(a))),
         ),

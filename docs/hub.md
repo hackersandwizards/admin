@@ -117,10 +117,10 @@ An item's body is Markdown without HTML: a tag in it, such as a placeholder `<id
 written, and a web address in angle brackets is a link. A doc keeps its raw HTML, styles and images
 included, but no script in it runs:
 the hub's content security policy runs only its own build under `/_astro/`, so a `.js` file a
-repository commits and links through `/_file/` stays inert. Every page carries the same policy in
-a `<meta>` tag too, where it runs only the scripts holding the nonce its build drew, so a page the
-build writes to disk and opened from there runs no script from a doc, a committed `.js` file beside
-it included. Nor can a doc send the page
+repository commits and links through `/_file/` stays inert. Every page also carries the policy in
+a `<meta>` tag, which names its scripts by the nonce its build drew rather than by `/_astro/`, so a
+page the build writes to disk and opened from there runs no script from a doc, a committed `.js`
+file beside it included; a `<meta>` tag cannot refuse framing, which only the served hub does. Nor can a doc send the page
 elsewhere: the policy lets no form post and no frame load from another site, and a `<meta>` tag
 in a doc shows as text. A link in a doc or item, Markdown or raw HTML, goes out only over `http:`,
 `https:` or `mailto:` or as a path; any other scheme, `javascript:` included, shows its text.
