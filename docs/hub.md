@@ -27,8 +27,8 @@ them when they are missing or outside their range.
 ## Addresses
 
 One repository's own pages open at `http://admin.localhost:4329/<repo>`, such as `/website`,
-which leads to its dashboard with only its items. `<repo>` is `admin.name` in its
-`package.json` where that holds only letters, digits, `.`, `_` and `-`, and not only dots
+which leads to its dashboard with only its items. `<repo>` is its `admin.name` (see
+[Configuration](#configuration)) where that holds only letters, digits, `.`, `_` and `-`, and not only dots
 (otherwise a defect); else the folder name, every other character as `-`; where two checkouts share it, or it names a page
 or route of the hub (`index`, `architecture`, `404`, `catalog`, `_astro`, `_file`), the parent
 folder's name goes before it and the repository shows a defect. The hub's rail and its Repositories table link every repository's dashboard.
@@ -135,7 +135,8 @@ running now.
 
 ## Configuration
 
-A repository configures what convention cannot find under `admin` in its `package.json`:
+A repository configures what convention cannot find under `admin` in its `package.json`, or in
+`docs/agent-work/admin.json` (below):
 
 ```json
 {
@@ -159,8 +160,9 @@ line, the key answers are stored under and the checkout's name in each page's pr
 label changes nothing typed.
 
 A repository with no `package.json`, or one another party owns, sets the same object in
-`docs/agent-work/admin.json` instead, such as `{ "label": "…" }`; it needs no dependency, and a
-`package.json` holding `admin` wins over it.
+`docs/agent-work/admin.json` instead, such as `{ "label": "…" }`; it needs no dependency, still
+shows in the hub only by the rule under [Addresses](#addresses), and a `package.json` holding
+`admin` wins over it.
 
-A product's optional `description` leads its page. An `href` without a scheme is a path in the repository: the hub serves it from HEAD, and a file it
+A product's optional `description` leads its page. An `href` without a scheme is a path from the repository's root, from either file: the hub serves it from HEAD, and a file it
 links under `node_modules/` from the installed package.

@@ -53,7 +53,7 @@ Open `http://admin.localhost:4329`. Which repositories it shows and their addres
 "Copy answers" on the hub puts your answers on the clipboard. Paste them into an agent session in
 one of the repositories: the agent writes each answer for that repository into its item and hands the
 others, quoted, to a session in theirs, as the skill describes. The
-hub's addresses, pages, answers and the `admin` key in `package.json`: [docs/hub.md](docs/hub.md).
+hub's addresses, pages, answers and the `admin` settings in `package.json` or `docs/agent-work/admin.json`: [docs/hub.md](docs/hub.md).
 
 ## Work on the package
 

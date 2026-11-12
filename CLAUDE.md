@@ -28,7 +28,7 @@ exported file is a release whose commit names the change.
 - `test/`: `admin.test.ts` and its invented fixtures; `no-values.ts`, the check that no design value
   lives here.
 - `docs/`: `items.md`, what `admin-check` enforces, and `hub.md`, what the hub does and reads from a
-  repository's `package.json`. The README links them and holds no reference of its own.
+  repository's `package.json` or `docs/agent-work/admin.json`. The README links them and holds no reference of its own.
   `<date>-performance.md` is the last polish's measurements, replaced by the next.
 - `docs/agent-work/`: empty but for `.gitkeep`, since scaffolding's skeleton requires the folder; no
   item or report goes here.

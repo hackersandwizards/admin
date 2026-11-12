@@ -461,19 +461,25 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
       defects.push(`package.json: ${field} holds a value that is not text`);
     return Object.fromEntries(kept) as Record<string, string>;
   };
-  let admin = (isObject(pkg.admin) ? pkg.admin : {}) as AdminConfig;
-  // Where admin comes from, as a defect names it.
-  let from = "package.json: admin.";
+  // package.json's admin, where it holds one, else docs/agent-work/admin.json's; `from` names the
+  // source in a defect.
   const own = src.read(ADMIN_FILE);
+  let ownAdmin: unknown;
   if (own !== undefined) {
-    let parsed: unknown;
     try {
-      parsed = JSON.parse(own);
-    } catch {}
-    if (!isObject(parsed)) defects.push(`${ADMIN_FILE}: not a JSON object`);
-    else if (isObject(pkg.admin)) defects.push(`${ADMIN_FILE}: ignored, package.json holds admin`);
-    else [admin, from] = [parsed as AdminConfig, `${ADMIN_FILE}: `];
+      ownAdmin = JSON.parse(own);
+      if (!isObject(ownAdmin)) defects.push(`${ADMIN_FILE}: not a JSON object`);
+    } catch {
+      defects.push(`${ADMIN_FILE}: not JSON`);
+    }
   }
+  const [raw, from] =
+    pkg.admin !== undefined ? [pkg.admin, "package.json: admin."] : [ownAdmin, `${ADMIN_FILE}: `];
+  if (pkg.admin !== undefined && !isObject(raw))
+    defects.push("package.json: admin is not an object");
+  if (pkg.admin !== undefined && isObject(ownAdmin))
+    defects.push(`${ADMIN_FILE}: ignored, package.json holds admin`);
+  const admin = (isObject(raw) ? raw : {}) as AdminConfig;
   const named = typeof admin.name === "string" ? admin.name : undefined;
   const key = named && KEY.test(named) ? named : asKey(basename(repo));
   if (named !== undefined && key !== named)

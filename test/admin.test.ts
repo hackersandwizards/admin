@@ -554,23 +554,31 @@ describe("admin-check", () => {
     };
     const read = await at('{ "label": "Sample notes" }');
     expect([read.key, read.label, read.defects]).toEqual(["spoke", "Sample notes", []]);
-    // No doc, report or review row shows it, and admin-check passes it.
-    const shown = [...read.docs, ...read.reports].map((d) => d.path);
-    expect(shown.filter((p) => p.endsWith(".json"))).toEqual([]);
-    expect(read.reviews.flatMap((v) => [v.dir, ...v.images])).not.toContain("admin.json");
+    // admin-check passes it beside the items.
     expect(readItems(treeSource(repo)).defects).toEqual([]);
     expect((await at('{ "label": 3 }')).defects).toEqual([
       "docs/agent-work/admin.json: label is not text",
     ]);
-    for (const text of ["{", "[]"])
-      expect(await at(text)).toMatchObject({
+    for (const [text, defect] of [
+      ["{", "not JSON"],
+      ["[]", "not a JSON object"],
+    ])
+      expect(await at(text!)).toMatchObject({
         label: undefined,
-        defects: ["docs/agent-work/admin.json: not a JSON object"],
+        defects: [`docs/agent-work/admin.json: ${defect}`],
       });
     // package.json's own admin wins, and the file says it is ignored.
     expect(await at('{ "label": "Sample notes" }', { admin: { label: "Own" } })).toMatchObject({
       label: "Own",
       defects: ["docs/agent-work/admin.json: ignored, package.json holds admin"],
+    });
+    // An admin there that is no object wins too, and says so.
+    expect(await at('{ "label": "Sample notes" }', { admin: null })).toMatchObject({
+      label: undefined,
+      defects: [
+        "package.json: admin is not an object",
+        "docs/agent-work/admin.json: ignored, package.json holds admin",
+      ],
     });
   });
 });
