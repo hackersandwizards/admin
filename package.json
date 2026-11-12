@@ -107,5 +107,8 @@
   "overrides": {
     "minimatch": "11.0.8",
     "postcss-selector-parser": "7.2.0"
+  },
+  "admin": {
+    "label": "Admin engine"
   }
 }
