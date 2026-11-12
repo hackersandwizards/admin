@@ -246,27 +246,27 @@ const plain = (html: string) =>
 // no scan to the end of the text.
 function tableScroll(html: string) {
   let title = "";
-  let under = 0;
+  const used = new Set<string>();
   return html.replace(
     /<(h[1-6])\b[^<>]*>((?:(?!<h[1-6]\b)[\s\S])*?)<\/\1>|<table\b([^<>]*)>((?:(?!<table\b)[\s\S])*?<\/table>)/gi,
     (all, h: string | undefined, heading: string, attrs: string, table: string) => {
       if (h) {
-        [title, under] = [plain(heading), 0];
+        title = plain(heading);
         return all;
       }
-      if (title) under++;
-      const name = title
-        ? under > 1
-          ? `${title} (${under})`
-          : title
-        : [
-            ...table
-              .split(/<\/tr>/i, 1)[0]!
-              .matchAll(/<t[hd]\b[^<>]*>((?:(?!<t[hd]\b)[\s\S])*?)<\/t[hd]>/gi),
-          ]
-            .map(([, cell]) => plain(cell!))
-            .filter(Boolean)
-            .join(" ");
+      const base =
+        title ||
+        [
+          ...table
+            .split(/<\/tr>/i, 1)[0]!
+            .matchAll(/<t[hd]\b[^<>]*>((?:(?!<t[hd]\b)[\s\S])*?)<\/t[hd]>/gi),
+        ]
+          .map(([, cell]) => plain(cell!))
+          .filter(Boolean)
+          .join(" ");
+      let name = base;
+      for (let n = 2; name && used.has(name); n++) name = `${base} (${n})`;
+      used.add(name);
       const region = name ? ` role="region" aria-label="${name.replaceAll('"', "&quot;")}"` : "";
       return `<div class="hw-table-scroll" tabindex="0"${region}><table${attrs || ' class="hw-table not-prose"'}>${table}</div>`;
     },

@@ -681,7 +681,7 @@ describe("hub", () => {
       ...(n.children ?? []).flatMap(wrappers),
     ];
     const table = (head: string) => `| ${head} | B |\n| - | - |\n| 1 | 2 |\n\n`;
-    const text = `${table("A **b**")}## Prices\n\n${table("x")}${table("y")}<H3>Raw "q" &amp; <i>it</i></H3>\n\n${table("z")}# Next\n\n| |\n|-|\n|1|\n`;
+    const text = `${table("A **b**")}${table("A b")}## Prices\n\n${table("x")}${table("y")}<H3>Raw "q" &amp; <i>it</i></H3>\n\n${table("z")}# Next\n\n| |\n|-|\n|1|\n\n## Prices\n\n${table("w")}`;
     const ours = [
       ...dom(renderMarkdown("/r", "docs/a.md", text)).querySelectorAll(".hw-table-scroll"),
     ].map((w) => w.getAttribute("aria-label"));
@@ -693,7 +693,15 @@ describe("hub", () => {
     expect(ours).toEqual(
       wrappers(root).map((w) => (w.properties!.ariaLabel as string | undefined) ?? null),
     );
-    expect(ours).toEqual(["A b B", "Prices", "Prices (2)", 'Raw "q" & it', "Next"]);
+    expect(ours).toEqual([
+      "A b B",
+      "A b B (2)",
+      "Prices",
+      "Prices (2)",
+      'Raw "q" & it',
+      "Next",
+      "Prices (3)",
+    ]);
     expect(
       [
         ...dom(renderMarkdown("/r", "docs/a.md", "| |\n|-|\n|1|\n")).querySelectorAll(
