@@ -63,6 +63,8 @@ export type SiteData = {
     dashboard: string;
   })[];
   pages: Page[];
+  // Set by buildSite, never by the catalog: the nonce its pages' own scripts carry.
+  nonce?: string;
 };
 
 // A file path under docs/agent-work links into the repository named right before it ("website
@@ -300,7 +302,9 @@ export async function buildSite(data: SiteData, outDir: string) {
   const cwd = process.cwd();
   process.chdir(work);
   try {
-    writeFileSync(join(work, "data.json"), JSON.stringify(data));
+    // From disk 'self' admits every file:// script, a doc's committed one included, and a
+    // hash needs CORS there, so a per-build nonce marks the pages' own.
+    writeFileSync(join(work, "data.json"), JSON.stringify({ ...data, nonce: crypto.randomUUID() }));
     writeFileSync(join(work, "admin.css"), stylesheet());
     writeFileSync(join(work, "admin.js"), await script());
     process.env.ADMIN_DATA = join(work, "data.json");

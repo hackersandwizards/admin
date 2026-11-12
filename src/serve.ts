@@ -24,7 +24,7 @@ import {
 } from "./build.ts";
 import elements from "../brand-elements.json";
 import { findRepos, uniqueKeys } from "./hub.ts";
-import { MISSING, NOTICE } from "../site/src/data.ts";
+import { MISSING, NOTICE, policy } from "../site/src/data.ts";
 import {
   docSlug,
   encodeFile,
@@ -67,16 +67,7 @@ const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
 // committed markup from a repository, so it gets the rest without script-src or default-src:
 // brand-elements.json "csp", which brand-elements and brand-markers render the catalog under.
 const catalogCsp = elements.csp;
-export const csp = (origin: string) =>
-  [
-    "default-src 'self'",
-    `script-src ${origin}/_astro/`,
-    "img-src 'self' data:",
-    "style-src 'self' 'unsafe-inline'",
-    "connect-src 'self' http://127.0.0.1:* http://localhost:*",
-    "frame-ancestors 'self'",
-    catalogCsp,
-  ].join("; ");
+export const csp = (origin: string) => `${policy(`${origin}/_astro/`)}; frame-ancestors 'self'`;
 
 const IMMUTABLE = "public, max-age=31536000, immutable";
 

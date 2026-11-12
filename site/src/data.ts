@@ -5,6 +5,7 @@ import type { Page, SiteData, ViewItem } from "../../src/build.ts";
 export type { Page, SiteData, ViewItem };
 import { dueSoon } from "../../src/items.ts";
 import { encodePath } from "../../src/repo.ts";
+import elements from "../../brand-elements.json";
 export { docSlug, fileHref, thumbnail, when } from "../../src/repo.ts";
 
 let cached: SiteData | undefined;
@@ -25,6 +26,18 @@ export const repoOf = (key?: string) => data().repos.find((r) => r.key === key);
 let paths: Set<string> | undefined;
 export const hasPage = (path: string) =>
   (paths ??= new Set(data().pages.map((p) => p.path))).has(path);
+
+// What a hub page may load besides the scripts `scripts` names: the served hub's header (csp in
+// serve.ts) and a built page's <meta> (Layout.astro), which a page opened from disk runs under.
+export const policy = (scripts: string) =>
+  [
+    "default-src 'self'",
+    `script-src ${scripts}`,
+    "img-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'",
+    "connect-src 'self' http://127.0.0.1:* http://localhost:*",
+    elements.csp,
+  ].join("; ");
 
 // What admin-serve says went wrong fills this mark on every page it serves; a comment leaves the
 // notice :empty, so it stays hidden where nothing went wrong.

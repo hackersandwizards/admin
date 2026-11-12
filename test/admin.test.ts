@@ -98,6 +98,8 @@ const configured = (dir: string, admin: Record<string, unknown>) =>
   });
 
 // A repository read from these files alone, at a path with no checkout.
+// Each build draws its own nonce, so pages from two builds compare without it.
+const sansNonce = (html: string) => html.replace(/nonce(-|=")[\w-]+/g, "nonce$1");
 const fromFiles = (files: Record<string, string>) =>
   readRepo("/nonexistent/x", { paths: Object.keys(files), read: (f) => files[f] });
 
@@ -1003,10 +1005,11 @@ describe("pages", () => {
     ]) {
       const text = readFileSync(join(out, page), "utf8");
       // Every script is a classic file script: no module, which a page from disk cannot load, and
-      // nothing inline, which admin-serve's script-src 'self' refuses.
-      expect(text).toMatch(/<script src=/);
+      // nothing inline, which the pages' policy refuses; each carries the build's nonce.
+      const nonce = text.match(/script-src 'nonce-([\w-]+)'/)![1];
+      expect(text).toMatch(/<script nonce=/);
       for (const [tag] of text.matchAll(/<script[^>]*>/g))
-        expect(tag).toMatch(/^<script src="[^"]+">$/);
+        expect(tag).toMatch(new RegExp(`^<script nonce="${nonce}" src="[^"]+">$`));
       expect(text).not.toContain('"/_astro/');
       for (const [, ref] of text.matchAll(/(?:href|src)="([^"]*_astro\/[^"]+)"/g))
         expect(existsSync(resolve(dirname(join(out, page)), ref!))).toBe(true);
@@ -1035,7 +1038,7 @@ describe("pages", () => {
     expect(repos(doc)).toContain('href="../../../../plain/docs.html"');
     const decisions = readFileSync(join(out, "spoke/decisions.html"), "utf8");
     // brand's element script reaches the page as one classic script, which a page from disk loads.
-    const [, script] = decisions.match(/<script src="([^"]*admin[^"]*\.js)"/)!;
+    const [, script] = decisions.match(/<script nonce="[^"]+" src="([^"]*admin[^"]*\.js)"/)!;
     const bundled = readFileSync(resolve(out, "spoke", script!), "utf8");
     expect(bundled).toContain("hw-menu");
     expect(bundled).not.toMatch(/^import\b/m);
@@ -1330,6 +1333,65 @@ describe("pages", () => {
         });
         expect(gaps[0]).toBeCloseTo(gaps[1]!);
       }
+    } finally {
+      await browser.close();
+    }
+  }, 60_000);
+  test("a page opened from disk runs the hub's scripts and none of a doc's, and a doc's q&a link resolves", async () => {
+    const repo = join(scratch(), "r");
+    const files: Record<string, string> = {
+      "package.json": "{}",
+      "docs/x.md": [
+        "# X",
+        "",
+        "[qa](q&a.md)",
+        "",
+        `<script>document.title += "|inline"</script>`,
+        `<script src="evil.js"></script>`,
+        `<img src="missing.png" onerror="document.title += '|onerror'">`,
+        `<form action="https://a.test/"><button id="post">Post</button></form>`,
+      ].join("\n"),
+      // An open attribute swallows the markup up to the hub's own script, nonce included.
+      "docs/y.md": `# Y\n\n<script src="evil.js" x="`,
+      "docs/evil.js": `document.title += "|file";`,
+      "docs/q&a.md": "# Q and A",
+    };
+    for (const [f, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(repo, f)), { recursive: true });
+      writeFileSync(join(repo, f), text);
+    }
+    sh(repo, "git", "init", "-q", "-b", "main");
+    sh(repo, "git", "add", "-A");
+    commit(repo, "c");
+    const data = await readRepo(repo);
+    const out = join(scratch(), "out");
+    await buildSite(siteData([data]), out);
+    const html = readFileSync(join(out, "r/doc/docs/x.html"), "utf8");
+    const qa = html.match(/href="([^"]*)">qa</)![1]!;
+    expect(existsSync(decodeURIComponent(new URL(qa).pathname))).toBe(true);
+    expect(linker([data]).pages(`href="${qa}"`)).toBe('href="/r/doc/docs/q%26a"');
+    const executablePath = await chromeBinaryAsync();
+    if (!executablePath) throw new Error(INSTALL_HINT);
+    const browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
+    try {
+      const page = await browser.newPage();
+      await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+      const posts: string[] = [];
+      page.on("request", (r) => r.url().startsWith("https:") && posts.push(r.url()));
+      await page.goto(`file://${out}/r/doc/docs/x.html`, { waitUntil: "load" });
+      await page.keyboard.press("/");
+      const ran = await page.evaluate(() => [
+        document.title,
+        document.documentElement.dataset.theme,
+        document.activeElement?.id,
+      ]);
+      // theme.js darkens the page, admin.js focuses the search on "/".
+      expect(ran).toEqual(["X · r · Admin", "dark", "admin-search"]);
+      await page.click("#post").catch(() => {});
+      await new Promise((r) => setTimeout(r, 300));
+      expect(posts).toEqual([]);
+      await page.goto(`file://${out}/r/doc/docs/y.html`, { waitUntil: "load" });
+      expect(await page.title()).not.toContain("|file");
     } finally {
       await browser.close();
     }
@@ -2020,7 +2082,9 @@ describe("serve", () => {
       }),
     );
     expect(zipped.headers.get("content-encoding")).toBe("gzip");
-    expect(new TextDecoder().decode(Bun.gunzipSync(await zipped.bytes()))).toBe(nested);
+    expect(sansNonce(new TextDecoder().decode(Bun.gunzipSync(await zipped.bytes())))).toBe(
+      sansNonce(nested),
+    );
     const css = first.match(/href="\.\/(_astro\/[^"]+\.css)"/)![1]!;
     expect((await get(`/${css}`)).headers.get("cache-control")).toContain("immutable");
     expect(decisions.headers.get("cache-control")).toBe("no-store");
@@ -2252,8 +2316,10 @@ describe("serve", () => {
       "docs/rock & roll's",
     ]) {
       const built = readFileSync(join(out, `spoke/doc/${page}.html`), "utf8");
-      expect(await (await get(`/spoke/doc/${page}`)).text()).toBe(
-        served.files(built.replace(/<article[\s\S]*<\/article>/, (a) => served.pages(a))),
+      expect(sansNonce(await (await get(`/spoke/doc/${page}`)).text())).toBe(
+        sansNonce(
+          served.files(built.replace(/<article[\s\S]*<\/article>/, (a) => served.pages(a))),
+        ),
       );
     }
     // A doc's slug may itself end in .html, which only the hub's shells serve: Astro builds none.

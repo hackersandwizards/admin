@@ -12,6 +12,7 @@ import {
   keyOf,
   NOTICE,
   openQuestions,
+  policy,
   repoOf,
   reviewsOf,
   type Page,
@@ -82,11 +83,14 @@ const entries = [
 <html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8" />
+    {d.nonce && (
+      <meta http-equiv="content-security-policy" content={policy(`'nonce-${d.nonce}'`)} />
+    )}
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{page.title} · {repo ? repo.label : "hub"} · Admin</title>
     <meta name="description" content={lead ?? page.title} />
     <link rel="icon" type="image/svg+xml" href={favicon} />
-    <script is:inline src={themeScript}></script>
+    <script is:inline nonce={d.nonce} src={themeScript}></script>
   </head>
   <body
     class="hw-focus-ring bg-background text-foreground"
@@ -230,6 +234,6 @@ const entries = [
         )}
       </main>
     </div>
-    <script is:inline src={adminScript}></script>
+    <script is:inline nonce={d.nonce} src={adminScript}></script>
   </body>
 </html>
