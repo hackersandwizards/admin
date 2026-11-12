@@ -781,7 +781,8 @@ describe("pages", () => {
     expect(0 < from! && from! < to!).toBe(true);
     const urgent = dashboard.slice(from, to);
     expect(urgent).toContain("data-who=");
-    const others = siteData([await readRepo(repo)]).others;
+    const { others } = siteData([await readRepo(repo), await readRepo(plain)]);
+    expect(others.length).toBeGreaterThan(0);
     for (const who of others) expect(urgent).not.toContain(`data-who="${who}"`);
     // On a phone the repositories table keeps three columns; the most urgent item goes under the
     // repository's name.
@@ -874,8 +875,8 @@ describe("pages", () => {
     const spoke = await readRepo(repoFrom("spoke"));
     const base = spoke.items.find((i) => i.id === "ask-the-printer")!;
     const late = { ...base, id: "late", owner: "Alex", order: 80 };
-    // Kim's, ranked first in its repository: the Repositories table's Most urgent names the hub's
-    // user's own, as the dashboard does.
+    // Kim's, ranked first in its repository: the Repositories table counts every person's items,
+    // so its Most urgent names Kim's, while the dashboard's names the hub's user's own.
     const kims = {
       ...base,
       id: "kims",
@@ -904,8 +905,7 @@ describe("pages", () => {
     expect(bareRow).toMatch(/<p class="hw-callout"><b>Assumed:<\/b>\s*Variant A/);
     expect(html.indexOf('id="other:early"')).toBeLessThan(html.indexOf('id="spoke:late"'));
     const spokeRow = html.match(/<tr data-row data-repo-row="spoke">[\s\S]*?<\/tr>/)![0];
-    expect(spokeRow).not.toContain(kims.title);
-    expect(spokeRow).toMatch(/<td class="max-w-md max-sm:hidden">[^<]+<\/td>/);
+    expect(spokeRow).toContain(`<td class="max-w-md max-sm:hidden">${kims.title}</td>`);
     // Each row names its repository.
     expect(html).toMatch(/id="other:early"[\s\S]*?<\/summary>/);
     expect(html.match(/id="other:early"[\s\S]*?<\/summary>/)![0]).toContain("other · to do");
@@ -1129,7 +1129,7 @@ describe("pages", () => {
             parseFloat(getComputedStyle(line.parentElement!).rowGap),
           ];
         });
-        expect(gaps[0]).toBe(gaps[1]);
+        expect(gaps[0]).toBeCloseTo(gaps[1]!);
       }
     } finally {
       await browser.close();

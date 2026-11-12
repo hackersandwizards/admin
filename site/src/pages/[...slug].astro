@@ -71,8 +71,9 @@ const provenance = repo
     })();
 const needs = (list: typeof items) =>
   [...openQuestions(list), ...forPerson(list)].sort(compareItems);
-// The most urgent of what needs a person, but what "Waiting on others" lists.
-const yours = (list: typeof items) => needs(list).filter((i) => !d.others.includes(i.who));
+// A dashboard's most urgent: what needs a person, but what "Waiting on others" lists.
+const yours =
+  page.type === "dashboard" ? needs(items).filter((i) => !d.others.includes(i.who)) : [];
 // The hub's lists of every repository, built on the hub alone.
 const hub = page.type === "hub";
 const allNeeds = hub ? d.repos.flatMap((r) => needs(r.items)).sort(compareItems) : [];
@@ -185,7 +186,7 @@ const leads: Partial<Record<Page["type"], string>> = {
             {d.repos.map((r) => {
               const q = openQuestions(r.items);
               const decide = q.filter((i) => i.kind === "decision");
-              const top = yours(r.items)[0];
+              const top = needs(r.items)[0];
               return (
                 <tr data-row data-repo-row={r.key}>
                   <td>
@@ -318,15 +319,13 @@ const leads: Partial<Record<Page["type"], string>> = {
           ))}
         </div>
       </section>
-      {yours(items).length > 0 && (
+      {yours.length > 0 && (
         <section>
           <h2 class="mb-2 font-mono font-semibold text-heading">Most urgent</h2>
           <div class="hw-card p-0!" data-hw-exception="item-list">
-            {yours(items)
-              .slice(0, 5)
-              .map((i) => (
-                <ItemRow item={i} />
-              ))}
+            {yours.slice(0, 5).map((i) => (
+              <ItemRow item={i} />
+            ))}
           </div>
         </section>
       )}

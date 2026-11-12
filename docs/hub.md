@@ -59,8 +59,8 @@ naming no person and not starting like an agent ("an agent", "Agent (…)") is a
 such as `B+L` or `eBike Works`: it keeps its name up to the first comma, semicolon or `(`, has no button,
 and its items wait under "Waiting on others" and show under "All". The hub and each
 dashboard list open items people other than the hub's user own under "Waiting on others", and a
-dashboard's "Most urgent", like the hub's Repositories table, names only the rest: the hub's
-user's and the agents' items; the
+dashboard's "Most urgent" holds the five most urgent of the rest, the hub's user's and the
+agents'; the
 hub's user is the machine's git identity by first name where an owner writes it, else the person
 with the most open questions. On the hub and Decisions a row of buttons for every person who owns
 an open item, the hub's user first, filters the items by owner, each with the count of open items it shows (that
