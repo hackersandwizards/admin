@@ -11,6 +11,7 @@ export type ViewItem = Item & {
   changed?: number;
   version?: string;
   repo: string;
+  repoLabel: string;
   who: string;
   // Owned by an agent rather than a person: no person filter hides it.
   agent: boolean;
@@ -55,7 +56,8 @@ export type SiteData = {
   // People other than the hub's user, and companies and teams, who own an open item: its
   // "Waiting on others".
   others: string[];
-  repos: (Omit<RepoData, "items" | "workFiles"> & {
+  repos: (Omit<RepoData, "items" | "workFiles" | "label"> & {
+    label: string;
     items: ViewItem[];
     prefix: string;
     dashboard: string;
@@ -155,9 +157,13 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
     // What admin-serve answers where no page is.
     { path: "404", type: "missing", title: "No such page" },
   ];
-  const byKey = new Map(repos.map((r) => [r.key, r]));
-  const files = new Map(repos.map((r) => [r, new Set(r.workFiles)]));
-  const out = repos.map((r) => {
+  // A repository without admin.label goes by its key; the hub lists them by that name.
+  const named = repos
+    .map((r) => ({ ...r, label: r.label ?? r.key }))
+    .sort((a, b) => a.label.localeCompare(b.label, "en"));
+  const byKey = new Map(named.map((r) => [r.key, r]));
+  const files = new Map(named.map((r) => [r, new Set(r.workFiles)]));
+  const out = named.map((r) => {
     const prefix = `${r.key}/`;
     const items = [...r.items].sort(compareItems).map((i) => {
       const recommendedKeys = [i.recommended ?? []].flat();
@@ -165,6 +171,7 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
       return {
         ...i,
         repo: r.key,
+        repoLabel: r.label,
         who,
         html: itemHtml(r, byKey, files, i.body),
         agent: !!i.owner && as === "agent",
@@ -189,7 +196,7 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
     // A slug ending in "index" collides with the folder's own route, so a repo's dashboard is
     // <repo>/dashboard.
     const dashboard = `${prefix}dashboard`;
-    pages.push({ path: dashboard, type: "dashboard", repo: r.key, title: `${r.key} admin` });
+    pages.push({ path: dashboard, type: "dashboard", repo: r.key, title: `${r.label} admin` });
     add({ path: "decisions", type: "decisions", title: "Decisions" });
     add({ path: "work", type: "work", title: "Work" });
     add({ path: "reviews", type: "reviews", title: "Reviews" });

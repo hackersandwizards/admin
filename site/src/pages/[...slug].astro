@@ -191,7 +191,7 @@ const leads: Partial<Record<Page["type"], string>> = {
                 <tr data-row data-repo-row={r.key}>
                   <td>
                     <a class="hw-link" href={link(r.dashboard)}>
-                      {r.key}
+                      {r.label}
                     </a>
                     <span class="hw-label ml-1" data-repo-off hidden>
                       hidden
@@ -234,7 +234,7 @@ const leads: Partial<Record<Page["type"], string>> = {
             {d.repos.flatMap((r) =>
               r.defects.map((x) => (
                 <li data-row data-repo={r.key}>
-                  {r.key}: {x}
+                  {r.label}: {x}
                 </li>
               )),
             )}
@@ -270,7 +270,7 @@ const leads: Partial<Record<Page["type"], string>> = {
           <tr data-row>
             <td>
               <a class="hw-link" href={link(`${r.prefix}architecture`)}>
-                {r.key}
+                {r.label}
               </a>
             </td>
             <td class="font-mono">{r.pkg.version ?? ""}</td>

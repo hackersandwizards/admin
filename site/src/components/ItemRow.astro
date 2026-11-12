@@ -24,7 +24,7 @@ const score = (o: (typeof options)[number]) =>
   o.score === undefined ? "" : `${o.score}${o.noise === undefined ? "" : ` ± ${o.noise}`}`;
 // A row without "for <owner>" is the hub's user's alone.
 const meta = [
-  showRepo ? i.repo : "",
+  showRepo ? i.repoLabel : "",
   i.status !== "open"
     ? `${i.kind}${i.priority ? `, P${i.priority}` : ""}`
     : { decision: "to decide", review: "to review", work: "to do" }[i.kind],

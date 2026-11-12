@@ -387,7 +387,7 @@ function showRepos(stored = false) {
     off.clear();
     for (const k of [].concat(read("repos") || [])) if (allRepos.includes(k)) off.add(k);
   }
-  const names = allRepos.filter((k) => off.has(k));
+  const names = repoBoxes.filter((b) => off.has(b.value)).map((b) => b.dataset.label);
   for (const b of repoBoxes) b.checked = !off.has(b.value);
   for (const r of document.querySelectorAll("[data-repo-row]"))
     r.querySelector("[data-repo-off]").hidden = !off.has(r.dataset.repoRow);

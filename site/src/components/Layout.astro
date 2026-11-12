@@ -83,7 +83,7 @@ const entries = [
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{page.title} · {repo ? repo.key : "hub"} · Admin</title>
+    <title>{page.title} · {repo ? repo.label : "hub"} · Admin</title>
     <meta name="description" content={lead ?? page.title} />
     <link rel="icon" type="image/svg+xml" href={favicon} />
     <script is:inline src={themeScript}></script>
@@ -120,7 +120,7 @@ const entries = [
               aria-expanded="false"
               aria-current={repo ? "location" : undefined}
             >
-              <span class="truncate">{repo ? repo.key : "Repos"}</span>
+              <span class="truncate">{repo ? repo.label : "Repos"}</span>
               <span aria-hidden="true">&nbsp;▾</span>
             </button>
           </li>
@@ -134,7 +134,7 @@ const entries = [
             aria-checked={String(r.key === repo?.key)}
             href={at(repo ? samePage(r) : r.dashboard)}
           >
-            <span class="min-w-0 flex-1 truncate">{r.key}</span>
+            <span class="min-w-0 flex-1 truncate">{r.label}</span>
             <span class="hw-nav-count">{waiting(r) || ""}</span>
           </a>
         ))}
@@ -162,7 +162,7 @@ const entries = [
         <nav class="hw-nav max-md:hidden" aria-label="Menu">
           {repo && <a href={at("index")}>← Hub</a>}
           <p class="hw-label hw-nav-group" data-tone="muted">
-            {repo ? repo.key : "Hub"}
+            {repo ? repo.label : "Hub"}
           </p>
           <ul>
             {entries.map((e) => (
@@ -183,7 +183,7 @@ const entries = [
                 {d.repos.map((r) => (
                   <li>
                     <a href={at(r.dashboard)}>
-                      {r.key}
+                      {r.label}
                       <span class="hw-nav-count">{waiting(r) || ""}</span>
                     </a>
                   </li>

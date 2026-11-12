@@ -5,6 +5,7 @@
     "check": "bun run lint && bun test"
   },
   "admin": {
+    "label": "Sample spoke",
     "designSystem": "http://localhost:6006/design-system",
     "products": [
       {

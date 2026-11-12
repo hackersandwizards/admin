@@ -195,9 +195,12 @@ const notes: Record<string, string> = {
         {name === "popover" && (
           <div class="hw-popover" role="dialog" aria-label="Which repositories">
             <p class="hw-popover-title">Show on the hub</p>
-            <label class="flex items-start gap-2 py-1">
+            <label class="flex items-start gap-2 py-1 wrap-anywhere">
               <input type="checkbox" class="hw-check" checked />
-              spoke
+              <span>
+                Sample spoke{" "}
+                <span class="block font-mono text-micro break-all text-foreground/70">spoke</span>
+              </span>
             </label>
           </div>
         )}

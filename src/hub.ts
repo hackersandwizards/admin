@@ -71,6 +71,7 @@ export function uniqueKeys(repos: RepoData[]): RepoData[] {
     return {
       ...r,
       key,
+      label: r.label && `${r.label} (${basename(dirname(r.path))})`,
       defects: [...r.defects, `key ${r.key} ${why}: its pages are under ${key}`],
     };
   });

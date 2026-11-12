@@ -29,7 +29,7 @@ import {
 } from "happy-dom";
 import { tableScroll as brandTableScroll } from "@hackersandwizards/brand/elements/table.ts";
 import { buildSite, PAGE_TYPES, script, siteData } from "../src/build.ts";
-import { findRepos } from "../src/hub.ts";
+import { findRepos, uniqueKeys } from "../src/hub.ts";
 import {
   compareItems,
   DUE_SOON_DAYS,
@@ -90,6 +90,10 @@ const commit = (cwd: string, message: string) =>
     "-qm",
     message,
   );
+// A repository holding only a package.json with this admin configuration.
+const configured = (dir: string, admin: Record<string, unknown>) =>
+  readRepo(dir, { paths: ["package.json"], read: () => JSON.stringify({ admin }) });
+
 function repoFrom(fixture: string, name = "spoke") {
   const dir = join(scratch(), name);
   cpSync(join(FIX, fixture), dir, { recursive: true });
@@ -367,7 +371,9 @@ describe("admin-check", () => {
       items: [],
       workFiles: ["docs/agent-work/notes.md"],
     };
-    const html = siteData([{ ...spoke, items: [item] }, other]).repos[0]!.items[0]!.html;
+    const html = siteData([{ ...spoke, items: [item] }, other]).repos.find(
+      (r) => r.key === "spoke",
+    )!.items[0]!.html;
     const at = (path: string) => `href="file://${path}"`;
     expect(html).toContain(at("/o/other/docs/agent-work/notes.md"));
     expect(html).not.toContain('gone.md"');
@@ -514,6 +520,21 @@ describe("admin-check", () => {
     expect(
       (await readRepo("/nonexistent/x", { paths: ["package.json"], read: () => kept })).key,
     ).toBe("web-site_2.0");
+    // A label names the repository to a person and leaves its key; one that is not text is a defect.
+    const labelled = (label: unknown) => configured("/nonexistent/x", { label });
+    expect(await labelled("Pilot requirements")).toMatchObject({
+      key: "x",
+      label: "Pilot requirements",
+      defects: [],
+    });
+    expect(await labelled(undefined)).toMatchObject({ key: "x", label: undefined, defects: [] });
+    expect((await labelled(" ")).label).toBeUndefined();
+    expect(await labelled(3)).toMatchObject({
+      label: undefined,
+      defects: ["package.json: admin.label is not text"],
+    });
+    // The hub names a repository without one by its key.
+    expect(siteData([await labelled(undefined)]).repos[0]!.label).toBe("x");
   });
 });
 
@@ -891,6 +912,7 @@ describe("pages", () => {
     const other = {
       ...spoke,
       key: "other",
+      label: "other",
       path: `${spoke.path}-other`,
       items: [{ ...base, id: "early", owner: "Alex", order: 20 }],
     };
@@ -904,6 +926,14 @@ describe("pages", () => {
     const bareRow = html.match(/id="spoke:bare"[\s\S]*?<\/details>/)![0];
     expect(bareRow).toMatch(/<p class="hw-callout"><b>Assumed:<\/b>\s*Variant A/);
     expect(html.indexOf('id="other:early"')).toBeLessThan(html.indexOf('id="spoke:late"'));
+    // A line linking to an item names its repository by label too.
+    expect(html.match(/<div[^>]*data-k="spoke:kims"[\s\S]*?<\/div>/)![0]).toContain(
+      "Sample spoke · ",
+    );
+    // Repositories list by the name a person reads.
+    expect(html.indexOf('data-repo-row="other"')).toBeLessThan(
+      html.indexOf('data-repo-row="spoke"'),
+    );
     const spokeRow = html.match(/<tr data-row data-repo-row="spoke">[\s\S]*?<\/tr>/)![0];
     expect(spokeRow).toContain(`<td class="max-w-md max-sm:hidden">${kims.title}</td>`);
     // Each row names its repository.
@@ -1508,7 +1538,19 @@ describe("admin.js", () => {
     expect(shown()).toBe(0);
     expect(doc.querySelector('[data-kind-button="all"] [data-kind-count]')!.textContent).toBe("0");
     expect(doc.querySelector("[data-repo-count]")!.textContent).toBe("0 of 1");
-    expect(doc.querySelector("[data-repo-said]")!.textContent).toBe("1 repository hidden: spoke.");
+    // The fixture's admin.label names it wherever a person reads it; the key stays its address.
+    expect(doc.querySelector("[data-repo-said]")!.textContent).toBe(
+      "1 repository hidden: Sample spoke.",
+    );
+    expect(
+      doc.querySelector('[data-repo-box][value="spoke"]')!.closest("label")!.textContent,
+    ).toMatch(/^\s*Sample spoke\s+spoke\s*$/);
+    expect(doc.querySelector('[data-repo-row="spoke"] a')!.textContent!.trim()).toBe(
+      "Sample spoke",
+    );
+    expect(
+      open("spoke/decisions", null).document.querySelector(".hw-nav-group")!.textContent!.trim(),
+    ).toBe("Sample spoke");
     expect(
       doc.querySelector('[data-repo-row="spoke"] [data-repo-off]')!.hasAttribute("hidden"),
     ).toBe(false);
@@ -1948,6 +1990,17 @@ describe("serve", () => {
       expect(home).toContain(`>${key}<`);
     expect(home).toContain("key web names another checkout too: its pages are under b-web");
     expect(await get("/b-web/doc/README")).toContain("Only in b");
+    // Two checkouts giving one label each name their folder beside it; one without goes by its key.
+    const renamed = uniqueKeys([
+      await configured("/n/a/web", { label: "Web" }),
+      await configured("/n/b/web", { label: "Web" }),
+      await configured("/n/c/web", {}),
+    ]);
+    expect(siteData(renamed).repos.map((r) => [r.key, r.label])).toEqual([
+      ["c-web", "c-web"],
+      ["a-web", "Web (a)"],
+      ["b-web", "Web (b)"],
+    ]);
     expect(await get("/a-web/doc/README")).toContain("<h1>No such page</h1>");
   }, 120_000);
 
@@ -1988,7 +2041,7 @@ describe("serve", () => {
     expect(readme).toContain('href="/spoke/doc/docs/c%23-notes"');
     expect((await get("/spoke/doc/docs/c%23-notes")).status).toBe(200);
     const notes = await (await get("/spoke/doc/docs/c%23-notes")).text();
-    expect(notes).toContain("<title>C# notes &amp; more · spoke · Admin</title>");
+    expect(notes).toContain("<title>C# notes &amp; more · Sample spoke · Admin</title>");
     expect(notes).toContain('href="/_file/spoke/docs/c%23-notes.md"');
     expect(await (await get("/_file/spoke/docs/c%23-notes.md")).text()).toBe(
       files["docs/c#-notes.md"],

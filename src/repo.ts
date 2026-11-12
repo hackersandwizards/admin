@@ -152,6 +152,7 @@ export type Product = { label: string; href: string; description?: string };
 
 export type RepoData = {
   key: string;
+  label?: string;
   path: string;
   head: string;
   // Commits the upstream has that HEAD lacks, unknown without an upstream.
@@ -386,7 +387,13 @@ const linked = <T extends { label: unknown; href: unknown }>(list: T[] | undefin
     (e) => typeof e?.label === "string" && typeof e?.href === "string",
   );
 
-type AdminConfig = { name?: string; designSystem?: string; products?: Product[]; links?: Link[] };
+type AdminConfig = {
+  name?: string;
+  label?: string;
+  designSystem?: string;
+  products?: Product[];
+  links?: Link[];
+};
 
 // When the repository was last fetched: its FETCH_HEAD's time, which a worktree keeps in its own
 // git folder rather than in <repo>/.git.
@@ -453,6 +460,9 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     defects.push(
       `package.json: admin.name "${named}" is not letters, digits, ".", "_" and "-": its pages are under ${key}`,
     );
+  if (admin.label !== undefined && typeof admin.label !== "string")
+    defects.push("package.json: admin.label is not text");
+  const label = (typeof admin.label === "string" && admin.label.trim()) || undefined;
   const scriptsMap = texts("scripts");
   const href = (h: string) => {
     if (/^[a-z][\w+.-]*:/i.test(h)) return h;
@@ -522,6 +532,7 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
 
   return {
     key,
+    label,
     path: repo,
     head: head.trim(),
     behind: behind ? Number(behind.toString().trim()) : undefined,

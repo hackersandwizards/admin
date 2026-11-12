@@ -12,7 +12,7 @@ interface Props {
   repos?: boolean;
 }
 const { assumed, repos } = Astro.props;
-const keys = data().repos.map((r) => r.key);
+const all = data().repos;
 const kinds = [
   ["all", "All"],
   ["decision", "To decide"],
@@ -54,7 +54,7 @@ const kinds = [
       >
         {"Which repositories"}
         <span class="ml-1 tabular-nums" data-repo-count>
-          {keys.length}
+          {all.length}
         </span>
       </button>
       <div
@@ -66,10 +66,24 @@ const kinds = [
       >
         <p class="hw-popover-title">Show on the hub</p>
         <div class="grid grid-cols-2 gap-x-4">
-          {keys.map((k) => (
-            <label class="flex min-w-0 items-start gap-2 py-1 break-all">
-              <input type="checkbox" class="hw-check" data-repo-box value={k} checked />
-              {k}
+          {all.map((r) => (
+            <label class="flex min-w-0 items-start gap-2 py-1 wrap-anywhere">
+              <input
+                type="checkbox"
+                class="hw-check"
+                data-repo-box
+                value={r.key}
+                data-label={r.label}
+                checked
+              />
+              <span>
+                {r.label}{" "}
+                {r.label !== r.key && (
+                  <span class="block font-mono text-micro break-all text-foreground/70">
+                    {r.key}
+                  </span>
+                )}
+              </span>
             </label>
           ))}
         </div>

@@ -9,7 +9,7 @@ interface Props {
   from: string;
 }
 const { item: i, from } = Astro.props;
-const meta = [i.repo, i.kind, i.agent || i.owner !== i.who ? i.owner : ""]
+const meta = [i.repoLabel, i.kind, i.agent || i.owner !== i.who ? i.owner : ""]
   .filter(Boolean)
   .join(" · ");
 const due = i.due ? dueOf(i.due) : undefined;

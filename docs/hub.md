@@ -145,10 +145,20 @@ A repository configures what convention cannot find under `admin` in its `packag
       { "label": "Slide types", "href": "https://hackersandwizards.github.io/slides/catalog/" }
     ],
     "links": [{ "label": "Validation", "href": "http://127.0.0.1:4321/validation" }],
-    "name": "os"
+    "name": "os",
+    "label": "Company OS"
   }
 }
 ```
+
+`label` is the name a person reads: the rail, the repository menu, page titles, item rows, the
+Repositories and Packages tables, and the box of "Which repositories", which shows the key beside
+it; repositories list in the order of their labels, and where two checkouts share a key, each
+label gets its parent folder in brackets. The key stays the address, the `repo` of every answer
+line, the key answers are stored under and the checkout's name in each page's provenance line, so a
+label changes nothing typed. A repository
+without a `package.json` adds one holding only `{ "admin": { "label": "…" } }`; it needs no
+dependency.
 
 A product's optional `description` leads its page. An `href` without a scheme is a path in the repository: the hub serves it from HEAD, and a file it
 links under `node_modules/` from the installed package.
