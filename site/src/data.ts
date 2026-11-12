@@ -33,8 +33,9 @@ export const NOTICE = "<!--admin-notice-->";
 // The address no page answers, which admin-serve writes into its 404 page.
 export const MISSING = "admin-missing-path";
 
-// A row's mark where its item changed since the last visit, which admin.js words by what changed.
-export const UPDATED = "updated since your last visit";
+// A row's mark where its item changed since the last visit, which admin.js words by what changed;
+// the line above the lists says since when.
+export const UPDATED = "updated";
 
 // An item's row id on a page, which a link to the item names after #.
 export const keyOf = (i: ViewItem) => `${i.repo}:${i.id}`;

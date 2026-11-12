@@ -1,7 +1,8 @@
 ---
-// admin.js reads data-who-button and data-kind-button, and counts each kind of open row for the
-// selected person. On the hub, data-repo-box hides a repository's rows, data-repo-all and
-// data-repo-none show or hide them all, and the line beside the button says which are hidden.
+// admin.js reads data-who-button and data-kind-button, counts each person's open rows, and each
+// kind of open row for the selected person. On the hub, data-repo-box hides a repository's rows,
+// data-repo-all and data-repo-none show or hide them all, and the line beside the button says
+// which are hidden.
 import { data } from "../data";
 
 interface Props {
@@ -22,16 +23,17 @@ const kinds = [
 
 <div class="flex flex-col gap-2">
   <div class="admin-who flex self-start overflow-x-auto">
-    <div class="hw-segmented" role="group" aria-label="For whom">
+    <div class="hw-segmented flex-wrap" role="group" aria-label="For whom">
       {[...data().people, "all"].map((p) => (
         <button type="button" data-who-button={p} aria-pressed="false">
           {p === "all" ? "All" : p}
+          <span class="ml-1 tabular-nums" data-who-count />
         </button>
       ))}
     </div>
   </div>
   <div class="admin-who flex self-start overflow-x-auto">
-    <div class="hw-segmented" role="group" aria-label="Which kind">
+    <div class="hw-segmented flex-wrap" role="group" aria-label="Which kind">
       {kinds.map(([k, label]) => (
         <button type="button" data-kind-button={k} aria-pressed={String(k === "all")}>
           {label}

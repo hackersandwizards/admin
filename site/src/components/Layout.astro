@@ -196,12 +196,6 @@ const entries = [
       <main class="admin-main pb-16">
         <h1>{page.title}</h1>
         {lead && <p class="admin-lead">{lead}</p>}
-        {provenance && (
-          <p class="admin-provenance text-foreground/70">
-            {provenance}
-            {stamp !== undefined && <span data-stamp>{when(stamp)}</span>}
-          </p>
-        )}
         {Astro.slots.has("action") && (
           <div class="admin-action bg-background">
             <slot name="action" />
@@ -220,6 +214,12 @@ const entries = [
         <div id="admin-content" class="mt-6 flex flex-col gap-8" tabindex="-1">
           <slot />
         </div>
+        {provenance && (
+          <p class="admin-provenance text-foreground/70">
+            {provenance}
+            {stamp !== undefined && <span data-stamp>{when(stamp)}</span>}
+          </p>
+        )}
       </main>
     </div>
     <script is:inline src={adminScript}></script>

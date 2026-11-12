@@ -74,8 +74,8 @@ for (let i = storage.length - 1; i >= 0; i--) {
 // its older commit time; any other row compares that time. A new visit starts the person filter
 // on the hub's user again.
 const MARKS = {
-  asked: "question or options changed since your last visit",
-  edited: "edited since your last visit",
+  asked: "question or options changed",
+  edited: "edited",
 };
 let updatedSince = 0;
 try {
@@ -181,6 +181,11 @@ function mark(d, a) {
   if (m) {
     m.textContent = text + (sent ? " · copied" : "");
     m.classList.toggle("text-error", old);
+  }
+  const reset = d.querySelector(".clear");
+  if (reset) {
+    reset.hidden = !a;
+    reset.parentElement.hidden = !a && !d.querySelector(".pick");
   }
   const s = d.querySelector(".saved");
   if (s)
@@ -430,7 +435,8 @@ function apply(picked = false) {
   const filtered = buttons.length > 0 && who !== "all";
   // A row the address names shows whatever repository it is in.
   const away = (r) => off.has(r.dataset.repo) && r !== target;
-  const mine = (r) => (!filtered || !r.dataset.who || r.dataset.who === who) && !away(r);
+  const of = (r, p) => (p === "all" || !r.dataset.who || r.dataset.who === p) && !away(r);
+  const mine = (r) => of(r, filtered ? who : "all");
   let elsewhere = 0;
   let unseen = 0;
   for (const r of rows()) {
@@ -472,7 +478,12 @@ function apply(picked = false) {
   }
   for (const b of buttons) b.setAttribute("aria-pressed", String(b.dataset.whoButton === who));
   for (const b of kinds) b.setAttribute("aria-pressed", String(b.dataset.kindButton === kind));
-  const open = [...document.querySelectorAll("details.item[data-status=open]")].filter(mine);
+  const opened = [...document.querySelectorAll("details.item[data-status=open]")];
+  for (const b of buttons)
+    b.querySelector("[data-who-count]").textContent = String(
+      opened.filter((r) => of(r, b.dataset.whoButton)).length,
+    );
+  const open = opened.filter(mine);
   for (const b of kinds) {
     const n = open.filter(
       (r) => b.dataset.kindButton === "all" || r.dataset.kind === b.dataset.kindButton,

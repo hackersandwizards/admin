@@ -11,9 +11,10 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { peerDependenciesMeta } from "../package.json";
+import puppeteer from "puppeteer-core";
 import {
   Window,
   type Element as DomEl,
@@ -47,6 +48,21 @@ import { createHub, csp, linker } from "../src/serve.ts";
 import { dueOf, inline, withLinks } from "../site/src/data.ts";
 
 const FIX = join(import.meta.dir, "fixtures");
+// Chrome for Testing, which the gate's brand checks need too: CHROME_BINARY, else puppeteer's
+// newest build.
+const chrome = () => {
+  if (process.env.CHROME_BINARY) return process.env.CHROME_BINARY;
+  const builds = join(homedir(), ".cache/puppeteer/chrome");
+  const mac = process.platform === "darwin";
+  const platform = mac ? (process.arch === "arm64" ? "mac_arm" : "mac") : "linux";
+  const newest = readdirSync(builds)
+    .filter((b) => b.startsWith(`${platform}-`))
+    .sort((x, y) => y.localeCompare(x, "en", { numeric: true }))[0];
+  const app = mac
+    ? "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+    : "chrome-linux64/chrome";
+  return join(builds, newest!, mac && process.arch !== "arm64" ? app.replace("arm64", "x64") : app);
+};
 const made: string[] = [];
 const scratch = () => {
   const dir = mkdtempSync(join(tmpdir(), "admin-test-"));
@@ -885,6 +901,11 @@ describe("pages", () => {
     expect(settled("cache-folder")).toContain("Assumed: The build writes to node_modules/.cache");
     expect(settled("name-the-command")).toContain("Decided by Alex: Keep the short name");
     expect(settled("name-the-command")).not.toContain("Recommended");
+    // Closed, that line holds two lines at most; opened, it leaves, since the row's callout says it
+    // in full.
+    expect(settled("cache-folder")).toMatch(
+      /<span class="[^"]*line-clamp-2 \[details\[open\]&gt;summary_&amp;\]:hidden">Assumed:/,
+    );
     // A closed row answers nothing: a control that commits an answer sits beside the text it answers.
     const summaries = html.match(/<summary[\s\S]*?<\/summary>/g)!;
     expect(summaries.length).toBeGreaterThan(5);
@@ -893,11 +914,52 @@ describe("pages", () => {
     const variant = html.match(/id="spoke:pick-a-variant"[\s\S]*?<\/details>/)![0];
     expect(variant.indexOf('value="a"')).toBeLessThan(variant.indexOf(">Context<"));
     expect(variant.indexOf("Pick recommended")).toBeLessThan(variant.indexOf(">Context<"));
+    // A letter key, which the item's text names an option by, stands before its label; a word key,
+    // which restates the label, stays out.
+    expect(variant).toMatch(/data-option-key[^>]*>a<\/span>\s*<b>Variant A<\/b>/);
+    const recipients = html.match(/id="spoke:pick-recipients"[\s\S]*?<\/details>/)![0];
+    expect(recipients).not.toContain("data-option-key");
     // Its options form one group, named by the question they answer.
     expect(variant).toMatch(/role="radiogroup" aria-label="[^"]+"[^>]*>\s*<label/);
-    // The hub's provenance names the checkouts behind and says when it is from.
+    // The hub's provenance names the checkouts behind and says when it is from, at the page's end,
+    // so the lists come first.
     expect(html).toMatch(/class="admin-provenance[^>]*>[^<]*· as of <span data-stamp>\d/);
+    expect(html.indexOf("admin-provenance")).toBeGreaterThan(html.indexOf(">Settled</h2>"));
     expect(html).toContain("Decide P2");
+  }, 60_000);
+
+  test("an item's own images show above its answer, options or none", async () => {
+    const spoke = await readRepo(repoFrom("spoke"));
+    const base = spoke.items.find((i) => i.id === "pick-recipients")!;
+    const shown = {
+      ...base,
+      id: "shown",
+      images: ["variant-b.svg"],
+      options: [
+        { key: "ask", label: "Ask for more" },
+        { key: "b2", label: "Second" },
+      ],
+      recommended: "b2",
+      multiple: false,
+    };
+    const out = join(scratch(), "out");
+    await buildSite(siteData([{ ...spoke, items: [...spoke.items, shown] }]), out);
+    const row = readFileSync(join(out, "spoke/decisions.html"), "utf8").match(
+      /id="spoke:shown"[\s\S]*?<\/details>/,
+    )![0];
+    expect(row.indexOf("shown/variant-b.svg")).toBeGreaterThan(0);
+    expect(row.indexOf("shown/variant-b.svg")).toBeLessThan(row.indexOf("data-option"));
+    expect(row).toMatch(/data-option-key[^>]*>b2<\/span>/);
+    expect(row).not.toMatch(/data-option-key[^>]*>ask</);
+    // One image per row on a phone, two beside each other from sm up, so each is large enough to
+    // judge.
+    expect(row).toMatch(
+      /<div class="grid gap-3 sm:grid-cols-2">\s*<span[^>]*>\s*<a href="[^"]*shown\/variant-b/,
+    );
+    // Opened, the row's own recommendation badge says what the closed line said.
+    expect(row).toMatch(
+      /<span class="[^"]*\[details\[open\]&gt;summary_&amp;\]:hidden">Recommended:/,
+    );
   }, 60_000);
 
   test("a due date says today or overdue, and a one-line field renders its code and links", () => {
@@ -986,6 +1048,51 @@ describe("pages", () => {
       ["(tbd)", true],
     ]);
   });
+  test("on a phone too, a row a link opens shows its title below the copy bar, and every person's button shows", async () => {
+    const out = join(scratch(), "out");
+    const spoke = await readRepo(repoFrom("spoke"));
+    // Five more people, each with an open item, so the person buttons run wider than a phone.
+    const more = ["Annabelle", "Bartholomew", "Constance", "Dorothea", "Evangeline"].map(
+      (owner) => ({ ...spoke.items.find((i) => i.id === "ask-the-printer")!, id: owner, owner }),
+    );
+    await buildSite(siteData([{ ...spoke, items: [...spoke.items, ...more] }]), out);
+    const browser = await puppeteer.launch({
+      executablePath: chrome(),
+      headless: true,
+      args: ["--use-mock-keychain", "--password-store=basic"],
+    });
+    try {
+      const page = await browser.newPage();
+      for (const [width, height] of [
+        [390, 844],
+        [1440, 900],
+      ]) {
+        await page.setViewport({ width: width!, height: height! });
+        // A page long enough that the row can reach the top, as on a full repository's page.
+        await page.goto(`file://${out}/spoke/work.html`);
+        const [bar, row] = await page.evaluate(() => {
+          document.body.append(
+            Object.assign(document.createElement("div"), { style: "height:200vh" }),
+          );
+          location.hash = "#spoke:ask-the-printer";
+          return [
+            document.querySelector(".admin-action")!.getBoundingClientRect().bottom,
+            document.getElementById("spoke:ask-the-printer")!.getBoundingClientRect().top,
+          ];
+        });
+        expect({ width, row: row! >= bar! }).toEqual({ width, row: true });
+        await page.goto(`file://${out}/index.html`);
+        const cut = await page.evaluate(() =>
+          [...document.querySelectorAll("[data-who-button], [data-kind-button]")]
+            .filter((b) => b.getBoundingClientRect().right > innerWidth)
+            .map((b) => b.textContent!.trim()),
+        );
+        expect({ width, cut }).toEqual({ width, cut: [] });
+      }
+    } finally {
+      await browser.close();
+    }
+  }, 60_000);
   test("leaving a page asks nothing: answers are stored as they are typed", () => {
     const script = readFileSync(join(import.meta.dir, "../site/src/admin.js"), "utf8");
     expect(script).not.toMatch(/beforeunload/);
@@ -1059,6 +1166,16 @@ describe("admin.js", () => {
   test("an answer is stored as it is given, and the copy button counts it", () => {
     const page = open("spoke/decisions", {});
     const row = page.document.getElementById("spoke:pick-a-variant")!;
+    // Reset shows only once there is an answer to take back, and a row with nothing else in that
+    // line leaves no empty line.
+    expect((row.querySelector(".clear") as DomElement).hidden).toBe(true);
+    const other = open("spoke/work", {});
+    const work = other.document.getElementById("spoke:ask-the-printer")!;
+    const line = work.querySelector(".clear")!.parentElement as DomElement;
+    expect(line.hidden).toBe(true);
+    (work.querySelector("input[data-done]") as DomInput).checked = true;
+    work.dispatchEvent(new other.Event("change"));
+    expect(line.hidden).toBe(false);
     const pick = row.querySelector('input[data-option][value="b"]') as DomInput;
     pick.checked = true;
     row.dispatchEvent(new page.Event("change"));
@@ -1067,6 +1184,7 @@ describe("admin.js", () => {
     ).toMatchObject({ option: "b", label: ["Variant B"] });
     expect(row.querySelector(".mark")!.textContent).toBe("✓ Variant B");
     expect(page.document.getElementById("copy")!.textContent).toBe("Copy 1 answer");
+    expect((row.querySelector(".clear") as DomElement).hidden).toBe(false);
   });
 
   test("an opened row picks its recommendation, an assumption takes agree or veto, and a question put off copies nothing until the next visit", () => {
@@ -1263,6 +1381,12 @@ describe("admin.js", () => {
       .whoButton!;
     const mine = openRows.filter((r) => !r.dataset.who || r.dataset.who === first);
     expect(Number(count("all"))).toBe(mine.length);
+    // Each person's button counts their open rows, All every one, which the rail's count names.
+    const people = (p: string) =>
+      Number(button("data-who-button", p).querySelector("[data-who-count]")!.textContent);
+    expect(people(first)).toBe(mine.length);
+    expect(people("all")).toBe(openRows.length);
+    expect(people("all")).toBeGreaterThan(people(first));
     expect(Number(count("decision"))).toBe(
       mine.filter((r) => r.dataset.kind === "decision").length,
     );
@@ -1477,7 +1601,8 @@ describe("admin.js", () => {
     });
     const mark = (w: Window) =>
       w.document.querySelector(`[data-k="${changed}"] [data-updated]`)!.textContent;
-    expect(mark(asked)).toContain("question or options changed");
+    // The row's mark is short: the line above the lists says since when.
+    expect(mark(asked)).toBe("question or options changed ·");
     const edited = open("index", {
       "admin-answers:seen": String(Date.now() - 2 * 36e5),
       "admin-answers:versions": JSON.stringify({
@@ -1485,7 +1610,7 @@ describe("admin.js", () => {
         [changed!]: `older ${versions[changed!].split(" ")[1]}`,
       }),
     });
-    expect(mark(edited)).toContain("edited since");
+    expect(mark(edited)).toBe("edited ·");
     expect(file).toBeString();
   });
 });

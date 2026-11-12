@@ -59,6 +59,7 @@
     "happy-dom": "21.0.4",
     "prettier": "3.10.0",
     "prettier-plugin-astro": "1.1.2",
+    "puppeteer-core": "25.17.0",
     "stylelint": "18.0.0",
     "tailwindcss": "4.3.5",
     "typescript": "npm:@typescript/typescript6@6.0.2"

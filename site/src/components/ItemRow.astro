@@ -18,7 +18,7 @@ const shots = (key: string) => i.optionImages[key] ?? [];
 const carded = options.some((o) => shots(o.key).length);
 // The options answer the item's question, which names their group for a screen reader.
 const group = i.multiple ? "group" : "radiogroup";
-// The item's own images: above the answer where it has no options, else after the context.
+// The item's own images, above the answer: what a review asks about is in view where it is answered.
 const loose = shots("");
 const score = (o: (typeof options)[number]) =>
   o.score === undefined ? "" : `${o.score}${o.noise === undefined ? "" : ` ± ${o.noise}`}`;
@@ -80,12 +80,14 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
         <span class="block font-medium text-ui">{i.title}</span>
         {settledAs
           ? settledAs.text && (
-              <span class="block text-ui">
+              <span class="block text-ui line-clamp-2 [details[open]>summary_&]:hidden">
                 {settledAs.label}: <Fragment set:html={inline(settledAs.text)} />
               </span>
             )
           : i.recommendedLabel && (
-              <span class="block text-ui">Recommended: {i.recommendedLabel}</span>
+              <span class="block text-ui [details[open]>summary_&]:hidden">
+                Recommended: {i.recommendedLabel}
+              </span>
             )}
         <span class="block text-ui text-foreground/70">
           <span class="text-accent" data-updated hidden>
@@ -125,6 +127,13 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
       </p>
     )}
     {lead && <div class={body} set:html={lead} />}
+    {loose.length > 0 && (
+      <div class="grid gap-3 sm:grid-cols-2">
+        {loose.map((m) => (
+          <Shot {...m} alt={m.caption ?? i.title} />
+        ))}
+      </div>
+    )}
     {i.status === "assumed" && (
       <div
         class="hw-card p-0!"
@@ -165,7 +174,7 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
           Pick recommended
         </button>
       )}
-      <button type="button" class="clear hw-button" data-variant="secondary">
+      <button type="button" class="clear hw-button" data-variant="secondary" hidden>
         Reset
       </button>
       <span class="saved text-micro text-foreground/70" aria-live="polite"></span>
@@ -204,13 +213,6 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
         ))}
       </div>
     )}
-    {!options.length && loose.length > 0 && (
-      <div class="grid grid-cols-2 gap-3 xl:grid-cols-3">
-        {loose.map((m) => (
-          <Shot {...m} alt={m.caption ?? i.title} />
-        ))}
-      </div>
-    )}
     {i.kind === "work" && (
       <label class="flex items-start gap-2">
         <input type="checkbox" class="hw-check" data-done /> done
@@ -226,7 +228,7 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
       {options.length ? "Note or your own answer" : "Answer, such as “fine” or what to change"}
     </label>
     <textarea id={`n-${k}`} class="form-input w-full"></textarea>
-    {(context || i.evidence || (options.length > 0 && loose.length > 0)) && (
+    {(context || i.evidence) && (
       <>
         <p class="hw-label" data-tone="muted">
           Context
@@ -241,13 +243,6 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
           <p class="text-foreground/70">
             Evidence: <Fragment set:html={inline(i.evidence)} />
           </p>
-        )}
-        {options.length > 0 && loose.length > 0 && (
-          <div class="grid grid-cols-2 gap-3 xl:grid-cols-3">
-            {loose.map((m) => (
-              <Shot {...m} alt={m.caption ?? i.title} />
-            ))}
-          </div>
         )}
       </>
     )}

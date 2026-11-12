@@ -49,7 +49,8 @@ Architecture (package, pins, scripts with their first comment line), Checks (the
 Items sort by `priority`, then `order`; a `due` date seven days away or nearer, or past, leads its
 priority, and every `due` shows as a badge: "was due" in red once past, "due today" in amber. On
 the hub every repository's rows run in this one order, each naming its repository, and assumed and
-decided items come last, under "Settled", each saying what was assumed or decided.
+decided items come last, under "Settled", each saying in two lines at most what was assumed or
+decided, in full once opened.
 Work an agent owns shows collapsed under "Agents on it", each row a link to its repository's
 page. An item belongs to the first person its `owner` names anywhere ("Ivo drafts, Kim sends" is
 Kim's), a person being the hub's user or a name that opens some open item's owner, and never an
@@ -72,8 +73,9 @@ A link to an item in a hidden repository still opens it, and a repository's own 
 nothing. A row
 whose item file changed since the visit before, a run of page views under an hour apart in this
 browser, says so, and whether its question or options changed; each fold counts such rows. An
-opened question shows its first paragraph, its options and its buttons before the rest of its
-text. A page left open over an hour says so.
+opened question shows its first paragraph, the item's own images, its options and its buttons
+before the rest of its text. A row a link opens starts below the "Copy answers" bar, which on a
+phone keeps one line beside its button. A page left open over an hour says so.
 
 When a build fails or a repository cannot be read at its HEAD, every page says so above its
 content, keeps the last pages it built, and the hub tries again a minute later, or once a
