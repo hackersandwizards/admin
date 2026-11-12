@@ -97,6 +97,10 @@ const configured = (dir: string, admin: Record<string, unknown>) =>
     read: (p) => (p === "package.json" ? JSON.stringify({ admin }) : undefined),
   });
 
+// A repository read from these files alone, at a path with no checkout.
+const fromFiles = (files: Record<string, string>) =>
+  readRepo("/nonexistent/x", { paths: Object.keys(files), read: (f) => files[f] });
+
 function repoFrom(fixture: string, name = "spoke") {
   const dir = join(scratch(), name);
   cpSync(join(FIX, fixture), dir, { recursive: true });
@@ -409,6 +413,41 @@ describe("admin-check", () => {
       read: (f) => files[f],
     });
     expect(links[0]!.href).toBe("file:///nonexistent/x/a.html?v=1#t");
+  });
+
+  test("an admin href links only over http(s) or as a path; any other scheme shows as text", async () => {
+    const bad = ["javascript:alert(1)", "JaVaScRiPt:alert(1)", "data:text/html,x", "vbscript:x"];
+    const config = (h: string) => ({
+      designSystem: h,
+      products: [{ label: "P", href: h }],
+      links: [{ label: "L", href: h }],
+    });
+    for (const h of bad)
+      for (const files of [
+        { "package.json": JSON.stringify({ admin: config(h) }) },
+        { "docs/agent-work/admin.json": JSON.stringify(config(h)) },
+      ] as Record<string, string>[]) {
+        const r = await fromFiles(files);
+        expect(r.designSystem).toBeUndefined();
+        expect(r.products).toEqual([{ label: "P", href: undefined }]);
+        expect(r.links).toEqual([{ label: "L", href: undefined }]);
+        expect(r.defects.filter((d) => d.includes("scheme not allowed"))).toHaveLength(3);
+      }
+    // A leading space or an embedded tab makes it no scheme, so it stays a path in the repository.
+    for (const h of [" javascript:x", "java\tscript:x"]) {
+      const files = { "package.json": JSON.stringify({ admin: config(h) }) };
+      const r = await fromFiles(files);
+      for (const out of [r.designSystem, r.products[0]!.href, r.links[0]!.href])
+        expect(out).toStartWith("file:///nonexistent/x/");
+    }
+    const files = {
+      "package.json": JSON.stringify({
+        admin: { products: [{ label: "P", href: "https://a.test/" }] },
+      }),
+    };
+    const ok = await fromFiles(files);
+    expect(ok.products[0]!.href).toBe("https://a.test/");
+    expect(ok.defects).toEqual([]);
   });
 
   test("a stray % in a Markdown link stays as written", () => {
@@ -810,6 +849,28 @@ describe("hub", () => {
 });
 
 describe("pages", () => {
+  test("an admin link with a scheme other than http(s) renders its label as text", async () => {
+    const files = {
+      "package.json": JSON.stringify({
+        admin: {
+          designSystem: "javascript:alert(1)",
+          products: [{ label: "Prod", href: "javascript:alert(2)" }],
+          links: [{ label: "Lnk", href: "data:text/html,x" }],
+        },
+      }),
+    };
+    const out = join(scratch(), "out");
+    const data = await fromFiles(files);
+    await buildSite(siteData([data]), out);
+    const pages = (readdirSync(out, { recursive: true }) as string[]).filter((p) =>
+      p.endsWith(".html"),
+    );
+    const html = pages.map((p) => readFileSync(join(out, p), "utf8")).join("\n");
+    expect(html).not.toMatch(/javascript:|data:text/);
+    expect(html).toContain("<span>Lnk</span>");
+    expect(html).toContain("Prod has no link");
+  });
+
   test("build pages that open from disk", async () => {
     const repo = repoFrom("spoke");
     const out = join(dirname(repo), "out");

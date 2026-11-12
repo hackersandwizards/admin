@@ -152,12 +152,16 @@ const entries = [
           />
         </div>
         <nav class="hw-choices admin-choices md:hidden" aria-label="Menu">
-          {entries.map((e) => (
-            <a class="hw-choice" href={e.href} aria-current={e.current ? "page" : undefined}>
-              {e.label}
-              {e.count !== undefined && <span class="hw-choice-count">{e.count}</span>}
-            </a>
-          ))}
+          {entries.map((e) =>
+            e.href ? (
+              <a class="hw-choice" href={e.href} aria-current={e.current ? "page" : undefined}>
+                {e.label}
+                {e.count !== undefined && <span class="hw-choice-count">{e.count}</span>}
+              </a>
+            ) : (
+              <span>{e.label}</span>
+            ),
+          )}
         </nav>
         <nav class="hw-nav max-md:hidden" aria-label="Menu">
           {repo && <a href={at("index")}>← Hub</a>}
@@ -167,10 +171,14 @@ const entries = [
           <ul>
             {entries.map((e) => (
               <li>
-                <a href={e.href} aria-current={e.current ? "page" : undefined}>
-                  {e.label}
-                  {e.count !== undefined && <span class="hw-nav-count">{e.count}</span>}
-                </a>
+                {e.href ? (
+                  <a href={e.href} aria-current={e.current ? "page" : undefined}>
+                    {e.label}
+                    {e.count !== undefined && <span class="hw-nav-count">{e.count}</span>}
+                  </a>
+                ) : (
+                  <span>{e.label}</span>
+                )}
               </li>
             ))}
           </ul>

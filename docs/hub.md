@@ -164,5 +164,5 @@ A repository with no `package.json`, or one another party owns, sets the same ob
 shows in the hub only by the rule under [Addresses](#addresses), and a `package.json` holding
 `admin` wins over it.
 
-A product's optional `description` leads its page. An `href` without a scheme is a path from the repository's root, from either file: the hub serves it from HEAD, and a file it
+A product's optional `description` leads its page. An `href` (and `designSystem`) links out only over `http:` or `https:`; any other scheme, such as `javascript:` or `mailto:`, is a defect: a product or link then shows its label as text, and such a `designSystem` gives way to the Catalog entry convention finds, if any. An `href` without a scheme is a path from the repository's root, from either file: the hub serves it from HEAD, and a file it
 links under `node_modules/` from the installed package.

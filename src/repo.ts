@@ -152,8 +152,9 @@ export type Review = { dir: string; images: string[]; report?: string };
 export type Doc = { path: string; title: string; html: string };
 export type ScriptFile = { path: string; comment: string };
 export type Commit = { hash: string; time: number; subject: string };
-export type Link = { label: string; href: string };
-export type Product = { label: string; href: string; description?: string };
+// No href: the configured one had a scheme other than http(s), so the label shows as text.
+export type Link = { label: string; href?: string };
+export type Product = { label: string; href?: string; description?: string };
 
 export type RepoData = {
   key: string;
@@ -390,9 +391,10 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 
 // Config entries without a text label and href are dropped rather than failing the whole hub.
-const linked = <T extends { label: unknown; href: unknown }>(list: T[] | undefined) =>
+const linked = <T extends { label?: unknown; href?: unknown }>(list: T[] | undefined) =>
   (Array.isArray(list) ? list : []).filter(
-    (e) => typeof e?.label === "string" && typeof e?.href === "string",
+    (e): e is T & { label: string; href: string } =>
+      typeof e?.label === "string" && typeof e?.href === "string",
   );
 
 type AdminConfig = {
@@ -490,14 +492,23 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     defects.push(`${from}label is not text`);
   const label = (typeof admin.label === "string" && admin.label.trim()) || undefined;
   const scriptsMap = texts("scripts");
-  const href = (h: string) => {
-    if (/^[a-z][\w+.-]*:/i.test(h)) return h;
+  // Only http(s) links out. The served hub's script-src already stops a javascript: link, but the
+  // pages buildSite writes open from disk under no policy, where a scanned repository's link would
+  // run script.
+  const href = (h: string, field: string) => {
+    if (/^https?:/i.test(h)) return h;
+    if (/^[a-z][\w+.-]*:/i.test(h)) {
+      defects.push(`${from}${field}: scheme not allowed, not linked`);
+      return undefined;
+    }
     const [, path, rest] = h.match(/^([^?#]*)(.*)$/s)!;
     return fileHref(join(repo, path!)) + rest;
   };
   const dependencies = { ...texts("dependencies"), ...texts("devDependencies") };
   const dev = astrobookDev(src, scriptsMap);
-  const designSystem = typeof admin.designSystem === "string" ? href(admin.designSystem) : dev?.url;
+  const designSystem =
+    (typeof admin.designSystem === "string" && href(admin.designSystem, "designSystem")) ||
+    dev?.url;
   const designSystemDev =
     dev && designSystem === dev.url ? { port: dev.port, start: dev.start } : undefined;
 
@@ -578,8 +589,11 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     },
     designSystem,
     designSystemDev,
-    products: linked(admin.products).map((p) => ({ ...p, href: href(p.href) })),
-    links: linked(admin.links).map((l) => ({ ...l, href: href(l.href) })),
+    products: linked(admin.products).map((p) => ({
+      ...p,
+      href: href(p.href, `products "${p.label}"`),
+    })),
+    links: linked(admin.links).map((l) => ({ ...l, href: href(l.href, `links "${l.label}"`) })),
     agents: src.paths
       .filter((p) => AGENT.test(p))
       .flatMap(
