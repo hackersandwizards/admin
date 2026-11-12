@@ -1,7 +1,7 @@
 ---
 // admin.js reads data-who-button and data-kind-button, and counts each kind of open row for the
-// selected person. On the hub, data-repo-box hides a repository's rows, and the line beside the
-// button says which are hidden.
+// selected person. On the hub, data-repo-box hides a repository's rows, data-repo-all and
+// data-repo-none show or hide them all, and the line beside the button says which are hidden.
 import { data } from "../data";
 
 interface Props {
@@ -75,6 +75,9 @@ const kinds = [
       <p class="text-ui" role="status" data-repo-said></p>
       <button type="button" class="hw-button" data-variant="secondary" data-repo-all hidden>
         Show all
+      </button>
+      <button type="button" class="hw-button" data-variant="secondary" data-repo-none>
+        Hide all
       </button>
     </div>
   )}

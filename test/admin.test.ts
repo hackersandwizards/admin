@@ -1361,6 +1361,16 @@ describe("admin.js", () => {
     expect(shown()).toBeGreaterThan(0);
     expect(stored(page)["admin-answers:repos"]).toBeUndefined();
     expect(doc.querySelector("[data-repo-said]")!.textContent).toBe("");
+    // "Hide all" unchecks every box and keeps the choice; with nothing left to hide it steps aside.
+    const none = doc.querySelector("[data-repo-none]") as unknown as HTMLButtonElement;
+    expect(none.hasAttribute("hidden")).toBe(false);
+    none.click();
+    expect(shown()).toBe(1);
+    expect(stored(page)["admin-answers:repos"]).toBe('["spoke"]');
+    expect(doc.querySelector("[data-repo-count]")!.textContent).toBe("0 of 1");
+    expect(none.hasAttribute("hidden")).toBe(true);
+    expect(doc.querySelector("[data-repo-all]")!.hasAttribute("hidden")).toBe(false);
+    (doc.querySelector("[data-repo-all]") as unknown as HTMLButtonElement).click();
     // Unchecking the box hides it again and keeps the choice.
     const box = doc.querySelector('[data-repo-box][value="spoke"]') as unknown as DomInput;
     box.checked = false;

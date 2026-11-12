@@ -66,7 +66,8 @@ a third control, "Which repositories", opens a box per repository: one unchecked
 repository's rows from every list on the hub, whatever person and kind are chosen, and the kind
 counts count only the repositories shown. The choice stays in this browser across visits; while
 any is hidden, the button counts the shown ones ("11 of 14"), the line beside it names the hidden
-ones with "Show all", and the Repositories table, which keeps every repository, marks them hidden.
+ones with "Show all", "Hide all" stands beside it while any is shown, and the Repositories table,
+which keeps every repository, marks them hidden.
 A link to an item in a hidden repository still opens it, and a repository's own pages hide
 nothing. A row
 whose item file changed since the visit before, a run of page views under an hour apart in this

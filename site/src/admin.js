@@ -391,6 +391,7 @@ function showRepos(stored = false) {
     ? `${plural(names.length, "repository", "repositories")} hidden: ${names.join(", ")}.`
     : "";
   document.querySelector("[data-repo-all]").hidden = !names.length;
+  document.querySelector("[data-repo-none]").hidden = names.length === allRepos.length;
   document.querySelector("[data-repo-count]").textContent = names.length
     ? `${allRepos.length - names.length} of ${allRepos.length}`
     : allRepos.length;
@@ -542,6 +543,10 @@ for (const b of repoBoxes)
   });
 document.querySelector("[data-repo-all]")?.addEventListener("click", () => {
   off.clear();
+  keep();
+});
+document.querySelector("[data-repo-none]")?.addEventListener("click", () => {
+  for (const k of allRepos) off.add(k);
   keep();
 });
 search?.addEventListener("input", () => apply());
