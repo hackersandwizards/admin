@@ -482,7 +482,7 @@ describe("admin-check", () => {
       '<map><area href="javascript:x"></map>',
       '<svg><a xlink:href="javascript:x"><text>t</text></a></svg>',
     ])
-      expect(renderMarkdown("/r", "docs/a.md", raw)).not.toMatch(/href="(?!https:)/i);
+      expect(renderMarkdown("/r", "docs/a.md", raw)).not.toMatch(/href\s*=\s*(?!["']?\s*https:)/i);
     const ok = renderMarkdown(
       "/r",
       "docs/a.md",
