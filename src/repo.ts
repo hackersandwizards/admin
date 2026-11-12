@@ -303,6 +303,24 @@ export const withElements = (html: string) =>
     .replace(/<pre>/g, '<pre class="hw-code not-prose">')
     .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');
 
+// A link goes out only over http(s), to mailto or to a path; any other scheme shows its text,
+// since pages buildSite writes open from disk under no policy, where a javascript: link from a
+// scanned repository would run. HTMLRewriter reads tags as a browser does, a doc's raw HTML
+// included. The browser decodes an href's entities and drops spaces and control characters (all
+// below "!") before it reads the scheme, so the test does too; a named entity other than &amp; before the
+// first / ? or # leaves the link text. A doc's raw HTML can still run script on disk.
+const links = new HTMLRewriter().on("a[href], area[href], a[xlink\\:href]", {
+  element(el) {
+    const h = (el.getAttribute("href") ?? el.getAttribute("xlink:href"))!
+      .replace(/&#(?:x([\da-f]+)|(\d+));?/gi, (_, hex?: string, dec?: string) =>
+        String.fromCodePoint(Math.min(parseInt(hex ?? dec!, hex ? 16 : 10), 0x10ffff)),
+      )
+      .replace(/[^!-\uffff]/g, "");
+    if (!/^(?:https?|mailto):/i.test(h) && /:|&(?!amp;)/.test(h.match(/^[^/?#]*/)![0]))
+      el.removeAndKeepContent();
+  },
+});
+
 // Front matter is a leading YAML mapping between --- lines; a leading rule renders, since "---"
 // above a paragraph is no mapping. An item's body has no front matter and no HTML: a placeholder
 // such as <id> shows as written, and an address in angle brackets is linked by the pages.
@@ -320,18 +338,20 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
   const html = withElements(
     Bun.markdown.html(body, item ? { noHtmlSpans: true, noHtmlBlocks: true } : {}),
   );
-  return html.replace(
-    /(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"?#]*)((?:[?#][^"]*)?)"/gi,
-    (_, attr, rel: string, rest: string) => {
-      let path = rel;
-      try {
-        path = decodeURIComponent(rel);
-      } catch {
-        // A stray % in a hand-written link stays as written.
-      }
-      return `${attr}="${fileHref(join(dir, path))}${rest}"`;
-    },
-  );
+  return links
+    .transform(html)
+    .replace(
+      /(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"?#]*)((?:[?#][^"]*)?)"/gi,
+      (_, attr, rel: string, rest: string) => {
+        let path = rel;
+        try {
+          path = decodeURIComponent(rel);
+        } catch {
+          // A stray % in a hand-written link stays as written.
+        }
+        return `${attr}="${fileHref(join(dir, path))}${rest}"`;
+      },
+    );
 }
 
 // A page's title is its first rendered h1, which leaves the article since the title shows above it.

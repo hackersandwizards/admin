@@ -450,6 +450,48 @@ describe("admin-check", () => {
     expect(ok.defects).toEqual([]);
   });
 
+  test("a Markdown link goes out only over http(s), to mailto or to a path; any other scheme shows its text", () => {
+    const bad = [
+      "[a](javascript:alert(1))",
+      "[b](JaVaScRiPt:x)",
+      "<javascript:alert(1)>",
+      "[c](data:text/html,x)",
+      "[d](file:///etc/hosts)",
+      "[e](vscode://file/x)",
+      "[f](&#106;avascript:x)",
+      "[g][r]\n\n[r]: javascript:x",
+    ];
+    for (const md of bad)
+      for (const item of [false, true])
+        expect(renderMarkdown("/r", "docs/a.md", md, item)).not.toContain("<a ");
+    // Raw HTML in a doc, quoted any way, with an entity or a space the browser drops.
+    for (const raw of [
+      '<a href="javascript:x">t</a>',
+      "<a href='javascript:x'>t</a>",
+      "<a href=javascript:x>t</a>",
+      '<a title="x" href="&#106;avascript:x">t</a>',
+      '<a href="javascript&colon;x">t</a>',
+      '<a href=" javascript:x">t</a>',
+      '<a href="java&#x09;script:x">t</a>',
+      '<a\nhref="javascript:x">t</a>',
+      '<A HREF="javascript:x">t</A>',
+      '<a href ="javascript:x">t</a>',
+      '<p><a href="javascript:x">t</p>',
+      '<a title=" href=https://a.test/" href="javascript:x">t</a>',
+      '<a href="https://a.test/">see [x](javascript:x)',
+      '<map><area href="javascript:x"></map>',
+      '<svg><a xlink:href="javascript:x"><text>t</text></a></svg>',
+    ])
+      expect(renderMarkdown("/r", "docs/a.md", raw)).not.toMatch(/href="(?!https:)/i);
+    const ok = renderMarkdown(
+      "/r",
+      "docs/a.md",
+      "[h](https://a.test/) [i](HTTP://a.test/) [m](mailto:x@a.test) [p](b.md#t) [q](/b.md) [s](#t) [a](q&a.md)",
+    );
+    expect(ok.match(/<a /g)).toHaveLength(7);
+    expect(ok).toContain('href="file:///r/docs/b.md#t"');
+  });
+
   test("a stray % in a Markdown link stays as written", () => {
     expect(renderMarkdown("/r", "docs/a.md", "[half](50%.md)")).toContain("docs/50%25.md");
   });
@@ -870,6 +912,20 @@ describe("pages", () => {
     expect(html).toContain("<span>Lnk</span>");
     expect(html).toContain("Prod has no link");
   });
+
+  test("a doc's javascript: link renders as text in the pages built to disk", async () => {
+    const out = join(scratch(), "out");
+    const data = await fromFiles({
+      "docs/x.md": "# X\n\n[run](javascript:alert(1)) [ok](https://a.test/)",
+    });
+    await buildSite(siteData([data]), out);
+    const pages = (readdirSync(out, { recursive: true }) as string[]).filter((p) =>
+      p.endsWith(".html"),
+    );
+    const html = pages.map((p) => readFileSync(join(out, p), "utf8")).join("\n");
+    expect(html).toContain('href="https://a.test/"');
+    expect(html).not.toContain("javascript:");
+  }, 60_000);
 
   test("build pages that open from disk", async () => {
     const repo = repoFrom("spoke");
@@ -1858,6 +1914,22 @@ describe("serve", () => {
     ).text();
     expect(after).toBe(at(control));
   }, 120_000);
+
+  test("a doc's javascript: link renders as text on the served hub", async () => {
+    const repo = repoFrom("spoke");
+    writeFileSync(
+      join(repo, "docs/x.md"),
+      "# X\n\n[run](javascript:alert(1)) [ok](https://a.test/)\n",
+    );
+    sh(repo, "git", "add", "docs/x.md");
+    commit(repo, "x");
+    const hub = createHub({ root: dirname(repo) });
+    const page = await (
+      await hub.fetch(new Request("http://admin.localhost/spoke/doc/docs/x"))
+    ).text();
+    expect(page).toContain('href="https://a.test/"');
+    expect(page).not.toContain("javascript:");
+  }, 60_000);
 
   test("serves committed pages and files, rebuilding only after a commit", async () => {
     const repo = repoFrom("spoke");
