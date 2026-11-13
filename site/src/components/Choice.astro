@@ -6,8 +6,10 @@ interface Props {
   option: NonNullable<ViewItem["options"]>[number];
   name: string;
   score: string;
+  /** The input's id, where a label around more than the input names it. */
+  id?: string;
 }
-const { item, option: o, name, score } = Astro.props;
+const { item, option: o, name, score, id } = Astro.props;
 // An item's text names an option by a letter key, such as "b"; a word key restates its label.
 const lettered = /^[a-z]\d*$/i.test(o.key);
 ---
@@ -17,7 +19,7 @@ const lettered = /^[a-z]\d*$/i.test(o.key);
     type={item.multiple ? "checkbox" : "radio"}
     name={name}
     value={o.key}
-    id={`${name}:${o.key}`}
+    id={id}
     data-label={o.label}
     data-option
     class="hw-check"

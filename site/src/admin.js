@@ -567,16 +567,18 @@ for (const b of repoBoxes)
     else off.add(b.value);
     keep();
   });
-// Each hides itself once pressed: focus goes to the other rather than the page's top.
+// Each hides itself once pressed: focus goes to the choice's own button, whose count says the
+// result, rather than to the page's top or the other button, which a held Enter would press.
+const repoChoice = document.querySelector("[popovertarget=admin-repo-choice]");
 document.querySelector("[data-repo-all]")?.addEventListener("click", () => {
   off.clear();
   keep();
-  document.querySelector("[data-repo-none]").focus();
+  repoChoice?.focus();
 });
 document.querySelector("[data-repo-none]")?.addEventListener("click", () => {
   for (const k of allRepos) off.add(k);
   keep();
-  document.querySelector("[data-repo-all]").focus();
+  repoChoice?.focus();
 });
 search?.addEventListener("input", () => apply());
 addEventListener("keydown", (e) => {

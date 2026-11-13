@@ -951,7 +951,8 @@ describe("pages", () => {
     );
     expect(upper).toContain('href="file:///r/docs/q%26a.md"');
     expect(upper).toContain('src="file:///r/docs/x%26Amp;y.png"');
-    expect(upper).not.toContain(">b</a>");
+    expect(upper).toContain(">b</p>");
+    expect(upper).not.toContain("APOS");
   });
   test("a doc's javascript: link renders as text in the pages built to disk", async () => {
     const out = join(scratch(), "out");
@@ -1213,6 +1214,9 @@ describe("pages", () => {
     expect(html.match(/id="admin-zoom"/g)).toHaveLength(1);
     expect(html.indexOf('id="admin-zoom"')).toBeGreaterThan(html.lastIndexOf("</label>"));
     expect(rowOf("pair")).toContain('<div class="grid gap-3 sm:grid-cols-2">');
+    // A long path or address in an opened row breaks inside the row rather than widening a phone's
+    // page.
+    expect(row).toMatch(/<div class="[^"]*\bwrap-anywhere\b[^"]*">\s*<p class="hw-status"/);
     // Opened, the row's own recommendation badge says what the closed line said.
     expect(row).toMatch(/<span class="[^"]*group-open:hidden">Recommended:/);
   }, 60_000);
@@ -1871,10 +1875,11 @@ describe("admin.js", () => {
     expect(doc.querySelector("[data-repo-count]")!.textContent).toBe("0 of 1");
     expect(none.hasAttribute("hidden")).toBe(true);
     expect(doc.querySelector("[data-repo-all]")!.hasAttribute("hidden")).toBe(false);
-    // Each steps aside for the other, which takes the focus rather than the page's top.
-    expect(doc.activeElement === doc.querySelector("[data-repo-all]")).toBe(true);
+    // Each steps aside; focus goes to the choice's own button rather than the page's top.
+    const choice = doc.querySelector("[popovertarget=admin-repo-choice]");
+    expect(doc.activeElement === choice).toBe(true);
     (doc.querySelector("[data-repo-all]") as unknown as HTMLButtonElement).click();
-    expect(doc.activeElement === (none as unknown as typeof doc.activeElement)).toBe(true);
+    expect(doc.activeElement === choice).toBe(true);
     // Unchecking the box hides it again and keeps the choice.
     const box = doc.querySelector('[data-repo-box][value="spoke"]') as unknown as DomInput;
     box.checked = false;

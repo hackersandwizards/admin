@@ -16,8 +16,9 @@ const k = keyOf(i);
 const options = i.options ?? [];
 const shots = (key: string) => i.optionImages[key] ?? [];
 const carded = options.some((o) => shots(o.key).length);
-// A card's label names its input by id: the image's button stands before the input, and a label
-// without `for` names its first button or input.
+// A card's label names its input by id, since the image's button stands before the input and a
+// label without `for` names its first button or input. "/" keeps it apart from a row's id.
+const cardId = (key: string) => `${k}/${key}`;
 // The options answer the item's question, which names their group for a screen reader.
 const group = i.multiple ? "group" : "radiogroup";
 // The item's own images, above the answer: what a review asks about is in view where it is answered.
@@ -123,7 +124,7 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
       </span>
     </span>
   </summary>
-  <div class="hw-measure flex flex-col gap-4 px-3 pb-4 text-ui lg:pl-16">
+  <div class="hw-measure flex flex-col gap-4 px-3 pb-4 text-ui wrap-anywhere lg:pl-16">
     <p class="hw-status" data-tone="warning" data-stale hidden></p>
     {assumed && (
       <p class="hw-callout">
@@ -197,7 +198,7 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
         {options.map((o) => (
           <label
             class="hw-card flex cursor-pointer flex-col gap-2 has-checked:border-accent"
-            for={`${k}:${o.key}`}
+            for={cardId(o.key)}
           >
             {shots(o.key).length > 0 && (
               <span
@@ -208,7 +209,7 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
                 ))}
               </span>
             )}
-            <Choice item={i} option={o} name={k} score={score(o)} />
+            <Choice item={i} option={o} name={k} score={score(o)} id={cardId(o.key)} />
           </label>
         ))}
       </div>
