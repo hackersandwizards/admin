@@ -16,6 +16,8 @@ const k = keyOf(i);
 const options = i.options ?? [];
 const shots = (key: string) => i.optionImages[key] ?? [];
 const carded = options.some((o) => shots(o.key).length);
+// A card's label names its input by id: the image's button stands before the input, and a label
+// without `for` names its first button or input.
 // The options answer the item's question, which names their group for a screen reader.
 const group = i.multiple ? "group" : "radiogroup";
 // The item's own images, above the answer: what a review asks about is in view where it is answered.
@@ -193,7 +195,10 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
         aria-label={i.title}
       >
         {options.map((o) => (
-          <label class="hw-card flex cursor-pointer flex-col gap-2 has-checked:border-accent">
+          <label
+            class="hw-card flex cursor-pointer flex-col gap-2 has-checked:border-accent"
+            for={`${k}:${o.key}`}
+          >
             {shots(o.key).length > 0 && (
               <span
                 class={`grid gap-1 ${["", "", "grid-cols-2"][shots(o.key).length] ?? (options.length > 2 ? "grid-cols-2" : "grid-cols-3")}`}

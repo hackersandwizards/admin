@@ -567,13 +567,16 @@ for (const b of repoBoxes)
     else off.add(b.value);
     keep();
   });
+// Each hides itself once pressed: focus goes to the other rather than the page's top.
 document.querySelector("[data-repo-all]")?.addEventListener("click", () => {
   off.clear();
   keep();
+  document.querySelector("[data-repo-none]").focus();
 });
 document.querySelector("[data-repo-none]")?.addEventListener("click", () => {
   for (const k of allRepos) off.add(k);
   keep();
+  document.querySelector("[data-repo-all]").focus();
 });
 search?.addEventListener("input", () => apply());
 addEventListener("keydown", (e) => {

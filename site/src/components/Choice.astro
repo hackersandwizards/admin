@@ -17,6 +17,7 @@ const lettered = /^[a-z]\d*$/i.test(o.key);
     type={item.multiple ? "checkbox" : "radio"}
     name={name}
     value={o.key}
+    id={`${name}:${o.key}`}
     data-label={o.label}
     data-option
     class="hw-check"

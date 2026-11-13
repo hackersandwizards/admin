@@ -942,6 +942,16 @@ describe("pages", () => {
     );
     expect(lead).toContain('href="&#32;https://a.test/"');
     expect(lead).toContain('href="&#9;#t"');
+    // A browser reads &AMP;, &LT;, &GT; and &QUOT; as their lower-case names, and &Amp; or &APOS;
+    // as text.
+    const upper = renderMarkdown(
+      "/r",
+      "docs/x.md",
+      `<a href="q&AMP;a.md">q</a><img src="x&Amp;y.png"><a href="b&APOS;c.md">b</a>`,
+    );
+    expect(upper).toContain('href="file:///r/docs/q%26a.md"');
+    expect(upper).toContain('src="file:///r/docs/x%26Amp;y.png"');
+    expect(upper).not.toContain(">b</a>");
   });
   test("a doc's javascript: link renders as text in the pages built to disk", async () => {
     const out = join(scratch(), "out");
@@ -1474,6 +1484,20 @@ describe("admin.js", () => {
     expect(kinds.filter((k) => k && k !== "decision")).toEqual([]);
   });
 
+  test("a click on an option card's text picks the option", () => {
+    const doc = open("spoke/decisions", {}).document;
+    const card = (key: string) =>
+      doc
+        .getElementById("spoke:pick-a-variant")!
+        .querySelector(`input[data-option][value="${key}"]`)!
+        .closest("label")!;
+    // The card's label names its option's input, though the image's button stands before it.
+    for (const key of ["a", "b"])
+      expect((card(key) as unknown as HTMLLabelElement).control?.dataset.option).toBe("");
+    (card("b").querySelector("b") as unknown as HTMLElement).click();
+    expect((card("b").querySelector("input[data-option]") as DomInput).checked).toBe(true);
+  });
+
   test("a copied answer leaves with its item, never while the item stays", () => {
     const at = (h: number) => new Date(Date.UTC(2026, 0, 1, h)).toISOString();
     const answer = (h: number) => JSON.stringify({ done: true, note: "x", at: at(h) });
@@ -1847,7 +1871,10 @@ describe("admin.js", () => {
     expect(doc.querySelector("[data-repo-count]")!.textContent).toBe("0 of 1");
     expect(none.hasAttribute("hidden")).toBe(true);
     expect(doc.querySelector("[data-repo-all]")!.hasAttribute("hidden")).toBe(false);
+    // Each steps aside for the other, which takes the focus rather than the page's top.
+    expect(doc.activeElement === doc.querySelector("[data-repo-all]")).toBe(true);
     (doc.querySelector("[data-repo-all]") as unknown as HTMLButtonElement).click();
+    expect(doc.activeElement === (none as unknown as typeof doc.activeElement)).toBe(true);
     // Unchecking the box hides it again and keeps the choice.
     const box = doc.querySelector('[data-repo-box][value="spoke"]') as unknown as DomInput;
     box.checked = false;

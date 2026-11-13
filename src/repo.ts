@@ -308,15 +308,15 @@ export const withElements = (html: string) =>
 const SCHEME = /^[a-z][\w+.-]*:/i;
 
 // An attribute's or a title's text as a browser reads it, in one pass: numeric entities and the
-// named ones Bun's renderer and hand-written HTML put there, which a browser reads in lower case
-// only.
+// named ones Bun's renderer and hand-written HTML put there, apos in lower case only and the rest
+// in lower or upper case.
 const NAMED: Record<string, string> = { amp: "&", quot: '"', lt: "<", gt: ">", apos: "'" };
 const entities = (v: string) =>
   v.replace(
-    /&(?:#[xX]([\da-fA-F]+);?|#(\d+);?|(amp|quot|lt|gt|apos);)/g,
+    /&(?:#[xX]([\da-fA-F]+);?|#(\d+);?|(amp|AMP|quot|QUOT|lt|LT|gt|GT|apos);)/g,
     (_, hex?: string, dec?: string, name?: string) =>
       name
-        ? NAMED[name]!
+        ? NAMED[name.toLowerCase()]!
         : String.fromCodePoint(Math.min(parseInt(hex ?? dec!, hex ? 16 : 10), 0x10ffff)),
   );
 
@@ -324,13 +324,13 @@ const entities = (v: string) =>
 // beside the pages' policy, which refuses a javascript: link too. HTMLRewriter reads tags as a
 // browser does, a doc's raw HTML included. A browser decodes an href's entities, trims spaces and
 // control characters around it and drops tabs and newlines inside before it reads the scheme; the
-// test decodes the numeric entities and &amp; and drops every character below "!", and any other
-// named entity before the first / ? or # leaves the link text. An SVG <set> or <animate> could
-// write an href after this test, so one aimed at href goes.
+// test decodes the numeric entities and &amp; or &AMP; and drops every character below "!", and
+// any other named entity before the first / ? or # leaves the link text. An SVG <set> or <animate>
+// could write an href after this test, so one aimed at href goes.
 const unsafe = (href: string) => {
   const h = entities(href).replace(/[^!-\uffff]/g, "");
   // Before decoding, since a decoded "&#38;" or "&amp;" is no entity.
-  const named = /&(?!amp;|#)/.test(href.match(/^(?:&#|[^/?#])*/)![0]);
+  const named = /&(?!amp;|AMP;|#)/.test(href.match(/^(?:&#|[^/?#])*/)![0]);
   return !/^(?:https?|mailto):/i.test(h) && (SCHEME.test(h) || named);
 };
 const links = new HTMLRewriter()
