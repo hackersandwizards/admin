@@ -321,12 +321,12 @@ const entities = (v: string) =>
   );
 
 // A link goes out only over http(s), to mailto or to a path; any other scheme shows its text,
-// beside the pages' policy, which refuses a javascript: link too. HTMLRewriter reads tags as a browser does, a doc's raw HTML
-// included. A browser decodes an href's entities, trims spaces and control characters around it
-// and drops tabs and newlines inside before it reads the scheme; the test decodes the numeric
-// entities and &amp; and drops every character below "!", and any other named entity before the
-// first / ? or # leaves the link text. An SVG <set> or <animate> could write an href after this
-// test, so one aimed at href goes.
+// beside the pages' policy, which refuses a javascript: link too. HTMLRewriter reads tags as a
+// browser does, a doc's raw HTML included. A browser decodes an href's entities, trims spaces and
+// control characters around it and drops tabs and newlines inside before it reads the scheme; the
+// test decodes the numeric entities and &amp; and drops every character below "!", and any other
+// named entity before the first / ? or # leaves the link text. An SVG <set> or <animate> could
+// write an href after this test, so one aimed at href goes.
 const unsafe = (href: string) => {
   const h = entities(href).replace(/[^!-\uffff]/g, "");
   // Before decoding, since a decoded "&#38;" or "&amp;" is no entity.
