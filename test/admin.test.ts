@@ -1432,6 +1432,18 @@ describe("pages", () => {
       ]);
       // theme.js darkens the page, admin.js focuses the search on "/".
       expect(ran).toEqual(["X · r · Admin", "dark", "admin-search"]);
+      // The header's theme switch turns the page and stores the choice, which outlasts a reload
+      // and the system's theme.
+      await page.click("#theme-toggle");
+      const theme = () =>
+        page.evaluate(() => [
+          document.documentElement.dataset.theme,
+          document.getElementById("theme-toggle")?.getAttribute("aria-pressed"),
+          localStorage.getItem("theme"),
+        ]);
+      expect(await theme()).toEqual(["light", "false", "light"]);
+      await page.reload({ waitUntil: "load" });
+      expect(await theme()).toEqual(["light", "false", "light"]);
       await page.click("#post").catch(() => {});
       await new Promise((r) => setTimeout(r, 300));
       expect(posts).toEqual([]);

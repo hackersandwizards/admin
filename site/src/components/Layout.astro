@@ -4,6 +4,7 @@ import AppHeader from "@hackersandwizards/brand/expert/components/AppHeader.astr
 import favicon from "@hackersandwizards/brand/logos/favicon.svg?url";
 import adminScript from "admin:script?url";
 import themeScript from "../theme.js?url";
+import { MOON, SUN } from "@hackersandwizards/brand/expert/components/theme-icons.ts";
 import {
   data,
   forPerson,
@@ -130,6 +131,23 @@ const entries = [
           </li>
         </ol>
       </nav>
+      {/* brand's ThemeToggle as markup: its own script is a module, which neither a page opened
+      from disk nor the hub's Content-Security-Policy runs, so admin.js switches it. */}
+      <button
+        id="theme-toggle"
+        class="hw-header-link"
+        data-icon
+        aria-label="Toggle theme"
+        aria-pressed="false"
+        type="button"
+      >
+        <svg id="sun-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={SUN}></path>
+        </svg>
+        <svg id="moon-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={MOON}></path>
+        </svg>
+      </button>
       <div id="admin-repos" class="hw-menu" popover role="menu" aria-label="Repos">
         {d.repos.map((r) => (
           <a

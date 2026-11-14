@@ -48,6 +48,24 @@ const storage = (() => {
   }
 })();
 
+// The header's theme switch: the moon by day, the sun by night (header.css), the choice stored
+// under "theme", which theme.js reads before the first paint.
+const themeToggle = document.getElementById("theme-toggle");
+const themePressed = () =>
+  themeToggle?.setAttribute(
+    "aria-pressed",
+    String(document.documentElement.dataset.theme === "dark"),
+  );
+themePressed();
+themeToggle?.addEventListener("click", () => {
+  const theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = theme;
+  try {
+    storage.setItem("theme", theme);
+  } catch {}
+  themePressed();
+});
+
 const STORE =
   "adminCatalog" in document.documentElement.dataset ? "admin-catalog:" : "admin-answers:";
 const read = (k) => {
