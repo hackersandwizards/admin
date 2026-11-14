@@ -49,22 +49,28 @@ const storage = (() => {
 })();
 
 // The header's theme switch: the moon by day, the sun by night (header.css), the choice stored
-// under "theme", which theme.js reads before the first paint.
-const themeToggle = document.getElementById("theme-toggle");
+// under "theme", which theme.js reads before the first paint. On a catalog state's page the
+// shell's header carries brand's own switch under the same id ahead of this one, and a catalog
+// page without data-hw-night stays day (theme.js), so its switch turns nothing.
+const themeToggle = document.querySelector("[data-admin-theme]");
 const themePressed = () =>
   themeToggle?.setAttribute(
     "aria-pressed",
     String(document.documentElement.dataset.theme === "dark"),
   );
 themePressed();
-themeToggle?.addEventListener("click", () => {
-  const theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  document.documentElement.dataset.theme = theme;
-  try {
-    storage.setItem("theme", theme);
-  } catch {}
-  themePressed();
+new MutationObserver(themePressed).observe(document.documentElement, {
+  attributeFilter: ["data-theme"],
 });
+const { adminCatalog, hwNight } = document.documentElement.dataset;
+if (adminCatalog === undefined || hwNight !== undefined)
+  themeToggle?.addEventListener("click", () => {
+    const theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = theme;
+    try {
+      storage.setItem("theme", theme);
+    } catch {}
+  });
 
 const STORE =
   "adminCatalog" in document.documentElement.dataset ? "admin-catalog:" : "admin-answers:";

@@ -1490,6 +1490,54 @@ describe("admin.js", () => {
     code = await script();
   }, 60_000);
 
+  test("the theme switch turns the page by its own button, and a catalog page without night stays day", async () => {
+    const theme = readFileSync(join(import.meta.dir, "../site/src/theme.js"), "utf8");
+    // `catalog` null is the hub; else a catalog page, with or without the shell's data-hw-night.
+    const run = (catalog: null | { night: boolean }) => {
+      const window = new Window({ url: "http://admin.localhost/index" });
+      opened.push(window);
+      window.localStorage.setItem("theme", "dark");
+      // brand's switch in the catalog shell's header, ahead of the page's own under the same id.
+      window.document.write(
+        readFileSync(join(out, "index.html"), "utf8")
+          .replace(/<script[^>]*><\/script>/g, "")
+          .replace(/<body[^>]*>/, '$&<button id="theme-toggle" data-shell></button>'),
+      );
+      const doc = window.document;
+      if (catalog) doc.documentElement.dataset.adminCatalog = "";
+      if (catalog?.night) doc.documentElement.dataset.hwNight = "";
+      window.eval(theme);
+      window.eval(code);
+      const shell = doc.querySelector("[data-shell]")!;
+      const own = doc.querySelector("[data-admin-theme]") as unknown as HTMLElement;
+      const read = () => [
+        doc.documentElement.dataset.theme,
+        own.getAttribute("aria-pressed"),
+        window.localStorage.getItem("theme"),
+      ];
+      return { doc, own, shell: shell as unknown as HTMLElement, read };
+    };
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    for (const catalog of [null, { night: true }]) {
+      const page = run(catalog);
+      expect(page.read()).toEqual(["dark", "true", "dark"]);
+      page.shell.click();
+      expect(page.read()).toEqual(["dark", "true", "dark"]);
+      page.own.click();
+      await tick();
+      expect(page.read()).toEqual(["light", "false", "light"]);
+      // A flip by the shell's switch reaches the page's own.
+      page.doc.documentElement.dataset.theme = "dark";
+      await tick();
+      expect(page.read()).toEqual(["dark", "true", "light"]);
+    }
+    const alone = run({ night: false });
+    expect(alone.read()).toEqual(["light", "false", "dark"]);
+    alone.own.click();
+    await tick();
+    expect(alone.read()).toEqual(["light", "false", "dark"]);
+  });
+
   test("a browser that blocks site data still filters its rows", () => {
     const doc = open("index", null).document;
     (doc.querySelector('[data-kind-button="decision"]') as unknown as HTMLElement).click();
