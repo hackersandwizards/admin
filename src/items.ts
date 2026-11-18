@@ -206,6 +206,7 @@ export function usable(item: Item): Item {
 
 // Within a priority `order` ranks, and a due date leads only once it is this close or past: one
 // week before it, an item tops its group, while a date further out leaves the ranking alone.
+// Below a near due date, a question a person settles on the page comes before work.
 export const DUE_SOON_DAYS = 7;
 // Compared as local days, the days the hub rebuilds on.
 export const dueSoon = (due: string | undefined, now = Date.now()) => {
@@ -219,6 +220,7 @@ export function compareItems(a: Item & { changed?: number }, b: Item & { changed
   return (
     (a.priority ?? 9) - (b.priority ?? 9) ||
     soon(a).localeCompare(soon(b)) ||
+    Number(a.kind === "work") - Number(b.kind === "work") ||
     (a.order ?? 1e9) - (b.order ?? 1e9) ||
     (a.due ?? "9").localeCompare(b.due ?? "9") ||
     (b.changed ?? 0) - (a.changed ?? 0) ||

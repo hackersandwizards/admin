@@ -49,7 +49,9 @@ Architecture (package, pins, scripts with their first comment line), Checks (the
 `check:all` or `check`) and Log.
 
 Items sort by `priority`, then `order`; a `due` date seven days away or nearer, or past, leads its
-priority, and every `due` shows as a badge: "was due" in red once past, "due today" in amber. On
+priority, then decisions and reviews come before work, and every `due` shows as a badge: "was due"
+in red once past, "due today" in amber. The group holding the first open question the filters show
+opens with the page, beside any group open by default. On
 the hub every repository's rows run in this one order, each naming its repository, and assumed and
 decided items come last, under "Settled", each saying in two lines at most what was assumed or
 decided, in full once opened.

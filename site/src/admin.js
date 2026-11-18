@@ -469,6 +469,7 @@ const textOf = (r) => {
 const shown = (el) => !el.closest("[hidden]");
 const scope = buttons[0]?.closest("section, main");
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+let arrived = false;
 function apply(picked = false) {
   const term = (search?.value || "").trim().toLowerCase();
   const filtered = buttons.length > 0 && who !== "all";
@@ -510,11 +511,18 @@ function apply(picked = false) {
       sec.hidden = ![...sec.querySelectorAll("[data-row]")].some(
         (r) => !r.hidden && !r.closest("[data-group]")?.hidden,
       );
-  // After a choice of person or kind, the first group with rows opens where none is open.
-  if (picked && scope) {
+  // On arrival and after a choice of person or kind, the group holding the first open question
+  // shown opens, so what only a person settles is on screen even below a group of work. Then the
+  // first group with rows opens where none is open.
+  if ((picked || !arrived) && scope) {
     const groups = [...scope.querySelectorAll("details[data-group]")].filter(shown);
+    const ask = groups.find((g) =>
+      g.querySelector("[data-row][data-status=open]:not([hidden]):not([data-kind=work])"),
+    );
+    if (ask) ask.open = true;
     if (groups.length && !groups.some((g) => g.open)) groups[0].open = true;
   }
+  arrived = true;
   for (const b of buttons) b.setAttribute("aria-pressed", String(b.dataset.whoButton === who));
   for (const b of kinds) b.setAttribute("aria-pressed", String(b.dataset.kindButton === kind));
   const openRows = [...document.querySelectorAll("details.item[data-status=open]")];

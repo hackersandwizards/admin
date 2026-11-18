@@ -142,6 +142,15 @@ describe("item files", () => {
       "ranked",
       "far",
     ]);
+    // Below a near due date, a question comes before work, whatever its order.
+    const task = { ...valid, id: "task", kind: "work" as const, order: 1 };
+    const soonTask = { ...task, id: "soon-task", due: at(1) };
+    expect([task, far, soonTask, ranked].sort(compareItems).map((i) => i.id)).toEqual([
+      "soon-task",
+      "ranked",
+      "far",
+      "task",
+    ]);
     // An order that is no number is its item's defect and ranks as none, never every row's sort.
     const odd = usable({ ...valid, id: "odd", order: "soon" as never });
     expect([odd, far, ranked].sort(compareItems).map((i) => i.id)).toEqual([
@@ -777,6 +786,18 @@ describe("hub", () => {
     const read = await readRepo(tree);
     expect(read.fetched).toBeNumber();
     expect(read.behind).toBeUndefined();
+  });
+
+  test("counts commits behind the branch a checkout pushes to, never another branch it tracks", async () => {
+    const origin = repoFrom("spoke");
+    const clone = join(dirname(origin), "clone");
+    sh(dirname(origin), "git", "clone", "-q", origin, clone);
+    sh(origin, "git", "commit", "-q", "--allow-empty", "-m", "ahead");
+    sh(clone, "git", "fetch", "-q");
+    expect((await readRepo(clone)).behind).toBe(1);
+    // A local branch tracking main, which moves on without it, has no distance to show.
+    sh(clone, "git", "checkout", "-q", "-b", "local", "--track", "origin/main");
+    expect((await readRepo(clone)).behind).toBeUndefined();
   });
 
   test("a folder git cannot read has no fetch time, and is asked again once it can", async () => {
@@ -1791,6 +1812,28 @@ describe("admin.js", () => {
     page.dispatchEvent(new page.StorageEvent("storage", { key: "admin-answers:copied" }));
     expect(mark()).toContain("copied");
   });
+
+  test("the fold holding a person's first question opens with the page, below a fold of work", async () => {
+    const spoke = await readRepo(repoFrom("spoke"));
+    // Alex, the hub's user, has only work in Priority 1 and every question in Priority 2.
+    const items = spoke.items.map((i) => (i.id === "pick-a-variant" ? { ...i, priority: 2 } : i));
+    const task = items.find((i) => i.id === "ask-the-printer")!;
+    const dir = join(scratch(), "out");
+    const repos = [{ ...spoke, items: [...items, { ...task, id: "alex-task", owner: "Alex" }] }];
+    await buildSite(siteData(repos), dir);
+    const window = new Window({ url: "http://admin.localhost/index" });
+    opened.push(window);
+    window.document.write(
+      readFileSync(join(dir, "index.html"), "utf8").replace(/<script[^>]*><\/script>/g, ""),
+    );
+    window.eval(code);
+    const fold = (id: string) =>
+      window.document.getElementById(id)!.closest("details[data-group]") as unknown as {
+        open: boolean;
+      };
+    expect(fold("spoke:alex-task").open).toBe(true);
+    expect(fold("spoke:pick-a-variant").open).toBe(true);
+  }, 60_000);
 
   test("the filters: kinds counted per person, own rows once, the first fold opens, a search finds what a row says", () => {
     const page = open("index", {});

@@ -482,8 +482,10 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     source ?? headSource(repo),
     gitAsync(repo, ["log", "--format=@%ct", "--name-only", "--", ITEMS_DIR]),
     gitAsync(repo, ["rev-parse", "--short", "HEAD"]),
-    // Without an upstream the count fails: the distance is unknown, not zero.
-    gitBytes(repo, ["rev-list", "--count", "HEAD..@{u}"]),
+    // Behind the branch this one pushes to, not its upstream: a branch tracking another branch,
+    // such as a client's master, falls behind with every merge there while it is current. Without
+    // a push branch the count fails: the distance is unknown, not zero.
+    gitBytes(repo, ["rev-list", "--count", "HEAD..@{push}"]),
     commits("-n", "60", "--", WORK_DIR),
     commits("-n", "60"),
     fetchedAt(repo),

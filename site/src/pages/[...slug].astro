@@ -42,7 +42,7 @@ const reviewItems = reviewsOf(items);
 const goals = items.filter((i) => i.kind === "goal");
 const behind =
   repo?.behind === undefined
-    ? "no upstream, commits behind unknown"
+    ? "no branch of its own on origin, commits behind unknown"
     : repo.behind
       ? `${repo.behind} commits behind origin`
       : "up to date with origin";
