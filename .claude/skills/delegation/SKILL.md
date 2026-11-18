@@ -56,10 +56,10 @@ description: >-
 Default: whatever `.codex/config.toml` sets, a repository's own before `~/.codex/config.toml`. Each
 repository pins its own model and effort for the work it holds. Read the value there.
 
-| Pick | For |
-|------|-----|
-| the repository's pin | everyday work |
-| gpt-6.1-sol high | planning, hard bugs, architecture, final review |
+| Pick                                       | For                               |
+| ------------------------------------------ | --------------------------------- |
+| the repository's pin, `gpt-6.2-sol` medium | everyday work                     |
+| gpt-6.2-sol high                           | planning, hard bugs, architecture |
 
 - Sol accepts `low`, `medium`, `high`, `xhigh`, `max`, `ultra`. It has no `none`.
 - `codex exec --model` overrides the config per invocation. Heavier one-off work goes there, not
@@ -88,7 +88,11 @@ re-casing, no polish. Any text change goes through another `claude -p` call.
 
 ## Claude -> Codex
 
-Claude starts Codex only for a capability Claude does not have, image generation, or as an
-independent blind reviewer. Codex never authors text.
+Claude hands Codex the code work: implementation, bug fixes, refactors, tests, scripts, dependency
+updates and the polish pass, run as `codex exec` in the repository the work belongs to. Claude keeps
+the conversation with the person, records, rules, skills, research and every text a person reads.
+Claude reviews what Codex produced, as far as `blind-review` sizes the review. Codex's sandbox has no
+network and no keychain, so `gh`, `gws` and `git push` fail there: Claude pushes after the review. Codex never authors
+text.
 
 Verify what a run did with `git log`, never from its own summary.
