@@ -1,15 +1,7 @@
 // Each build runs in a child process, since an Astro build leaves about 50 MB behind in the
 // process that ran it, and file:// links are served under /_file/<repo>/, since a browser opens no
 // file:// link from an http page.
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
 import {
   buildCatalog,
@@ -21,6 +13,7 @@ import {
   shelled,
   shellPath,
   siteData,
+  writeSiteData,
 } from "./build.ts";
 import elements from "../brand-elements.json";
 import { findRepos, uniqueKeys } from "./hub.ts";
@@ -187,7 +180,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const out = join(work, "out");
     try {
       const data = shelled(siteData(repos, you));
-      writeFileSync(json, JSON.stringify(data));
+      writeSiteData(json, data);
       const files = await spawnBuild("build", [json], out);
       const links = linker(repos);
       const shellPaths = new Set(data.pages.filter((p) => p.article === SHELL).map((p) => p.path));
@@ -521,5 +514,5 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
 if (import.meta.main) {
   const [json, out] = Bun.argv.slice(2);
   if (json === "--catalog") await buildCatalog(out!);
-  else await buildSite(JSON.parse(readFileSync(json!, "utf8")), out!);
+  else await buildSite({ file: resolve(json!) }, out!);
 }

@@ -1,10 +1,10 @@
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
+import { version } from "../package.json";
 import { compareItems, imagesOf, ITEMS_DIR, type Item } from "./items.ts";
 import { docSlug, fileHref, renderMarkdown, type Doc, type RepoData } from "./repo.ts";
 
 export const PKG = join(import.meta.dirname, "..");
-const VERSION = JSON.parse(readFileSync(join(PKG, "package.json"), "utf8")).version as string;
 
 export type ViewItem = Item & {
   // The item file's last commit, in seconds.
@@ -220,7 +220,7 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
     const { workFiles: _, ...rest } = r;
     return { ...rest, items, prefix, dashboard };
   });
-  return { version: VERSION, people, others, repos: out, pages };
+  return { version, people, others, repos: out, pages };
 }
 
 // The hub builds no doc page: it fills a doc into its repository's shell on request, a doc page
@@ -290,9 +290,15 @@ export async function script() {
   return outputs[0]!.text();
 }
 
+export function writeSiteData(file: string, data: SiteData) {
+  // From disk 'self' admits every file:// script, a doc's committed one included, and a
+  // hash needs CORS there, so a per-build nonce marks the pages' own.
+  writeFileSync(file, JSON.stringify({ ...data, nonce: crypto.randomUUID() }));
+}
+
 // Builds the pages into `outDir`. Astro writes absolute /_astro/ URLs; each page gets them
 // relative, so the folder opens from disk and can move.
-export async function buildSite(data: SiteData, outDir: string) {
+export async function buildSite(data: SiteData | { file: string }, outDir: string) {
   // Astro bundles a prerender entry beside its output when that sits inside the working
   // directory, and resolves its packages from there, so the build runs in a folder inside this
   // package, where node resolution reaches the package's dependencies, nested or hoisted. Its
@@ -302,12 +308,11 @@ export async function buildSite(data: SiteData, outDir: string) {
   const cwd = process.cwd();
   process.chdir(work);
   try {
-    // From disk 'self' admits every file:// script, a doc's committed one included, and a
-    // hash needs CORS there, so a per-build nonce marks the pages' own.
-    writeFileSync(join(work, "data.json"), JSON.stringify({ ...data, nonce: crypto.randomUUID() }));
+    const file = "file" in data ? data.file : join(work, "data.json");
+    if (!("file" in data)) writeSiteData(file, data);
     writeFileSync(join(work, "admin.css"), stylesheet());
     writeFileSync(join(work, "admin.js"), await script());
-    process.env.ADMIN_DATA = join(work, "data.json");
+    process.env.ADMIN_DATA = file;
     const { build } = await import("astro");
     const tailwind = (await import("@tailwindcss/vite")).default;
     await build({

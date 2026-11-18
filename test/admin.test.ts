@@ -328,19 +328,19 @@ describe("admin-check", () => {
     ]);
   });
 
-  test("legacy files and a broken item fail the check", () => {
+  test("legacy files and a broken item fail the check", async () => {
     const dir = join(scratch(), "r");
     cpSync(join(FIX, "spoke"), dir, { recursive: true });
     cpSync(join(FIX, "legacy/GOAL.md"), join(dir, "GOAL.md"));
-    Bun.write(join(dir, "docs/agent-work/items/broken.md"), "no frontmatter\n");
+    await Bun.write(join(dir, "docs/agent-work/items/broken.md"), "no frontmatter\n");
     const { defects } = readItems(treeSource(dir));
     expect(defects).toContain("GOAL.md: legacy file, items live in docs/agent-work/items");
     expect(defects).toContain("docs/agent-work/items/broken.md: no frontmatter between --- lines");
-    Bun.write(join(dir, "docs/agent-work/items/gone/shot.jpg"), "x");
+    await Bun.write(join(dir, "docs/agent-work/items/gone/shot.jpg"), "x");
     expect(readItems(treeSource(dir)).defects).toContain(
       "docs/agent-work/items/gone/shot.jpg: no item gone.md",
     );
-    Bun.write(join(dir, "docs/tracking/items/old.md"), "x");
+    await Bun.write(join(dir, "docs/tracking/items/old.md"), "x");
     expect(readItems(treeSource(dir)).defects).toContain(
       "docs/tracking/items/old.md: legacy folder, move it to docs/agent-work",
     );
@@ -350,7 +350,8 @@ describe("admin-check", () => {
 
   test("--help prints the usage and passes", () => {
     const cli = Bun.spawnSync(["bun", join(import.meta.dir, "../bin/admin-check.ts"), "--help"]);
-    expect([cli.exitCode, cli.stdout.toString()]).toEqual([0, expect.stringMatching(/^Usage: /)]);
+    expect(cli.exitCode).toBe(0);
+    expect(cli.stdout.toString()).toMatch(/^Usage: /);
   });
 
   test("a malformed item shows as a defect and leaves the pages building", async () => {
@@ -912,7 +913,7 @@ describe("hub", () => {
 
   test("reads at HEAD, not the working tree", async () => {
     const repo = repoFrom("spoke");
-    Bun.write(
+    await Bun.write(
       join(repo, "docs/agent-work/items/uncommitted.md"),
       readFileSync(join(FIX, "spoke/docs/agent-work/items/check-the-copy.md")),
     );
@@ -2068,7 +2069,15 @@ describe("admin.js", () => {
 
   test("a row shown on the visit before compares its file, not its commit time", () => {
     const first = stored(open("index", {}));
-    const versions = JSON.parse(first["admin-answers:versions"]!);
+    const saved: unknown = JSON.parse(first["admin-answers:versions"]!);
+    if (
+      !saved ||
+      typeof saved !== "object" ||
+      Array.isArray(saved) ||
+      !Object.values(saved).every((version: unknown) => typeof version === "string")
+    )
+      throw new Error("Expected stored versions to map row keys to strings");
+    const versions = saved as Record<string, string>;
     const [changed] = Object.keys(versions);
     // Every item's commit is newer than the visit, but only one file differs from what it showed.
     const back = open("index", {

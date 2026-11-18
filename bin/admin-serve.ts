@@ -14,8 +14,14 @@ import { createHub } from "../src/serve.ts";
 // range, and every peer is optional.
 const missing = Object.entries(peerDependencies).filter(([p, range]) => {
   try {
-    const { version } = createRequire(import.meta.url)(`${p}/package.json`);
-    return !Bun.semver.satisfies(version, range);
+    const manifest: unknown = createRequire(import.meta.url)(`${p}/package.json`);
+    return !(
+      manifest &&
+      typeof manifest === "object" &&
+      "version" in manifest &&
+      typeof manifest.version === "string" &&
+      Bun.semver.satisfies(manifest.version, range)
+    );
   } catch {
     return true;
   }

@@ -494,13 +494,11 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
   const pkgText = src.read("package.json");
   let pkg: Record<string, unknown> = {};
   try {
-    pkg = pkgText ? JSON.parse(pkgText) : {};
+    const parsed: unknown = pkgText ? JSON.parse(pkgText) : {};
+    if (isObject(parsed)) pkg = parsed;
+    else defects.push("package.json: not an object");
   } catch {
     defects.push("package.json: not JSON");
-  }
-  if (!isObject(pkg)) {
-    defects.push("package.json: not an object");
-    pkg = {};
   }
   // A field of the wrong type is a defect, never a failed build of every repository's pages.
   const texts = (field: string) => {
