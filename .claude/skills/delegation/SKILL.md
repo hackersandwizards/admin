@@ -91,8 +91,10 @@ re-casing, no polish. Any text change goes through another `claude -p` call.
 Claude hands Codex the code work: implementation, bug fixes, refactors, tests, scripts, dependency
 updates and the polish pass, run as `codex exec` in the repository the work belongs to. Claude keeps
 the conversation with the person, records, rules, skills, research and every text a person reads.
-Claude reviews what Codex produced, as far as `blind-review` sizes the review. Codex's sandbox has no
-network and no keychain, so `gh`, `gws` and `git push` fail there: Claude pushes after the review. Codex never authors
-text.
+Claude reviews what Codex produced, as far as `blind-review` sizes the review, and pushes after it.
+Codex never authors text.
+
+Where `codex` is not installed or not signed in (`codex login status`), Claude does the work itself
+and a second Claude subagent takes the review.
 
 Verify what a run did with `git log`, never from its own summary.
