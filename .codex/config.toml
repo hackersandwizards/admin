@@ -1,1 +1,30 @@
-# Codex settings for this repository.
+model = "gpt-6.2-sol"
+model_reasoning_effort = "medium"
+plan_mode_reasoning_effort = "xhigh"
+project_doc_fallback_filenames = ["CLAUDE.md"]
+tui.status_line = ["current-dir", "git-branch", "model-with-reasoning", "context-remaining", "five-hour-limit"]
+
+[features]
+js_repl = false
+apps = false
+
+[notice]
+hide_rate_limit_model_nudge = true
+
+[plugins."computer-use@openai-bundled"]
+enabled = false
+
+[plugins."chrome@openai-bundled"]
+enabled = false
+
+[plugins."visualize@openai-bundled"]
+enabled = true
+
+[plugins."github@openai-curated"]
+enabled = false
+
+[plugins."github@openai-curated-remote"]
+enabled = false
+
+[plugins."browser@openai-bundled"]
+enabled = false
