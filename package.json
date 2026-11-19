@@ -48,9 +48,7 @@
   },
   "devDependencies": {
     "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v2.28.1",
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.29.1",
-    "@stryker-mutator/core": "10.1.1",
-    "@stryker-mutator/vitest-runner": "10.1.1",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.30.0",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.5",
     "@types/bun": "1.4.4",
@@ -64,8 +62,7 @@
     "puppeteer-core": "25.17.0",
     "stylelint": "18.0.0",
     "tailwindcss": "4.3.5",
-    "typescript": "npm:@typescript/typescript6@6.0.2",
-    "vitest": "5.1.0"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "scaffolding": {
     "test": "test",

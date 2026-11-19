@@ -1,7 +1,8 @@
-import { defineConfig } from "vitest/config";
+import { mergeConfig, type ViteUserConfig } from "vitest/config";
 import config from "../vitest.config.ts";
 
-export default defineConfig({
-  ...config,
-  test: { ...config.test, include: ["test/admin-fast.test.ts"] },
+const { test, ...vite }: ViteUserConfig = config;
+
+export default mergeConfig(vite, {
+  test: { ...test, include: ["test/admin-fast.test.ts"] },
 });
