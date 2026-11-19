@@ -23,6 +23,8 @@ import {
 import {
   Window,
   type Element as DomEl,
+  type HTMLButtonElement as DomButton,
+  type HTMLDialogElement as DomDialog,
   type HTMLElement as DomElement,
   type HTMLInputElement as DomInput,
   type Node as DomNode,
@@ -1529,9 +1531,10 @@ describe("admin.js", () => {
     window.eval(source);
   };
   // Storage null is a browser that blocks site data: reading localStorage throws.
-  const open = (page: string, storage: Record<string, string> | null) => {
+  const open = (page: string, storage: Record<string, string> | null, now?: number) => {
     const window = new Window({ url: `http://admin.localhost/${page}` });
     opened.push(window);
+    if (now !== undefined) window.Date.now = () => now;
     if (!storage)
       Object.defineProperty(window, "localStorage", {
         get: () => {
@@ -1595,10 +1598,13 @@ describe("admin.js", () => {
       page.own.click();
       await tick();
       expect(page.read()).toEqual(["light", "false", "light"]);
-      // A flip by the shell's switch reaches the page's own.
-      page.doc.documentElement.dataset.theme = "dark";
+      page.own.click();
       await tick();
-      expect(page.read()).toEqual(["dark", "true", "light"]);
+      expect(page.read()).toEqual(["dark", "true", "dark"]);
+      // A flip by the shell's switch reaches the page's own.
+      page.doc.documentElement.dataset.theme = "light";
+      await tick();
+      expect(page.read()).toEqual(["light", "false", "dark"]);
     }
     const alone = run({ night: false });
     expect(alone.read()).toEqual(["light", "false", "dark"]);
@@ -1615,6 +1621,42 @@ describe("admin.js", () => {
       .map((r) => (r as unknown as HTMLElement).dataset.kind);
     expect(kinds).toContain("decision");
     expect(kinds.filter((k) => k && k !== "decision")).toEqual([]);
+  });
+
+  test("a browser that blocks site data can pick and clear an answer during the visit", () => {
+    const page = open("spoke/decisions", null);
+    const row = page.document.getElementById("spoke:pick-a-variant")!;
+    (row.querySelector("summary + div .pick") as DomElement).click();
+    expect(row.querySelector(".mark")!.textContent).toBe("✓ Variant A");
+    expect(page.document.getElementById("copy")!.textContent).toBe("Copy 1 answer");
+    (row.querySelector(".clear") as DomElement).click();
+    expect(row.querySelector(".mark")!.textContent).toBe("");
+    expect(page.document.getElementById("copy")!.textContent).not.toContain("1 answer");
+  });
+
+  test("opening a variant image gives the dialog an accessible name before it opens", () => {
+    const page = open("spoke/decisions", {});
+    const row = page.document.getElementById("spoke:pick-a-variant")!;
+    const shot = row.querySelector<DomButton>('button[aria-label="light, 600 px: open large"]')!;
+    const dialog = page.document.querySelector<DomDialog>("dialog#admin-zoom")!;
+    const errors: unknown[] = [];
+    page.addEventListener("error", (event) => errors.push(event));
+    const observer = new page.MutationObserver(() => {});
+    observer.observe(dialog, { attributes: true, attributeFilter: ["aria-label", "open"] });
+    shot.click();
+    expect(dialog.open).toBe(true);
+    expect(observer.takeRecords().map((record) => record.attributeName)).toEqual([
+      "aria-label",
+      "open",
+    ]);
+    observer.disconnect();
+    expect(dialog.getAttribute("aria-label")).toBe("light, 600 px");
+    expect(dialog.querySelector("img")?.alt).toBe("light, 600 px");
+    expect(dialog.querySelector("img")?.src).toMatch(/\/pick-a-variant\/variant-b\.svg$/);
+    dialog.querySelector<DomButton>('button[aria-label="Close"]')!.click();
+    expect(dialog.open).toBe(false);
+    expect(dialog.getAttribute("aria-label")).toBe("light, 600 px");
+    expect(errors).toEqual([]);
   });
 
   test("a click on an option card's text picks the option", () => {
@@ -1652,6 +1694,58 @@ describe("admin.js", () => {
       "admin-answers:versions",
       "admin-answers:visit",
     ]);
+  });
+
+  test("pruning copied answers leaves another tool's storage alone", () => {
+    const at = "2026-01-01T12:00:00.000Z";
+    const answer = JSON.stringify({ done: true, at });
+    const uncopied = open("spoke/decisions", { "admin-answers:spoke:gone": answer });
+    expect(uncopied.localStorage.getItem("admin-answers:spoke:gone")).toBe(answer);
+    const page = open("spoke/decisions", {
+      "admin-answers:spoke:gone": answer,
+      "admin-answers:spoke:old-answer": '{"done":true}',
+      "admin-answers:copied": at,
+      "other-storage:spoke:gone": answer,
+    });
+    expect(page.localStorage.getItem("admin-answers:spoke:gone")).toBeNull();
+    expect(page.localStorage.getItem("admin-answers:spoke:old-answer")).toBeNull();
+    expect(page.localStorage.getItem("other-storage:spoke:gone")).toBe(answer);
+  });
+
+  test("an unreadable saved answer does not keep another question put off", () => {
+    const page = open("spoke/decisions", {
+      "admin-answers:seen": String(Date.now() - 2 * 36e5),
+      "admin-answers:spoke:cache-folder": "unreadable",
+      "admin-answers:spoke:pick-a-variant": JSON.stringify({
+        later: true,
+        note: "ask the printer",
+        at: "2026-01-01T12:00:00.000Z",
+      }),
+    });
+    const row = page.document.getElementById("spoke:pick-a-variant")!;
+    expect(row.querySelector(".mark")!.textContent).toBe("✓ note");
+    expect((page.document.getElementById("copy") as DomElement).dataset.hwCopy).toContain(
+      "spoke:pick-a-variant: ask the printer",
+    );
+  });
+
+  test("an explicitly light page stays light, and a page without a choice follows the system", () => {
+    const theme = readFileSync(join(import.meta.dirname, "../site/src/theme.js"), "utf8");
+    for (const prefersColorScheme of ["light", "dark"]) {
+      const window = new Window({
+        url: "http://admin.localhost/index",
+        settings: { device: { prefersColorScheme } },
+      });
+      opened.push(window);
+      window.localStorage.setItem("theme", "light");
+      evaluate(window, theme);
+      expect(window.document.documentElement.dataset.theme).toBeUndefined();
+      window.localStorage.removeItem("theme");
+      evaluate(window, theme);
+      expect(window.document.documentElement.dataset.theme).toBe(
+        prefersColorScheme === "dark" ? "dark" : undefined,
+      );
+    }
   });
 
   test("an answer is stored as it is given, and the copy button counts it", () => {
@@ -1761,7 +1855,7 @@ describe("admin.js", () => {
   });
 
   test("an answer given before its question or options changed is no current pick and copies as given", () => {
-    const at = new Date(Date.UTC(2026, 0, 1, 9)).toISOString();
+    const at = new Date(2026, 0, 1, 9).toISOString();
     const first = open("spoke/decisions", {});
     const asked = (k: string) =>
       (first.document.getElementById(k) as unknown as HTMLElement).dataset.asked!;
@@ -1796,10 +1890,14 @@ describe("admin.js", () => {
     expect(checked("spoke:name-the-command")).toEqual([]);
     expect(checked("spoke:pick-a-logo")).toEqual(["v02"]);
     expect(checked("spoke:pick-recipients").sort()).toEqual(["ada-example", "ben-sample"]);
-    expect(row("spoke:pick-a-variant").querySelector(".mark")!.textContent).not.toContain("✓");
+    expect(row("spoke:pick-a-variant").querySelector(".mark")!.textContent).toBe(
+      "! answered before the question changed",
+    );
+    expect(row("spoke:pick-recipients").querySelector(".mark")!.textContent).toBe("✓ 2 picked");
     const notice = row("spoke:pick-a-variant").querySelector("[data-stale]")!;
     expect(notice.hasAttribute("hidden")).toBe(false);
     expect(notice.textContent).toContain("The old label");
+    expect(notice.textContent).toMatch(/1 Jan.*09:00/);
     expect(row("spoke:pick-a-logo").querySelector("[data-stale]")!.hasAttribute("hidden")).toBe(
       true,
     );
@@ -1828,7 +1926,7 @@ describe("admin.js", () => {
   });
 
   test("a copy holds what was not copied yet, and everything again once nothing is new", () => {
-    const at = (h: number) => new Date(Date.UTC(2026, 0, 1, h)).toISOString();
+    const at = (h: number) => new Date(2026, 0, 1, h).toISOString();
     const page = open("spoke/decisions", {
       "admin-answers:copied": at(12),
       "admin-answers:spoke:pick-a-logo": JSON.stringify({
@@ -1843,6 +1941,9 @@ describe("admin.js", () => {
     expect(copy.dataset.hwCopy).not.toContain("pick-a-logo");
     expect(copy.textContent).toBe("Copy 1 answer");
     expect(page.document.getElementById("state")!.textContent).toContain("1 not copied yet");
+    expect(
+      page.document.getElementById("spoke:pick-a-logo")!.querySelector(".saved")!.textContent,
+    ).toBe("saved 10:00, copied 12:00");
     const done = open("spoke/decisions", { ...stored(page), "admin-answers:copied": at(14) });
     const again = done.document.getElementById("copy") as DomElement;
     expect(again.dataset.hwCopy).toContain("pick-a-logo");
@@ -2084,6 +2185,20 @@ describe("admin.js", () => {
     const gone = window.document.getElementById("admin-gone")!;
     expect(gone.hasAttribute("hidden")).toBe(false);
     expect(gone.textContent).toContain("spoke:gone-item is no longer open");
+  });
+
+  test("returning exactly an hour later keeps the selected person for the same visit", () => {
+    const seen = Date.UTC(2026, 0, 1, 9);
+    const page = open(
+      "index",
+      { "admin-answers:who": "Kim", "admin-answers:seen": String(seen) },
+      seen + 36e5,
+    );
+    expect(
+      page.document
+        .querySelector('[data-who-button][aria-pressed="true"]')
+        ?.getAttribute("data-who-button"),
+    ).toBe("Kim");
   });
 
   test("an item changed since the visit before says so; a first visit marks nothing", () => {
