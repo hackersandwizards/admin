@@ -1,3 +1,4 @@
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Window, type Element as DomEl, type Node as DomNode } from "happy-dom";
 import { describe, expect, test } from "vitest";
@@ -6,12 +7,23 @@ import {
   compareItems,
   DUE_SOON_DAYS,
   dueSoon,
+  imagesOf,
   itemDefects,
   parseItem,
   usable,
   type Item,
 } from "../src/items.ts";
-import { readItems, renderMarkdown, treeSource } from "../src/repo.ts";
+import {
+  docSlug,
+  fileHref,
+  gitEnv,
+  readItems,
+  readRepo,
+  renderMarkdown,
+  thumbnail,
+  treeSource,
+  when,
+} from "../src/repo.ts";
 import { dueOf, inline, withLinks } from "../site/src/data.ts";
 
 const FIX = join(import.meta.dirname, "fixtures");
@@ -223,6 +235,173 @@ describe("item files", () => {
     });
     expect(defects).toEqual(["docs/agent-work/items/twice.md: repeated field priority"]);
   });
+
+  test("the first heading supplies the title even when it ends the file", () => {
+    const text = "---\nkind: goal\nstatus: open\n---\n\n#  Finish  ";
+    expect(parseItem("finish", text)).toEqual({
+      id: "finish",
+      kind: "goal",
+      status: "open",
+      title: "Finish",
+      body: "",
+    });
+  });
+
+  test.each([
+    ["An introduction\n---\nkind: work\n---\n# Move", "no frontmatter"],
+    ["---\n[work, open]\n---\n# Move", "frontmatter is not a mapping"],
+    ["---\nwork\n---\n# Move", "frontmatter is not a mapping"],
+    ["---\n[unfinished\n---\n# Move", "frontmatter:"],
+    ["---\nkind: work\n---\nIntro first.\n# Move", 'body does not start with "# <title>"'],
+    ["---\ncolour: red\nsize: big\n---\n# Move", "unknown field colour, size"],
+    ["---\nkind: work\nkind : review\n---\n# Move", "repeated field kind"],
+  ])("reports the defect in an item file (%#)", (text, message) => {
+    expect(() => parseItem("move", text)).toThrow(message);
+  });
+
+  test.each([
+    [{ order: "first" }, "order first"],
+    [{ options: "" }, "options is not a list"],
+    [{ options: [null, { key: "b", label: "B" }] }, "option 1 lacks key or label"],
+    [
+      {
+        options: [
+          { key: "a", label: "" },
+          { key: "b", label: "B" },
+        ],
+      },
+      "option 1 lacks key or label",
+    ],
+    [
+      {
+        options: [
+          { key: "a", label: "A" },
+          { key: null, label: "B" },
+        ],
+      },
+      "option 2 lacks key or label",
+    ],
+    [
+      {
+        options: [
+          { key: "a", label: "A" },
+          { key: "a", label: "B" },
+        ],
+      },
+      "duplicate option key",
+    ],
+    [
+      {
+        options: [
+          { key: "a", label: "A", detail: ["notes"] },
+          { key: "b", label: "B" },
+        ],
+      },
+      "option a label or detail is not text",
+    ],
+    [
+      {
+        options: [
+          { key: "a", label: "A", score: 8, noise: "small" },
+          { key: "b", label: "B" },
+        ],
+      },
+      "option a noise without a numeric score",
+    ],
+    [{ status: "decided", decision: "Use A" }, "decided without decision or by"],
+    [{ status: "decided", by: "Alex" }, "decided without decision or by"],
+    [{ images: "one.png" }, "images is neither a list nor a mapping"],
+  ])("reports a malformed item field (%#)", (change, message) => {
+    expect(itemDefects({ ...valid, ...change } as Item, exists)).toContain(message);
+  });
+
+  test("an assumption can stand on its own and a settled item can name who decided", () => {
+    const review = {
+      ...valid,
+      kind: "review" as const,
+      options: undefined,
+      recommended: undefined,
+    };
+    expect(
+      itemDefects({ ...review, status: "assumed", assumption: "Hold for now" }, exists),
+    ).toEqual([]);
+    expect(
+      itemDefects({ ...review, status: "decided", decision: "Hold", by: "Alex" }, exists),
+    ).toEqual([]);
+    expect(
+      itemDefects(
+        { id: "finish", title: "Finish", body: "", kind: "goal", status: "open" },
+        exists,
+      ),
+    ).toEqual([]);
+  });
+
+  test("a defective option or image does not hide the usable options and images", () => {
+    const item = usable({
+      ...valid,
+      owner: 42,
+      evidence: 7,
+      due: "2026-02-30",
+      options: [
+        null,
+        { key: "", label: "No key" },
+        { key: "a", label: { invalid: true }, detail: 17 },
+        { key: "b", label: "Keep B", detail: "A note" },
+      ],
+      images: {
+        a: ["angle.jpg", { src: "docs/shared.jpg", caption: "Close-up" }, null, { src: 2 }],
+        b: "other.jpg",
+      },
+    } as unknown as Item);
+    expect(item).toMatchObject({
+      priority: 2,
+      owner: "42",
+      evidence: "7",
+      due: undefined,
+      recommended: ["a"],
+    });
+    expect(item.options).toEqual([
+      { key: "a", label: "a", detail: "17" },
+      { key: "b", label: "Keep B", detail: "A note" },
+    ]);
+    expect(imagesOf(item)).toEqual({
+      a: [
+        { src: "docs/agent-work/items/a-question/angle.jpg" },
+        { src: "docs/shared.jpg", caption: "Close-up" },
+      ],
+      b: [{ src: "docs/agent-work/items/a-question/other.jpg" }],
+    });
+    expect(imagesOf({ ...item, images: ["cover.png"] })).toEqual({
+      "": [{ src: "docs/agent-work/items/a-question/cover.png" }],
+    });
+    expect(usable({ ...valid, images: "one.png", options: "A" } as unknown as Item)).toMatchObject({
+      options: undefined,
+      images: undefined,
+    });
+  });
+
+  test("priority comes first and tied rows sort by due date, last change and id", () => {
+    const items = [
+      { ...valid, priority: undefined, id: "unranked" },
+      { ...valid, id: "beta", changed: 20 },
+      { ...valid, id: "alpha", changed: 20 },
+      { ...valid, id: "older", changed: 10 },
+      { ...valid, id: "undated" },
+      { ...valid, id: "later", due: "2099-12-02" },
+      { ...valid, id: "earlier", due: "2099-12-01" },
+      { ...valid, priority: 1, id: "first" },
+    ];
+    expect(items.sort(compareItems).map((item) => item.id)).toEqual([
+      "first",
+      "earlier",
+      "later",
+      "alpha",
+      "beta",
+      "older",
+      "undated",
+      "unranked",
+    ]);
+  });
 });
 
 describe("admin-check", () => {
@@ -401,6 +580,332 @@ describe("hub", () => {
       renderMarkdown("/r", "docs/a.md", '<table class="x"><tr><td>a</td></tr></table>\n'),
     ).toContain(
       '<div class="hw-table-scroll" tabindex="0" role="region" aria-label="a"><table class="x">',
+    );
+  });
+});
+
+describe("repository data", () => {
+  const readFiles = (files: Record<string, string>) =>
+    readRepo("/nonexistent/paint samples", {
+      paths: Object.keys(files),
+      read: (path) => files[path],
+    });
+
+  test("unrecognised files and orphan images are named without hiding valid items", () => {
+    const files: Record<string, string> = {
+      "GOAL.md": "# Old goal",
+      "docs/tracking/follow-up.md": "# Old follow-up",
+      "docs/agent-work/items/orphan/shot.png": "",
+      "docs/agent-work/items/review/nested/deep.png": "",
+      "docs/agent-work/items/notes.txt": "",
+      "docs/agent-work/items/unfinished.md": "No header",
+      "docs/agent-work/items/review.md":
+        "---\nkind: review\nstatus: open\npriority: 2\nowner: Alex\nimages: [shot.png]\n---\n# Paint samples",
+      "docs/agent-work/items/review/shot.png": "",
+    };
+    const { items, defects } = readItems({
+      paths: Object.keys(files),
+      read: (path) => files[path],
+    });
+    expect(items.map(({ id, title }) => [id, title])).toEqual([["review", "Paint samples"]]);
+    expect(defects).toEqual([
+      "docs/agent-work/items/orphan/shot.png: no item orphan.md",
+      "docs/agent-work/items/review/nested/deep.png: only <id>.md files and <id>/<image> belong in docs/agent-work/items",
+      "docs/agent-work/items/notes.txt: only <id>.md files and <id>/<image> belong in docs/agent-work/items",
+      "docs/agent-work/items/unfinished.md: no frontmatter between --- lines",
+      "GOAL.md: legacy file, items live in docs/agent-work/items",
+      "docs/tracking/follow-up.md: legacy folder, move it to docs/agent-work",
+    ]);
+  });
+
+  test("committed history and the working tree show the files each reader promises", async () => {
+    const generated = join(import.meta.dirname, "../node_modules/.cache");
+    mkdirSync(generated, { recursive: true });
+    const repo = mkdtempSync(join(generated, "admin-repo-"));
+    const git = (...args: string[]) => {
+      const result = Bun.spawnSync(["git", ...args], {
+        cwd: repo,
+        env: {
+          ...gitEnv,
+          GIT_AUTHOR_DATE: "2026-01-14T12:34:00Z",
+          GIT_COMMITTER_DATE: "2026-01-14T12:34:00Z",
+        },
+      });
+      if (result.exitCode) throw new Error(result.stderr.toString());
+      return result.stdout.toString().trim();
+    };
+    try {
+      git("init", "-q");
+      const work = "docs/agent-work/items/ship.md";
+      await Bun.write(
+        join(repo, work),
+        "---\nkind: work\nstatus: open\npriority: 1\nowner: Alex\n---\n# Ship the samples",
+      );
+      await Bun.write(join(repo, ".gitignore"), "ignored.txt\n");
+      await Bun.write(join(repo, "docs/note.md"), "# First note\n\nCafé");
+      await Bun.write(join(repo, "docs/next.md"), "# Next note\n\nTwo");
+      await Bun.write(join(repo, "package.json"), '{"name":"paint","version":"1.0.0"}');
+      git("add", "--", ".gitignore", "docs", "package.json");
+      git(
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-qm",
+        "Write notes",
+      );
+      const fetch = join(repo, ".git/FETCH_HEAD");
+      await Bun.write(fetch, "");
+      const fetched = new Date("2026-01-15T10:00:00Z");
+      utimesSync(fetch, fetched, fetched);
+      await Bun.write(join(repo, "docs/note.md"), "# Edited note\n\nDraft");
+      await Bun.write(join(repo, "ignored.txt"), "Generated");
+      await Bun.write(join(repo, "docs/draft.md"), "# Draft");
+      rmSync(join(repo, "docs/next.md"));
+
+      const tree = treeSource(repo);
+      expect(tree.paths.toSorted()).toEqual([
+        ".gitignore",
+        "docs/agent-work/items/ship.md",
+        "docs/draft.md",
+        "docs/note.md",
+        "package.json",
+      ]);
+      expect(tree.read("docs/note.md")).toBe("# Edited note\n\nDraft");
+      expect(tree.read("docs/next.md")).toBeUndefined();
+
+      const committed = await readRepo(repo);
+      const time = Date.parse("2026-01-14T12:34:00Z") / 1000;
+      expect(committed.fetched).toBe(fetched.getTime());
+      expect(committed.behind).toBeUndefined();
+      expect(committed.head).toMatch(/^[a-f0-9]{7,}$/);
+      expect(committed.log).toEqual([{ hash: committed.head, time, subject: "Write notes" }]);
+      expect(committed.trackingLog).toEqual(committed.log);
+      expect(committed.items).toMatchObject([
+        { id: "ship", title: "Ship the samples", changed: time },
+      ]);
+      expect(committed.docs).toEqual([
+        { path: "docs/next.md", title: "Next note", html: "<p>Two</p>\n" },
+        { path: "docs/note.md", title: "First note", html: "<p>Café</p>\n" },
+      ]);
+      expect(committed.pkg).toMatchObject({ name: "paint", version: "1.0.0" });
+      expect(committed.defects).toEqual([]);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("a source outside Git still reads its docs and leaves generated folders alone", () => {
+    const generated = join(import.meta.dirname, "../node_modules/.cache");
+    mkdirSync(generated, { recursive: true });
+    const dir = mkdtempSync(join(generated, "admin-tree-"));
+    try {
+      mkdirSync(join(dir, ".git"));
+      mkdirSync(join(dir, "node_modules"));
+      mkdirSync(join(dir, "docs"));
+      writeFileSync(join(dir, ".git/private"), "internal");
+      writeFileSync(join(dir, "node_modules/cache"), "generated");
+      writeFileSync(join(dir, "docs/guide.md"), "# Guide");
+      const tree = treeSource(dir);
+      expect(tree.paths).toEqual(["docs/guide.md"]);
+      expect(tree.read("docs/guide.md")).toBe("# Guide");
+      expect(tree.read("docs/missing.md")).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a repository publishes its configured links, checks, scripts and review material", async () => {
+    const report = "docs/agent-work/2026-01-14-paint";
+    const repo = await readFiles({
+      "package.json": JSON.stringify({
+        name: "paint",
+        version: "2.0.0",
+        scripts: { "check:all": " format &&  test && ", check: "lint" },
+        dependencies: { tint: "1.0.0" },
+        devDependencies: { sampler: "2.0.0" },
+        bin: "./scripts/paint.ts",
+        admin: {
+          name: "paint.samples",
+          label: "  Paint samples  ",
+          designSystem: "https://paint.example/catalog/",
+          products: [
+            { label: "Tiles", description: "Browse the colors", href: "docs/tiles.html" },
+            null,
+          ],
+          links: [{ label: "Guide", href: "docs/guide.md?print=1#start" }, { label: "Unlinked" }],
+        },
+      }),
+      "docs/agent-work/admin.json": '{"label":"Old label"}',
+      "docs/guide.md": "# Tool &amp; *guide*\n\nInstructions",
+      "README.md": "# Read me\n\nStart",
+      [`${report}.md`]: "# Sample review\n\nComparison",
+      [`${report}/z.PNG`]: "",
+      [`${report}/a.webp`]: "",
+      [`${report}/notes.txt`]: "",
+      "docs/agent-work/2026-01-15-next.md": "Planning",
+      "docs/agent-work/2026-01-15-next/first.jpg": "",
+      "scripts/paint.ts": "// Render color samples\n",
+      "scripts/other.sh": "#!/bin/sh\n# Export samples\n",
+      ".claude/agents/help.md": "---\ndescription: Mira, who samples paint\n---\n",
+      ".claude/agents/tool.md": "---\ndescription: Tool instructions\n---\n",
+    });
+    expect(repo).toMatchObject({
+      key: "paint.samples",
+      label: "Paint samples",
+      pkg: {
+        name: "paint",
+        version: "2.0.0",
+        dependencies: { tint: "1.0.0", sampler: "2.0.0" },
+        bin: { paint: "./scripts/paint.ts" },
+      },
+      designSystem: "https://paint.example/catalog/",
+      designSystemDev: undefined,
+      checkSteps: ["format", "test"],
+      agents: ["Mira"],
+    });
+    expect(repo.defects).toEqual(["docs/agent-work/admin.json: ignored, package.json holds admin"]);
+    expect(repo.products).toEqual([
+      {
+        label: "Tiles",
+        description: "Browse the colors",
+        href: "file:///nonexistent/paint%20samples/docs/tiles.html",
+      },
+    ]);
+    expect(repo.links).toEqual([
+      { label: "Guide", href: "file:///nonexistent/paint%20samples/docs/guide.md?print=1#start" },
+    ]);
+    expect(repo.scripts).toEqual([
+      { path: "scripts/paint.ts", comment: "Render color samples" },
+      { path: "scripts/other.sh", comment: "Export samples" },
+    ]);
+    expect(repo.docs).toEqual([
+      { path: "docs/guide.md", title: "Tool & guide", html: "<p>Instructions</p>\n" },
+      { path: "README.md", title: "Read me", html: "<p>Start</p>\n" },
+    ]);
+    expect(repo.reports).toEqual([
+      {
+        path: "docs/agent-work/2026-01-15-next.md",
+        date: "2026-01-15",
+        title: "2026-01-15-next",
+        html: "<p>Planning</p>\n",
+      },
+      {
+        path: `${report}.md`,
+        date: "2026-01-14",
+        title: "Sample review",
+        html: "<p>Comparison</p>\n",
+      },
+    ]);
+    expect(repo.reviews).toEqual([
+      {
+        dir: "docs/agent-work/2026-01-15-next",
+        images: ["first.jpg"],
+        report: "docs/agent-work/2026-01-15-next.md",
+      },
+      { dir: report, images: ["a.webp", "z.PNG"], report: `${report}.md` },
+    ]);
+  });
+
+  test("bad package fields report defects while a usable catalog can still be inferred", async () => {
+    const repo = await readFiles({
+      "package.json": JSON.stringify({
+        scripts: { dev: "astro dev", "design-system": "astro dev --root catalog", missing: 1 },
+        bin: { paint: "./paint.ts", broken: true },
+        dependencies: ["wrong"],
+        admin: { name: "...", label: 17 },
+      }),
+      "astro.config.ts": "export default { server: { port: 4329 } }",
+      "catalog/astro.config.mjs":
+        'import { astrobook } from "astrobook"; export default { base: "/paint", subpath: "/examples/", server: { port: 4556 } }',
+    });
+    expect(repo).toMatchObject({
+      key: "paint-samples",
+      label: undefined,
+      designSystem: "http://127.0.0.1:4556/paint/examples/",
+      designSystemDev: { port: 4556, start: "design-system" },
+      pkg: {
+        scripts: { dev: "astro dev", "design-system": "astro dev --root catalog" },
+        bin: { paint: "./paint.ts" },
+        dependencies: {},
+      },
+    });
+    expect(repo.defects).toEqual([
+      'package.json: admin.name "..." is not letters, digits, ".", "_" and "-": its pages are under paint-samples',
+      "package.json: admin.label is not text",
+      "package.json: scripts holds a value that is not text",
+      "package.json: dependencies holds a value that is not text",
+      "package.json: bin holds a value that is not text",
+    ]);
+  });
+
+  test.each([
+    ["[", "[]", ["package.json: not JSON", "docs/agent-work/admin.json: not a JSON object"]],
+    ["[]", "x", ["package.json: not an object", "docs/agent-work/admin.json: not JSON"]],
+    [
+      '{"admin":5}',
+      '{"label":"Fallback"}',
+      [
+        "package.json: admin is not an object",
+        "docs/agent-work/admin.json: ignored, package.json holds admin",
+      ],
+    ],
+  ])(
+    "configuration errors do not take down the repository view (%#)",
+    async (pkg, admin, defects) => {
+      const repo = await readFiles({ "package.json": pkg, "docs/agent-work/admin.json": admin });
+      expect(repo).toMatchObject({
+        key: "paint-samples",
+        label: undefined,
+        items: [],
+        links: [],
+        products: [],
+      });
+      expect(repo.defects).toEqual(defects);
+    },
+  );
+
+  test("a standalone admin config supplies a label and links without a package", async () => {
+    const repo = await readFiles({
+      "docs/agent-work/admin.json": JSON.stringify({
+        label: "Paint samples",
+        links: [{ label: "Catalogue", href: "https://paint.example/" }],
+      }),
+    });
+    expect(repo).toMatchObject({
+      key: "paint-samples",
+      label: "Paint samples",
+      links: [{ label: "Catalogue", href: "https://paint.example/" }],
+      defects: [],
+    });
+  });
+
+  test("a doc index keeps its extension and image tiles offer sizes for both screen densities", () => {
+    expect(docSlug("docs/Index.MD")).toBe("doc/docs/Index.MD");
+    expect(docSlug("docs/Tools.MD")).toBe("doc/docs/Tools");
+    const href = fileHref("/paint samples/docs/a?b&c#.png");
+    expect(href).toBe("file:///paint%20samples/docs/a%3Fb%26c%23.png");
+    expect(thumbnail(href)).toEqual({
+      src: `${href}?w=480`,
+      srcset: `${href}?w=480 480w, ${href}?w=960 960w`,
+      sizes: "auto, 50vw",
+    });
+    inZone("UTC", () =>
+      expect(when(Date.parse("2026-01-10T09:05:00Z"))).toMatch(/^10 Jan(?: at|,) 09:05$/),
+    );
+  });
+
+  test("headings with attributes name tables and code blocks retain their own styling", () => {
+    const html = renderMarkdown(
+      "/r",
+      "docs/guide.md",
+      '<h2 id="sizes">Paint  sizes</h2>\n\n<table><tr><th id="size">Size</th></tr><tr><td>10</td></tr></table>\n\n`one`\n\n```text\ntwo\n```',
+    );
+    expect(html).toContain('aria-label="Paint sizes"');
+    expect(html).toContain('<code class="hw-inline-code">one</code>');
+    expect(html).toContain(
+      '<pre class="hw-code not-prose"><code class="language-text">two\n</code></pre>',
     );
   });
 });
