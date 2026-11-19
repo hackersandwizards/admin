@@ -6,3 +6,5 @@ dist/
 .env.*
 site/.build-*/
 .eslintcache
+/.stryker-tmp/
+/.stryker-reports/

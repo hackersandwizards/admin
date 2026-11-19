@@ -1123,8 +1123,6 @@ describe("pages", () => {
       expect(bundled).toContain("[data-hw-copy]");
       // The copy time is set from brand's hw-copy event, which says whether the copy worked.
       expect(bundled).toMatch(/addEventListener\("hw-copy"[^]*?\.detail\?\.ok/);
-      // The catalog marks its pages, so its fixture answers stay apart from the hub's.
-      expect(bundled).toMatch(/"adminCatalog"\s*in\s*document\.documentElement\.dataset/);
       // Astro drops a line break next to a tag: the pill keeps an explicit space before its label.
       expect(decisions).toMatch(/Recommended\s*<\/span>\s+<b>/);
       for (const [from, to] of [
@@ -1524,6 +1522,12 @@ describe("admin.js", () => {
   afterAll(async () => {
     await Promise.all(opened.map((w) => w.happyDOM.close()));
   });
+  const evaluate = (window: Window, source: string) => {
+    // Happy DOM runs scripts in a separate realm from Vitest's mutation coverage hooks.
+    const { __stryker__ } = globalThis as typeof globalThis & { __stryker__?: object };
+    if (__stryker__) Object.assign(window, { __stryker__ });
+    window.eval(source);
+  };
   // Storage null is a browser that blocks site data: reading localStorage throws.
   const open = (page: string, storage: Record<string, string> | null) => {
     const window = new Window({ url: `http://admin.localhost/${page}` });
@@ -1538,7 +1542,7 @@ describe("admin.js", () => {
     window.document.write(
       readFileSync(join(out, `${page}.html`), "utf8").replace(/<script[^>]*><\/script>/g, ""),
     );
-    window.eval(code);
+    evaluate(window, code);
     return window;
   };
   const stored = (w: Window) => ({ ...w.localStorage }) as Record<string, string>;
@@ -1565,8 +1569,14 @@ describe("admin.js", () => {
       const doc = window.document;
       if (catalog) doc.documentElement.dataset.adminCatalog = "";
       if (catalog?.night) doc.documentElement.dataset.hwNight = "";
-      window.eval(theme);
-      window.eval(code);
+      evaluate(window, theme);
+      evaluate(window, code);
+      expect(
+        window.localStorage.getItem(catalog ? "admin-catalog:seen" : "admin-answers:seen"),
+      ).not.toBeNull();
+      expect(
+        window.localStorage.getItem(catalog ? "admin-answers:seen" : "admin-catalog:seen"),
+      ).toBeNull();
       const shell = doc.querySelector("[data-shell]")!;
       const own = doc.querySelector("[data-admin-theme]") as unknown as HTMLElement;
       const read = () => [
@@ -1866,7 +1876,7 @@ describe("admin.js", () => {
       window.document.write(
         readFileSync(join(dir, "index.html"), "utf8").replace(/<script[^>]*><\/script>/g, ""),
       );
-      window.eval(code);
+      evaluate(window, code);
       const fold = (id: string) =>
         window.document.getElementById(id)!.closest("details[data-group]") as unknown as {
           open: boolean;
@@ -2070,7 +2080,7 @@ describe("admin.js", () => {
         "",
       ),
     );
-    window.eval(code);
+    evaluate(window, code);
     const gone = window.document.getElementById("admin-gone")!;
     expect(gone.hasAttribute("hidden")).toBe(false);
     expect(gone.textContent).toContain("spoke:gone-item is no longer open");

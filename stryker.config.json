@@ -1,0 +1,21 @@
+{
+  "mutate": ["src/**/*.ts", "bin/**/*.ts", "site/src/**/*.{js,ts}"],
+  "testRunner": "vitest",
+  "vitest": {
+    "configFile": "vitest.config.ts",
+    "pool": "forks",
+    "related": false
+  },
+  "coverageAnalysis": "perTest",
+  "reporters": ["clear-text", "json"],
+  "jsonReporter": {
+    "fileName": ".stryker-reports/mutation.json"
+  },
+  "tempDirName": ".stryker-tmp",
+  "cleanTempDir": "always",
+  "ignorePatterns": [".*", "!test/fixtures/spoke/.claude"],
+  "concurrency": 2,
+  "ignoreStatic": true,
+  "incremental": true,
+  "incrementalFile": ".stryker-reports/incremental.json"
+}
