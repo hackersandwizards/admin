@@ -11,5 +11,12 @@
     "erasableSyntaxOnly": true,
     "types": ["bun"]
   },
-  "include": ["bin/**/*.ts", "src/**/*.ts", "test/**/*.ts", "site/src/**/*.ts", "catalog/**/*.ts"]
+  "include": [
+    "bin/**/*.ts",
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "site/src/**/*.ts",
+    "catalog/**/*.ts",
+    "vitest.config.ts"
+  ]
 }

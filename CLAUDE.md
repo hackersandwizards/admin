@@ -49,6 +49,9 @@ sits only where the text it answers is on screen: in the opened row, never on a 
 
 ## Checks
 
+`bun run test` runs Vitest with Bun. The suite uses Bun APIs and reads the gate's
+`SCAFFOLDING_TEST_TIMEOUT_MS`.
+
 `bun run check` is the gate, `scaffolding check` from `@hackersandwizards/scaffolding`: the shared
 steps, then `check:values` (no design value here), `check:colours`, `check:copies` and
 `check:scan` (brand's colour, copy and expert-component scans), `check:fixture` (admin-check on the fixture), `check:elements`

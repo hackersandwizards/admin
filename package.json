@@ -43,7 +43,7 @@
     "check:retired": "brand-retired dist",
     "check:staged": "check-staged",
     "fix": "bun --bun eslint --cache --concurrency=auto . --fix && bun --bun prettier --write .",
-    "test": "bun test --timeout ${SCAFFOLDING_TEST_TIMEOUT_MS:-5000}"
+    "test": "bun --bun vitest run"
   },
   "devDependencies": {
     "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v2.28.1",
@@ -61,7 +61,8 @@
     "puppeteer-core": "25.17.0",
     "stylelint": "18.0.0",
     "tailwindcss": "4.3.5",
-    "typescript": "npm:@typescript/typescript6@6.0.2"
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "vitest": "5.1.0"
   },
   "scaffolding": {
     "test": "test",
