@@ -107,5 +107,5 @@ is non-empty.
 codex exec -m gpt-6.2-sol -c model_reasoning_effort="high" --skip-git-repo-check --ephemeral -s read-only "<prompt>" < /dev/null
 ```
 
-The reviewer is the model that did not author the work: Codex reviews Claude's text, Claude reviews
-Codex's code. Codex never authors the text under review.
+Where one model reviews, it is the one that did not author the work: Codex reviews Claude's text,
+Claude reviews Codex's code. Codex never authors the text under review.
