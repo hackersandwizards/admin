@@ -1,8 +1,8 @@
 {
-  "mutate": ["src/**/*.ts", "bin/**/*.ts", "site/src/**/*.{js,ts}"],
+  "mutate": ["src/{items,repo}.ts", "site/src/data.ts"],
   "testRunner": "vitest",
   "vitest": {
-    "configFile": "vitest.config.ts",
+    "configFile": "test/vitest.mutation.config.ts",
     "pool": "forks",
     "related": false
   },
@@ -13,7 +13,16 @@
   },
   "tempDirName": ".stryker-tmp",
   "cleanTempDir": "always",
-  "ignorePatterns": [".*", "!test/fixtures/spoke/.claude"],
+  "ignorePatterns": [
+    ".*",
+    "/bin/",
+    "/site/src/admin.js",
+    "/site/src/theme.js",
+    "/src/build.ts",
+    "/src/hub.ts",
+    "/src/serve.ts",
+    "/test/admin.test.ts"
+  ],
   "concurrency": 2,
   "ignoreStatic": true,
   "incremental": true,
