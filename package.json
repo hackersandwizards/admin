@@ -47,7 +47,7 @@
     "mutation": "BUN_OPTIONS='--preload vitest/node' bun --bun stryker run"
   },
   "devDependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v2.28.1",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v2.28.2",
     "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.31.0",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.5",
