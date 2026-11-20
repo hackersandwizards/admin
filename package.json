@@ -35,6 +35,7 @@
     "check": "scaffolding check",
     "check:values": "bun test/no-values.ts",
     "check:fixture": "bun bin/admin-check.ts test/fixtures/spoke",
+    "check:pages": "bun --bun vitest run test/pages",
     "check:colours": "brand-colours",
     "check:copies": "brand-copies",
     "check:scan": "brand-scan",
@@ -43,7 +44,7 @@
     "check:retired": "brand-retired dist",
     "check:staged": "check-staged",
     "fix": "bun --bun eslint --cache --concurrency=auto . --fix && bun --bun prettier --write .",
-    "test": "bun --bun vitest run",
+    "test": "bun --bun vitest run --exclude 'test/pages/**'",
     "mutation": "BUN_OPTIONS='--preload vitest/node' bun --bun scaffolding-mutation"
   },
   "devDependencies": {
@@ -75,11 +76,12 @@
         "check:scan"
       ],
       "check:fixture",
+      "check:pages",
       "check:elements",
       "check:retired"
     ],
     "fullOnly": {
-      "test": "launches browsers in the test suite",
+      "check:pages": "builds and reads rendered pages and launches Chrome",
       "check:elements": "renders and checks elements",
       "check:retired": "scans generated output"
     },

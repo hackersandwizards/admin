@@ -26,8 +26,8 @@ exported file is a release whose commit names the change.
   elements the site uses and the ones it keeps, and holds the catalog's Content-Security-Policy
   (`csp`), which `serve.ts` sends for the catalog and `policy()` in `site/src/data.ts` extends for the
   hub's pages.
-- `test/`: `admin.test.ts` and its invented fixtures; `no-values.ts`, the check that no design value
-  lives here.
+- `test/`: tests and invented fixtures. `test/pages/` holds the tests that build or read rendered
+  pages. `no-values.ts` checks that no design value lives here.
 - `docs/`: `items.md`, what `admin-check` enforces, and `hub.md`, what the hub does and reads from a
   repository's `package.json` or `docs/agent-work/admin.json`. The README links them and holds no reference of its own.
   `<date>-performance.md` is the last polish's measurements, replaced by the next.
@@ -49,14 +49,13 @@ sits only where the text it answers is on screen: in the opened row, never on a 
 
 ## Checks
 
-`bun run test` runs Vitest with Bun. The suite uses Bun APIs and reads the gate's
-`SCAFFOLDING_TEST_TIMEOUT_MS`.
+`bun run test` runs the source and fixture tests at push and in the full gate.
+`bun run check:pages` runs the tests that build or read rendered pages, including the Chrome tests,
+in the full gate. Both use Vitest with Bun and read the gate's `SCAFFOLDING_TEST_TIMEOUT_MS`.
 
-`bun run mutation` runs `test/admin-fast.test.ts` (0.05 s) against `src/items.ts`, `src/repo.ts`
-and `site/src/data.ts` to measure which changes the tests catch. It leaves `test/admin.test.ts`
-(32.4 s) to the normal suite because it runs builds, browsers, servers and Git,
-and leaves out `bin/*.ts`, `src/{build,hub,serve}.ts` and `site/src/{admin,theme}.js` with it.
-Mutation testing runs outside the gate and writes `.stryker-reports/mutation.json`.
+`bun run mutation` runs `test/admin-fast.test.ts` against `src/items.ts`, `src/repo.ts`
+and `site/src/data.ts` to measure which changes the tests catch. It runs outside the gate and writes
+`.stryker-reports/mutation.json`.
 
 `bun run check` is the gate, `scaffolding check` from `@hackersandwizards/scaffolding`: the shared
 steps, then `check:values` (no design value here), `check:colours`, `check:copies` and
