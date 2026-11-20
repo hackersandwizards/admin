@@ -44,11 +44,11 @@
     "check:staged": "check-staged",
     "fix": "bun --bun eslint --cache --concurrency=auto . --fix && bun --bun prettier --write .",
     "test": "bun --bun vitest run",
-    "mutation": "BUN_OPTIONS='--preload vitest/node' bun --bun stryker run"
+    "mutation": "BUN_OPTIONS='--preload vitest/node' bun --bun scaffolding-mutation"
   },
   "devDependencies": {
     "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v2.28.2",
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.31.0",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.32.0",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.5",
     "@types/bun": "1.4.4",
@@ -78,6 +78,11 @@
       "check:elements",
       "check:retired"
     ],
+    "fullOnly": {
+      "test": "launches browsers in the test suite",
+      "check:elements": "renders and checks elements",
+      "check:retired": "scans generated output"
+    },
     "skip": {
       "admin": "this is admin: check:fixture runs admin-check on the invented fixture, and the repository keeps no items of its own"
     }
