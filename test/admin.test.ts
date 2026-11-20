@@ -400,18 +400,6 @@ describe("hub", () => {
     expect(read.behind).toBeUndefined();
   });
 
-  test("counts commits behind the branch a checkout pushes to, never another branch it tracks", async () => {
-    const origin = repoFrom("spoke");
-    const clone = join(dirname(origin), "clone");
-    sh(dirname(origin), "git", "clone", "-q", origin, clone);
-    sh(origin, "git", "commit", "-q", "--allow-empty", "-m", "ahead");
-    sh(clone, "git", "fetch", "-q");
-    expect((await readRepo(clone)).behind).toBe(1);
-    // A local branch tracking main, which moves on without it, has no distance to show.
-    sh(clone, "git", "checkout", "-q", "-b", "local", "--track", "origin/main");
-    expect((await readRepo(clone)).behind).toBeUndefined();
-  });
-
   test("a folder git cannot read has no fetch time, and is asked again once it can", async () => {
     const dir = scratch();
     expect(await fetchedAt(dir)).toBeUndefined();

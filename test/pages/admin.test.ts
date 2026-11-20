@@ -261,6 +261,8 @@ describe("pages", () => {
         key: "other",
         label: "other",
         path: `${spoke.path}-other`,
+        behind: 2,
+        fetched: 1_700_000_000,
         items: [{ ...base, id: "early", owner: "Alex", order: 20 }],
       };
       const out = join(scratch(), "out");
@@ -318,6 +320,12 @@ describe("pages", () => {
       // The hub's provenance names the checkouts behind and says when it is from, at the page's end,
       // so the lists come first.
       expect(html).toMatch(/class="admin-provenance[^>]*>[^<]*· as of <span data-stamp>\d/);
+      expect(html.match(/<p class="admin-provenance[^>]*>([^<]*)/)?.[1]).toContain(
+        "1 behind their push branch: other",
+      );
+      expect(readFileSync(join(out, "other/dashboard.html"), "utf8")).toContain(
+        "2 commits behind the push branch, fetched",
+      );
       expect(html.indexOf("admin-provenance")).toBeGreaterThan(html.indexOf(">Settled</h2>"));
       expect(html).toContain("Decide P2");
     },
@@ -1267,6 +1275,27 @@ describe("admin.js", () => {
 });
 
 describe("serve", () => {
+  test(
+    "refreshes the behind count when the push remote changes without moving refs",
+    async () => {
+      const origin = repoFrom("spoke");
+      const root = scratch();
+      const clone = join(root, "spoke");
+      sh(root, "git", "clone", "-q", origin, clone);
+      sh(clone, "git", "config", "push.default", "current");
+      sh(clone, "git", "remote", "add", "mirror", origin);
+      writeFileSync(join(origin, "extra.md"), "# Extra\n");
+      sh(origin, "git", "add", "extra.md");
+      commit(origin, "extra");
+      sh(clone, "git", "fetch", "-q", "mirror");
+      const hub = createHub({ root });
+      expect((await hub.pages()).repos[0]?.behind).toBe(0);
+      sh(clone, "git", "config", "branch.main.pushRemote", "mirror");
+      expect((await hub.pages()).repos[0]?.behind).toBe(1);
+    },
+    testTimeout(120_000),
+  );
+
   test(
     "rebuilds on a new day, since a due date comes within a week with no commit",
     async () => {

@@ -511,9 +511,6 @@ function apply(picked = false) {
       sec.hidden = ![...sec.querySelectorAll("[data-row]")].some(
         (r) => !r.hidden && !r.closest("[data-group]")?.hidden,
       );
-  // On arrival and after a choice of person or kind, the group holding the first open question
-  // shown opens, so what only a person settles is on screen even below a group of work. Then the
-  // first group with rows opens where none is open.
   if ((picked || !arrived) && scope) {
     const groups = [...scope.querySelectorAll("details[data-group]")].filter(shown);
     const ask = groups.find((g) =>

@@ -60,6 +60,7 @@ hub's addresses, pages, answers and the `admin` settings in `package.json` or `d
 - `bun install` installs and points the git hooks at `.githooks/`
 - `bun run test` runs the source and fixture tests locally and at push
 - `bun run check:pages` runs the tests that build or read rendered pages, including the Chrome tests
+- `bun run mutation` checks which mutations the fast tests catch
 - `bun run check` runs the gate: scaffolding's shared steps, then the steps in `package.json`'s `scaffolding.check`
 - `bun run dev` runs the hub on `http://admin.localhost:4329`
 - `bun run catalog` serves the catalog live at `http://127.0.0.1:4332/`; on the hub it is `/catalog/`

@@ -48,13 +48,13 @@ each `docs/agent-work/<date>-<topic>/` folder with its images and report), Docs 
 Architecture (package, pins, scripts with their first comment line), Checks (the steps of
 `check:all` or `check`) and Log.
 
-Items sort by `priority`, then `order`; a `due` date seven days away or nearer, or past, leads its
-priority, then decisions and reviews come before work, and every `due` shows as a badge: "was due"
-in red once past, "due today" in amber. The group holding the first open question the filters show
-opens with the page, beside any group open by default. On
-the hub every repository's rows run in this one order, each naming its repository, and assumed and
-decided items come last, under "Settled", each saying in two lines at most what was assumed or
-decided, in full once opened.
+Items sort by `priority`. Within a priority, items due within seven days or already overdue come
+first, earliest due date first. Decisions and reviews come before work at the same due rank,
+then `order` ranks the items. Every `due` date appears as a badge, with "was due" in red and
+"due today" in amber. The group holding the first open question the filters show opens with the
+page, beside any group open by default. The hub uses this order across repositories and names
+each row's repository. Assumed and decided items come last, under "Settled", with a summary of
+at most two lines and the full text once opened.
 Work an agent owns shows collapsed under "Agents on it", each row a link to its repository's
 page. An item belongs to the first person its `owner` names anywhere ("Ivo drafts, Kim sends" is
 Kim's), a person being the hub's user or a name that opens some open item's owner, and never an
@@ -88,9 +88,9 @@ phone keeps one line beside its button. A page left open over an hour says so.
 
 When a build fails or a repository cannot be read at its HEAD, every page says so above its
 content, keeps the last pages it built, and the hub tries again a minute later, or once a
-repository changes. A fetch that moves no ref builds nothing: the page prints the new fetch time
-as it is served. A
-relative link from one doc to another opens that doc's page.
+repository changes. The behind count compares each checkout with its configured push branch.
+After the first fetch, a fetch that leaves the comparison and refs unchanged only updates the
+fetch time printed on the page. A relative link from one doc to another opens that doc's page.
 
 In an item's text a path under `docs/agent-work/` links into the repository named right
 before it (``website `docs/agent-work/…` ``) or after it (`` `…` in website ``), else into the

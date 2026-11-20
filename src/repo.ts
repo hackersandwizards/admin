@@ -482,9 +482,6 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     source ?? headSource(repo),
     gitAsync(repo, ["log", "--format=@%ct", "--name-only", "--", ITEMS_DIR]),
     gitAsync(repo, ["rev-parse", "--short", "HEAD"]),
-    // Behind the branch this one pushes to, not its upstream: a branch tracking another branch,
-    // such as a client's master, falls behind with every merge there while it is current. Without
-    // a push branch the count fails: the distance is unknown, not zero.
     gitBytes(repo, ["rev-list", "--count", "HEAD..@{push}"]),
     commits("-n", "60", "--", WORK_DIR),
     commits("-n", "60"),
@@ -494,7 +491,7 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
   const pkgText = src.read("package.json");
   let pkg: Record<string, unknown> = {};
   try {
-    const parsed: unknown = pkgText ? JSON.parse(pkgText) : {};
+    const parsed: unknown = pkgText === undefined ? {} : JSON.parse(pkgText);
     if (isObject(parsed)) pkg = parsed;
     else defects.push("package.json: not an object");
   } catch {

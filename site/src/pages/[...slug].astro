@@ -42,15 +42,13 @@ const reviewItems = reviewsOf(items);
 const goals = items.filter((i) => i.kind === "goal");
 const behind =
   repo?.behind === undefined
-    ? "no branch of its own on origin, commits behind unknown"
-    : repo.behind
-      ? `${repo.behind} commits behind origin`
-      : "up to date with origin";
+    ? "push branch unavailable, commits behind unknown"
+    : `${repo.behind} commit${repo.behind === 1 ? "" : "s"} behind the push branch`;
 const provenance = repo
   ? `@hackersandwizards/admin v${d.version} · ${repo.key} HEAD ${repo.head} · ${items.length} item files · ${
       repo.fetched
         ? `${behind}, fetched `
-        : "origin never fetched in this checkout, commits behind unknown"
+        : "no fetch time for this checkout, commits behind unknown"
     }`
   : (() => {
       const behindNames = d.repos.filter((r) => r.behind).map((r) => r.key);
@@ -60,8 +58,8 @@ const provenance = repo
         `@hackersandwizards/admin v${d.version}`,
         `${d.repos.length} checkouts`,
         behindNames.length
-          ? `${behindNames.length} behind origin: ${behindNames.join(", ")}`
-          : "none behind origin",
+          ? `${behindNames.length} behind their push branch: ${behindNames.join(", ")}`
+          : "none known behind their push branch",
         never.length ? `never fetched: ${never.join(", ")}` : "",
         `${items} item files`,
         "as of ",

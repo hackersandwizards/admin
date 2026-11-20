@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Window, type Element as DomEl, type Node as DomNode } from "happy-dom";
 import { describe, expect, test } from "vitest";
 import { tableScroll as brandTableScroll } from "@hackersandwizards/brand/elements/table.ts";
@@ -25,6 +25,7 @@ import {
   when,
 } from "../src/repo.ts";
 import { dueOf, inline, withLinks } from "../site/src/data.ts";
+import { commit, repoFrom, sh } from "./admin-fixtures.ts";
 
 const FIX = join(import.meta.dirname, "fixtures");
 // Runs a check in another time zone, then restores the process's own, unset included.
@@ -69,9 +70,9 @@ describe("item files", () => {
       "ranked",
       "far",
     ]);
-    // Below a near due date, a question comes before work, whatever its order.
     const task = { ...valid, id: "task", kind: "work" as const, order: 1 };
     const soonTask = { ...task, id: "soon-task", due: at(1) };
+    expect(compareItems(task, ranked)).toBeGreaterThan(0);
     expect([task, far, soonTask, ranked].sort(compareItems).map((i) => i.id)).toEqual([
       "soon-task",
       "ranked",
@@ -591,6 +592,21 @@ describe("repository data", () => {
       read: (path) => files[path],
     });
 
+  test("counts commits behind the branch a checkout pushes to", async () => {
+    const origin = repoFrom("spoke");
+    const clone = join(dirname(origin), "clone");
+    sh(dirname(origin), "git", "clone", "-q", origin, clone);
+    sh(clone, "git", "config", "push.default", "current");
+    writeFileSync(join(origin, "extra.md"), "# Extra\n");
+    sh(origin, "git", "add", "extra.md");
+    commit(origin, "extra");
+    sh(clone, "git", "fetch", "-q");
+    expect((await readRepo(clone)).behind).toBe(1);
+    // This branch tracks origin/main but would push to origin/local.
+    sh(clone, "git", "checkout", "-q", "-b", "local", "--track", "origin/main");
+    expect((await readRepo(clone)).behind).toBeUndefined();
+  });
+
   test("unrecognised files and orphan images are named without hiding valid items", () => {
     const files: Record<string, string> = {
       "GOAL.md": "# Old goal",
@@ -841,6 +857,7 @@ describe("repository data", () => {
   });
 
   test.each([
+    ["", "{}", ["package.json: not JSON"]],
     ["[", "[]", ["package.json: not JSON", "docs/agent-work/admin.json: not a JSON object"]],
     ["[]", "x", ["package.json: not an object", "docs/agent-work/admin.json: not JSON"]],
     [

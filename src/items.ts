@@ -204,9 +204,6 @@ export function usable(item: Item): Item {
   };
 }
 
-// Within a priority `order` ranks, and a due date leads only once it is this close or past: one
-// week before it, an item tops its group, while a date further out leaves the ranking alone.
-// Below a near due date, a question a person settles on the page comes before work.
 export const DUE_SOON_DAYS = 7;
 // Compared as local days, the days the hub rebuilds on.
 export const dueSoon = (due: string | undefined, now = Date.now()) => {

@@ -36,14 +36,14 @@ import {
 
 export type ServeOptions = { root: string; rescanMs?: number };
 
-// A fetch that moves no ref changes no page but the fetch time it prints, which each request
-// fills in (stamp below), so only whether it was ever fetched is part of the state.
+// After the first fetch, stamp() updates the time without a rebuild if the refs and push tip stay put.
 async function stateOf(repo: string) {
-  const [refs, fetched] = await Promise.all([
+  const [refs, pushTip, fetched] = await Promise.all([
     gitAsync(repo, ["show-ref", "--head"]),
+    gitAsync(repo, ["rev-parse", "--verify", "--quiet", "@{push}"]),
     fetchedAt(repo),
   ]);
-  return { state: refs + (fetched ? "fetched" : ""), fetched };
+  return { state: [refs, pushTip, fetched ? "fetched" : ""].join("\n"), fetched };
 }
 
 const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
