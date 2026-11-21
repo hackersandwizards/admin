@@ -7,6 +7,8 @@ import {
   compareItems,
   DUE_SOON_DAYS,
   dueSoon,
+  imagesOf,
+  ItemError,
   itemDefects,
   parseItem,
   usable,
@@ -89,6 +91,15 @@ describe("item files", () => {
     expect(item.title).toBe("Draft \u2028!");
     expect(item.body).toBe("");
   });
+
+  test.each(["Context without a heading", "#  \t\n\nContext after a blank heading"])(
+    "an item needs a title (%#)",
+    (body) => {
+      expect(() => parseItem("untitled", `---\nkind: goal\nstatus: open\n---\n${body}`)).toThrow(
+        new ItemError('body does not start with "# <title>"'),
+      );
+    },
+  );
 
   test("a valid item has no defects", () => {
     expect(itemDefects(valid, exists)).toEqual([]);
@@ -326,6 +337,13 @@ describe("item files", () => {
     expect(item.images).toEqual({
       a: ["angle.jpg", { src: "docs/shared.jpg", caption: "Close-up" }],
       b: ["other.jpg"],
+    });
+    expect(imagesOf(item)).toEqual({
+      a: [
+        { src: "docs/agent-work/items/a-question/angle.jpg" },
+        { src: "docs/shared.jpg", caption: "Close-up" },
+      ],
+      b: [{ src: "docs/agent-work/items/a-question/other.jpg" }],
     });
     expect(usable({ ...valid, images: "one.png", options: "A" } as unknown as Item)).toMatchObject({
       options: undefined,

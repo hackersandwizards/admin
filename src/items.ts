@@ -72,13 +72,14 @@ export function parseItem(id: string, text: string): Item {
   const repeated = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
   if (repeated.length) throw new ItemError(`repeated field ${repeated.join(", ")}`);
   const rest = m[2]!.replace(/^\s*\n/, "");
-  const title = rest.match(/^# ([^\r\n]+)\n?/);
-  if (!title) throw new ItemError('body does not start with "# <title>"');
+  const heading = rest.match(/^# ([^\r\n]+)\n?/);
+  const title = heading?.[1]?.trim();
+  if (!heading || !title) throw new ItemError('body does not start with "# <title>"');
   return {
     ...(front as Partial<Item>),
     id,
-    title: title[1]!.trim(),
-    body: rest.slice(title[0].length).trim(),
+    title,
+    body: rest.slice(heading[0].length).trim(),
   } as Item;
 }
 
