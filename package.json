@@ -49,8 +49,8 @@
     "mutation": "SCAFFOLDING_MUTATION_BUN=1 scaffolding-mutation"
   },
   "devDependencies": {
-    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v2.29.1",
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.35.2",
+    "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v2.29.2",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.35.3",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.5",
     "@types/bun": "1.4.4",
