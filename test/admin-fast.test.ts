@@ -7,15 +7,12 @@ import {
   compareItems,
   DUE_SOON_DAYS,
   dueSoon,
-  imagesOf,
   itemDefects,
   parseItem,
   usable,
   type Item,
 } from "../src/items.ts";
 import {
-  docSlug,
-  fileHref,
   gitEnv,
   readItems,
   readRepo,
@@ -57,35 +54,16 @@ const valid: Item = {
 const exists = () => true;
 
 describe("item files", () => {
-  test("within a priority order ranks, and a due date leads only within a week", () => {
-    const day = 864e5;
-    const at = (n: number) => new Date(Date.now() + n * day).toISOString().slice(0, 10);
+  test("a malformed rank does not displace a ranked item", () => {
+    const odd = usable(
+      parseItem("odd", "---\nkind: decision\nstatus: open\npriority: 2\norder: soon\n---\n# Odd"),
+    );
     const ranked = { ...valid, id: "ranked", order: 10 };
-    const far = { ...valid, id: "far", order: 20, due: at(30) };
-    const near = { ...valid, id: "near", order: 30, due: at(DUE_SOON_DAYS - 1) };
-    const late = { ...valid, id: "late", order: 40, due: at(-2) };
-    expect([near, far, ranked, late].sort(compareItems).map((i) => i.id)).toEqual([
-      "late",
-      "near",
-      "ranked",
-      "far",
-    ]);
-    const task = { ...valid, id: "task", kind: "work" as const, order: 1 };
-    const soonTask = { ...task, id: "soon-task", due: at(1) };
-    expect(compareItems(task, ranked)).toBeGreaterThan(0);
-    expect([task, far, soonTask, ranked].sort(compareItems).map((i) => i.id)).toEqual([
-      "soon-task",
-      "ranked",
-      "far",
-      "task",
-    ]);
-    // An order that is no number is its item's defect and ranks as none, never every row's sort.
-    const odd = usable({ ...valid, id: "odd", order: "soon" as never });
-    expect([odd, far, ranked].sort(compareItems).map((i) => i.id)).toEqual([
-      "ranked",
-      "far",
-      "odd",
-    ]);
+    expect([odd, ranked].sort(compareItems).map((item) => item.id)).toEqual(["ranked", "odd"]);
+  });
+
+  test("a due date in year 9999 still ranks ahead of an undated item", () => {
+    expect(compareItems({ ...valid, due: "9999-01-02" }, valid)).toBeLessThan(0);
   });
 
   test("a due date comes within a week by local day, also just after midnight", () => {
@@ -103,10 +81,13 @@ describe("item files", () => {
     });
   });
 
-  test("parse reads front matter, title and body", () => {
-    const text =
-      "---\nkind: decision\nstatus: open\npriority: 2\nowner: Alex\nrecommended: a\noptions:\n  - key: a\n    label: A\n  - key: b\n    label: B\n---\n\n# A question?\n\nContext.\n";
-    expect(parseItem(valid.id, text)).toEqual(valid);
+  test("a Unicode line separator inside a heading stays in the title", () => {
+    const item = parseItem(
+      "title",
+      '---\nkind: work\nstatus: open\npriority: 2\nowner: ""\n---\n\n# Draft \u2028!\n\n\n',
+    );
+    expect(item.title).toBe("Draft \u2028!");
+    expect(item.body).toBe("");
   });
 
   test("a valid item has no defects", () => {
@@ -118,7 +99,6 @@ describe("item files", () => {
     [{ kind: "task" }, "kind task"],
     [{ status: "done" }, "status done"],
     [{ owner: undefined }, "lacks owner"],
-    [{ recommended: "z" }, "recommended z is not an option"],
     [{ options: [{ key: "a", label: "A" }] }, "fewer than two options"],
     [{ status: "decided" }, "decided without decision or by"],
     [{ status: "assumed", recommended: undefined }, "assumed without"],
@@ -126,7 +106,6 @@ describe("item files", () => {
     [{ id: "Bad_Id" }, "not lower-case kebab"],
     [{ kind: "work", status: "assumed" }, "work is assumed"],
     [{ kind: "goal", priority: 2 }, "goal has a priority"],
-    [{ images: { z: "x.jpg" } }, "image key z is not an option"],
     [{ recommended: ["a", "b"] }, "several recommended without multiple"],
     [{ multiple: "yes" }, "multiple yes is not true or false"],
     [
@@ -160,11 +139,6 @@ describe("item files", () => {
       "image docs/x.jpg not found",
       "image docs/agent-work/items/a-question/y.jpg not found",
     ]);
-  });
-
-  test("several recommended options and item images pass on a multiple item", () => {
-    const item = { ...valid, multiple: true, recommended: ["a", "b"], images: ["one.jpg"] };
-    expect(itemDefects(item, exists)).toEqual([]);
   });
 
   test("an item without page: the field is gone", () => {
@@ -221,13 +195,6 @@ describe("item files", () => {
     ]);
   });
 
-  test("parse rejects an unknown field and a missing title", () => {
-    expect(() => parseItem("x", "---\nkind: review\ncolour: red\n---\n\n# T\n")).toThrow(
-      "unknown field colour",
-    );
-    expect(() => parseItem("x", "---\nkind: review\n---\n\nNo title.\n")).toThrow("# <title>");
-  });
-
   test("a repeated top-level field is a defect naming the file and the field", () => {
     const { defects } = readItems({
       paths: ["docs/agent-work/items/twice.md"],
@@ -281,15 +248,6 @@ describe("item files", () => {
         ],
       },
       "option 2 lacks key or label",
-    ],
-    [
-      {
-        options: [
-          { key: "a", label: "A" },
-          { key: "a", label: "B" },
-        ],
-      },
-      "duplicate option key",
     ],
     [
       {
@@ -365,43 +323,14 @@ describe("item files", () => {
       { key: "a", label: "a", detail: "17" },
       { key: "b", label: "Keep B", detail: "A note" },
     ]);
-    expect(imagesOf(item)).toEqual({
-      a: [
-        { src: "docs/agent-work/items/a-question/angle.jpg" },
-        { src: "docs/shared.jpg", caption: "Close-up" },
-      ],
-      b: [{ src: "docs/agent-work/items/a-question/other.jpg" }],
-    });
-    expect(imagesOf({ ...item, images: ["cover.png"] })).toEqual({
-      "": [{ src: "docs/agent-work/items/a-question/cover.png" }],
+    expect(item.images).toEqual({
+      a: ["angle.jpg", { src: "docs/shared.jpg", caption: "Close-up" }],
+      b: ["other.jpg"],
     });
     expect(usable({ ...valid, images: "one.png", options: "A" } as unknown as Item)).toMatchObject({
       options: undefined,
       images: undefined,
     });
-  });
-
-  test("priority comes first and tied rows sort by due date, last change and id", () => {
-    const items = [
-      { ...valid, priority: undefined, id: "unranked" },
-      { ...valid, id: "beta", changed: 20 },
-      { ...valid, id: "alpha", changed: 20 },
-      { ...valid, id: "older", changed: 10 },
-      { ...valid, id: "undated" },
-      { ...valid, id: "later", due: "2099-12-02" },
-      { ...valid, id: "earlier", due: "2099-12-01" },
-      { ...valid, priority: 1, id: "first" },
-    ];
-    expect(items.sort(compareItems).map((item) => item.id)).toEqual([
-      "first",
-      "earlier",
-      "later",
-      "alpha",
-      "beta",
-      "older",
-      "undated",
-      "unranked",
-    ]);
   });
 });
 
@@ -605,33 +534,6 @@ describe("repository data", () => {
     // This branch tracks origin/main but would push to origin/local.
     sh(clone, "git", "checkout", "-q", "-b", "local", "--track", "origin/main");
     expect((await readRepo(clone)).behind).toBeUndefined();
-  });
-
-  test("unrecognised files and orphan images are named without hiding valid items", () => {
-    const files: Record<string, string> = {
-      "GOAL.md": "# Old goal",
-      "docs/tracking/follow-up.md": "# Old follow-up",
-      "docs/agent-work/items/orphan/shot.png": "",
-      "docs/agent-work/items/review/nested/deep.png": "",
-      "docs/agent-work/items/notes.txt": "",
-      "docs/agent-work/items/unfinished.md": "No header",
-      "docs/agent-work/items/review.md":
-        "---\nkind: review\nstatus: open\npriority: 2\nowner: Alex\nimages: [shot.png]\n---\n# Paint samples",
-      "docs/agent-work/items/review/shot.png": "",
-    };
-    const { items, defects } = readItems({
-      paths: Object.keys(files),
-      read: (path) => files[path],
-    });
-    expect(items.map(({ id, title }) => [id, title])).toEqual([["review", "Paint samples"]]);
-    expect(defects).toEqual([
-      "docs/agent-work/items/orphan/shot.png: no item orphan.md",
-      "docs/agent-work/items/review/nested/deep.png: only <id>.md files and <id>/<image> belong in docs/agent-work/items",
-      "docs/agent-work/items/notes.txt: only <id>.md files and <id>/<image> belong in docs/agent-work/items",
-      "docs/agent-work/items/unfinished.md: no frontmatter between --- lines",
-      "GOAL.md: legacy file, items live in docs/agent-work/items",
-      "docs/tracking/follow-up.md: legacy folder, move it to docs/agent-work",
-    ]);
   });
 
   test("committed history and the working tree show the files each reader promises", async () => {
@@ -898,11 +800,8 @@ describe("repository data", () => {
     });
   });
 
-  test("a doc index keeps its extension and image tiles offer sizes for both screen densities", () => {
-    expect(docSlug("docs/Index.MD")).toBe("doc/docs/Index.MD");
-    expect(docSlug("docs/Tools.MD")).toBe("doc/docs/Tools");
-    const href = fileHref("/paint samples/docs/a?b&c#.png");
-    expect(href).toBe("file:///paint%20samples/docs/a%3Fb%26c%23.png");
+  test("image tiles offer sizes for both screen densities", () => {
+    const href = "file:///paint%20samples/docs/a%3Fb%26c%23.png";
     expect(thumbnail(href)).toEqual({
       src: `${href}?w=480`,
       srcset: `${href}?w=480 480w, ${href}?w=960 960w`,

@@ -4,5 +4,11 @@ import config from "../vitest.config.ts";
 const { test, ...vite }: ViteUserConfig = config;
 
 export default mergeConfig(vite, {
-  test: { ...test, include: ["test/admin-fast.test.ts"] },
+  test: {
+    ...test,
+    include: ["test/admin-fast.test.ts", "test/**/*.prop.test.ts"],
+    server: {
+      deps: { inline: ["@hackersandwizards/scaffolding", "@fast-check/vitest"] },
+    },
+  },
 });

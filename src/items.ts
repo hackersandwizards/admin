@@ -72,7 +72,7 @@ export function parseItem(id: string, text: string): Item {
   const repeated = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
   if (repeated.length) throw new ItemError(`repeated field ${repeated.join(", ")}`);
   const rest = m[2]!.replace(/^\s*\n/, "");
-  const title = rest.match(/^# (.+)\n?/);
+  const title = rest.match(/^# ([^\r\n]+)\n?/);
   if (!title) throw new ItemError('body does not start with "# <title>"');
   return {
     ...(front as Partial<Item>),
@@ -213,13 +213,14 @@ export const dueSoon = (due: string | undefined, now = Date.now()) => {
 };
 
 export function compareItems(a: Item & { changed?: number }, b: Item & { changed?: number }) {
-  const soon = (i: Item) => (dueSoon(i.due) ? i.due! : "9");
+  const afterLastDay = "9999-12-32";
+  const soon = (i: Item) => (dueSoon(i.due) ? i.due! : afterLastDay);
   return (
     (a.priority ?? 9) - (b.priority ?? 9) ||
     soon(a).localeCompare(soon(b)) ||
     Number(a.kind === "work") - Number(b.kind === "work") ||
     (a.order ?? 1e9) - (b.order ?? 1e9) ||
-    (a.due ?? "9").localeCompare(b.due ?? "9") ||
+    (a.due ?? afterLastDay).localeCompare(b.due ?? afterLastDay) ||
     (b.changed ?? 0) - (a.changed ?? 0) ||
     a.id.localeCompare(b.id)
   );

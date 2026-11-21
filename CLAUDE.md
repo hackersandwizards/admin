@@ -53,8 +53,8 @@ sits only where the text it answers is on screen: in the opened row, never on a 
 `bun run check:pages` runs the tests that build or read rendered pages, including the Chrome tests,
 in the full gate. Both use Vitest with Bun and read the gate's `SCAFFOLDING_TEST_TIMEOUT_MS`.
 
-`bun run mutation` runs `test/admin-fast.test.ts` against `src/items.ts`, `src/repo.ts`
-and `site/src/data.ts` to measure which changes the tests catch. It runs outside the gate and writes
+`bun run mutation` runs `test/admin-fast.test.ts` and the property tests against the item,
+repository, repository key, path and site data modules listed in `stryker.config.mjs`. It runs outside the gate and writes
 `.stryker-reports/mutation.json`.
 
 `bun run check` is the gate, `scaffolding check` from `@hackersandwizards/scaffolding`: the shared

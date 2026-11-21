@@ -2,7 +2,15 @@ import base from "@hackersandwizards/scaffolding/stryker";
 
 export default {
   ...base,
-  mutate: ["src/{items,repo}.ts", "site/src/data.ts"],
+  mutate: [
+    "src/item-source.ts",
+    "src/items.ts",
+    "src/repo.ts",
+    "src/repo-keys.ts",
+    "src/repo-paths.ts",
+    "site/src/data.ts",
+  ],
+  incremental: false,
   vitest: { ...base.vitest, configFile: "test/vitest.mutation.config.ts", pool: "forks" },
   ignorePatterns: [
     ...base.ignorePatterns,

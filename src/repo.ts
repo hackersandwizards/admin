@@ -1,25 +1,11 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import {
-  ITEMS_DIR,
-  WORK_DIR,
-  ItemError,
-  itemDefects,
-  parseItem,
-  usable,
-  type Item,
-} from "./items.ts";
+import { ITEMS_DIR, WORK_DIR, type Item } from "./items.ts";
+import { readItems, type Source } from "./item-source.ts";
+import { asKey, fileHref, IMAGE, REPO_KEY } from "./repo-paths.ts";
 
-const LEGACY = ["GOAL.md"];
-
-// A key is letters, digits, ".", "_" and "-", never only dots: a slash, a dot segment or one
-// percent-encoded would write pages outside the build, a "?" or "#" breaks its addresses, and
-// admin.js reads the repository of an answer's key up to its first colon. A folder's name keeps
-// its other characters as "-"; the hub finds no folder whose name starts with a dot.
-const KEY = /^(?!\.+$)[\p{L}\p{M}\p{N}_.-]+$/u;
-export const asKey = (folder: string) => folder.replace(/[^\p{L}\p{M}\p{N}_.-]/gu, "-");
-
-export type Source = { paths: string[]; read: (path: string) => string | undefined };
+export { readItems, type ReadItems, type Source } from "./item-source.ts";
+export { asKey, docSlug, encodeFile, encodePath, fileHref } from "./repo-paths.ts";
 
 // A hook exports GIT_DIR, GIT_INDEX_FILE and the like, which point git at the hook's repository
 // whatever -C names.
@@ -110,43 +96,6 @@ function walk(root: string, dir: string): string[] {
   });
 }
 
-export type ReadItems = { items: Item[]; defects: string[] };
-
-export function readItems(src: Source): ReadItems {
-  const items: Item[] = [];
-  const defects: string[] = [];
-  const has = new Set(src.paths);
-  // An image is a file: a folder of that name has no picture to show.
-  const exists = (p: string) => has.has(p);
-  for (const p of src.paths) {
-    if (!p.startsWith(`${ITEMS_DIR}/`)) continue;
-    const name = p.slice(ITEMS_DIR.length + 1);
-    const [folder, file, deeper] = name.split("/");
-    if (file && !deeper && IMAGE.test(file)) {
-      if (!has.has(`${ITEMS_DIR}/${folder}.md`)) defects.push(`${p}: no item ${folder}.md`);
-      continue;
-    }
-    if (name.includes("/") || !name.endsWith(".md")) {
-      defects.push(`${p}: only <id>.md files and <id>/<image> belong in ${ITEMS_DIR}`);
-      continue;
-    }
-    try {
-      const item = parseItem(name.slice(0, -3), src.read(p) ?? "");
-      for (const d of itemDefects(item, exists)) defects.push(`${p}: ${d}`);
-      items.push(usable(item));
-    } catch (e) {
-      if (!(e instanceof ItemError)) throw e;
-      defects.push(`${p}: ${e.message}`);
-    }
-  }
-  for (const p of LEGACY)
-    if (has.has(p)) defects.push(`${p}: legacy file, items live in ${ITEMS_DIR}`);
-  // The folder was renamed: a file left at the old path would vanish from every page unnoticed.
-  for (const p of src.paths)
-    if (p.startsWith("docs/tracking/")) defects.push(`${p}: legacy folder, move it to ${WORK_DIR}`);
-  return { items, defects };
-}
-
 export type Report = { path: string; date: string; title: string; html: string };
 export type Review = { dir: string; images: string[]; report?: string };
 export type Doc = { path: string; title: string; html: string };
@@ -209,11 +158,6 @@ const description = (text: string) => {
   }
 };
 const ASTRO_CONFIG = /^([^/]+\/)?astro\.config\.(ts|mjs|js)$/;
-const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
-// A page path ending in "index" is its folder's own route to Astro, so index.md keeps its extension.
-export const docSlug = (path: string) =>
-  `doc/${/(^|\/)index\.md$/i.test(path) ? path : path.replace(/\.md$/i, "")}`;
-
 // A moment as a reader names it, "10 Nov, 09:05", in the machine's time zone.
 export const when = (ms: number) =>
   new Date(ms).toLocaleString("en-GB", {
@@ -222,14 +166,6 @@ export const when = (ms: number) =>
     hour: "2-digit",
     minute: "2-digit",
   });
-// "#" or "?" would end the path, and an "&" or "'" left as is comes out of the pages' attributes
-// escaped, where the hub's link rewriting no longer finds it.
-export const encodeFile = (path: string) =>
-  encodeURI(path).replace(/[#?&']/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
-export const fileHref = (abs: string) => "file://" + encodeFile(abs);
-// A path whose every segment is encoded, so a "#", "%" or "?" in a name stays in its path.
-export const encodePath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
-
 // What admin-serve resizes a committed image to: a review tile's 16:9 box (the page's aspect-video),
 // and twice it for a 2x screen.
 export const THUMB_BOXES = [
@@ -526,7 +462,7 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     defects.push(`${ADMIN_FILE}: ignored, package.json holds admin`);
   const admin = (isObject(raw) ? raw : {}) as AdminConfig;
   const named = typeof admin.name === "string" ? admin.name : undefined;
-  const key = named && KEY.test(named) ? named : asKey(basename(repo));
+  const key = named && REPO_KEY.test(named) ? named : asKey(basename(repo));
   if (named !== undefined && key !== named)
     defects.push(
       `${from}name "${named}" is not letters, digits, ".", "_" and "-": its pages are under ${key}`,
