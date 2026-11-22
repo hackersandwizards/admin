@@ -5,7 +5,7 @@
     "": {
       "name": "@hackersandwizards/admin",
       "devDependencies": {
-        "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v2.29.2",
+        "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v2.29.3",
         "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.36.0",
         "@tailwindcss/typography": "0.5.20",
         "@tailwindcss/vite": "4.3.5",
@@ -233,7 +233,7 @@
 
     "@fast-check/vitest": ["@fast-check/vitest@0.5.0", "", { "dependencies": { "fast-check": "^3.0.0 || ^4.0.0" }, "peerDependencies": { "vitest": "^4.1.0 || ^5.0.0" } }, "sha512-Kgbj2smuq1P4OhGKuPATs5i2fAxNmGbJ/zSmTrzWhQSLUrHREbKWgv9WGbNUOXcx77q6joLVMmTygyXuwP2Bog=="],
 
-    "@hackersandwizards/brand": ["@hackersandwizards/brand@github:hackersandwizards/brand#cea1d02", { "dependencies": { "puppeteer-core": "25.17.0" }, "hasInstallScript": true, "bin": { "brand-colours": "scan/colours.ts", "brand-copies": "scan/copies.ts", "brand-scan": "scan/components.ts", "brand-markers": "scan/markers.ts", "brand-elements": "scan/elements.ts", "brand-retired": "scan/retired.ts", "brand-linkedin-frame": "applications/linkedin-visuals/frame.ts", "brand-linkedin-terminal": "applications/linkedin-visuals/terminal.ts", "brand-linkedin-sketch-prompt": "applications/linkedin-visuals/sketch-prompt.ts", "brand-slide-sketch-prompt": "applications/slide-visuals/sketch-prompt.ts", "brand-mail-signature": "applications/mail-signature/cli.ts" } }, "hackersandwizards-brand-cea1d02", "sha512-e+c8UpyhCkMggApXEmcW2YhfsONNfHCy86hCwsnm8Jfkg87Aympz/CcNBk8Y2g8WnCPETdpCeKkgX7MflnTgaQ=="],
+    "@hackersandwizards/brand": ["@hackersandwizards/brand@github:hackersandwizards/brand#6637ee5", { "dependencies": { "puppeteer-core": "25.18.1" }, "hasInstallScript": true, "bin": { "brand-colours": "scan/colours.ts", "brand-copies": "scan/copies.ts", "brand-scan": "scan/components.ts", "brand-markers": "scan/markers.ts", "brand-elements": "scan/elements.ts", "brand-retired": "scan/retired.ts", "brand-linkedin-frame": "applications/linkedin-visuals/frame.ts", "brand-linkedin-terminal": "applications/linkedin-visuals/terminal.ts", "brand-linkedin-sketch-prompt": "applications/linkedin-visuals/sketch-prompt.ts", "brand-slide-sketch-prompt": "applications/slide-visuals/sketch-prompt.ts", "brand-mail-signature": "applications/mail-signature/cli.ts" } }, "hackersandwizards-brand-6637ee5", "sha512-oMVuvgACUjR5WFuEgvxroD9zgd9t9Mr5oLRAGwED0pD3ioNVrvM2yNy1L0FNud5x4B8moMIshbQAKhj+HvRB/w=="],
 
     "@hackersandwizards/scaffolding": ["@hackersandwizards/scaffolding@github:hackersandwizards/scaffolding#ecd8891", { "dependencies": { "@astrojs/astro2tsx": "0.1.4", "@eslint/js": "10.0.1", "@fast-check/vitest": "0.5.0", "@stryker-mutator/api": "10.1.1", "@stryker-mutator/core": "10.1.1", "@stryker-mutator/vitest-runner": "10.1.1", "@volar/language-core": "2.4.31", "@volar/typescript": "2.4.31", "chrome-devtools-mcp": "1.13.0", "dependency-cruiser": "18.8.0", "eslint-config-prettier": "10.1.8", "fast-check": "4.11.0", "globals": "17.14.0", "oxlint": "1.94.0", "oxlint-tsgolint": "7.0.2008", "postcss-html": "2.0.1", "prettier-plugin-astro": "1.1.2", "stylelint-value-no-unknown-custom-properties": "6.1.1", "typescript-eslint": "8.73.0", "vitest": "5.1.0" }, "peerDependencies": { "astro": ">=7", "astrobook": ">=0.13", "eslint": ">=10", "eslint-plugin-astro": ">=1", "prettier": ">=3", "stylelint": ">=16", "typescript": ">=5 <6.1" }, "optionalPeers": ["astro", "astrobook", "eslint", "eslint-plugin-astro", "prettier", "stylelint", "typescript"], "hasInstallScript": true, "bin": { "scaffold": "bin/scaffold.ts", "check-structure": "bin/check-structure.ts", "check-confidential": "bin/check-confidential.ts", "check-staged": "bin/check-staged.ts", "check-lock": "template/.githooks/check-lock.ts", "chrome-mcp": "bin/chrome-mcp.ts", "scaffolding": "bin/scaffolding.ts", "scaffolding-mutation": "bin/scaffolding-mutation.ts", "scaffolding-explore": "bin/scaffolding-explore.ts", "raise-pins": "bin/raise-pins.ts" } }, "hackersandwizards-scaffolding-ecd8891", "sha512-8rs+EA8HmQ9JhU25UYX0OpyoEhdr/EhnYmh/WqZEbWB2/DNs0EqnM5T9/D+oe+DXpG5vma1n5Ozyz6Ola/aw0A=="],
 
@@ -1478,8 +1478,6 @@
     "@eslint-community/eslint-utils/eslint-visitor-keys": ["eslint-visitor-keys@3.4.3", "", {}, "sha512-wpc+LXeiyiisxPlEkUzU6svyS1frIO3Mgxj1fdy7Pm8Ygzguax2N3Fa/D/ag1WqbOprdI+uY6wMUl8/a2G+iag=="],
 
     "@fast-check/vitest/fast-check": ["fast-check@4.10.3", "", { "dependencies": { "pure-rand": "^8.0.0" } }, "sha512-SBaU6nhh+sXxb05r2IHAKfxnR/1Pu6MqtHYaewM1BY6V5xzOxOk+4yoWO7WfeeyZG1iArFE6/DO/7iLYMUuOJg=="],
-
-    "@hackersandwizards/brand/puppeteer-core": ["puppeteer-core@25.17.0", "", { "dependencies": { "@puppeteer/browsers": "3.2.7", "chromium-bidi": "157.0.8090-0", "devtools-protocol": "0.0.1717327", "typed-query-selector": "^2.12.3", "webdriver-bidi-protocol": "1.0.2", "ws": "^8.22.1" } }, "sha512-YAgBitkd+K9gxRt+wzBAFTTkGjkC8aC2o4OxofsU8JUy2nnK/RflTCJ9bRCvCMNbq9TPhqFk4Phz98otN9FrGg=="],
 
     "@rolldown/binding-wasm32-wasi/@emnapi/core": ["@emnapi/core@2.0.0-beta.2", "", { "dependencies": { "@emnapi/wasi-threads": "2.2.0", "tslib": "^2.4.0" } }, "sha512-MzCVoWtcg4Pm2B3je5mMvYMvj3MmBKw+fU7vbsJc9/iT8ip6/eYIHo/Dsm/mr+wsHB6SEyJDuxB09Yy6r/8+4A=="],
 
