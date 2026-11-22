@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
-  "packageManager": "bun@1.4.4",
+  "packageManager": "bun@1.4.5",
   "engines": {
     "bun": ">=1.4.0",
     "npm": "please-use-bun"
@@ -50,20 +50,20 @@
   },
   "devDependencies": {
     "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v2.29.2",
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.35.4",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.36.0",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.5",
-    "@types/bun": "1.4.4",
+    "@types/bun": "1.4.5",
     "@typescript/native": "npm:typescript@7.0.2",
-    "astro": "7.4.11",
+    "astro": "7.4.13",
     "astrobook": "0.13.3",
-    "eslint": "10.14.0",
+    "eslint": "10.15.0",
     "eslint-plugin-astro": "3.2.1",
     "happy-dom": "21.0.4",
-    "prettier": "3.10.0",
+    "prettier": "3.10.1",
     "prettier-plugin-astro": "1.1.2",
-    "puppeteer-core": "25.17.0",
-    "stylelint": "18.0.0",
+    "puppeteer-core": "25.18.1",
+    "stylelint": "18.1.0",
     "tailwindcss": "4.3.5",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   },
@@ -115,8 +115,9 @@
     }
   },
   "overrides": {
-    "minimatch": "11.0.8",
-    "postcss-selector-parser": "7.2.0"
+    "minimatch": "11.0.9",
+    "postcss-selector-parser": "7.2.1",
+    "qs": "6.17.1"
   },
   "admin": {
     "label": "Admin engine"
