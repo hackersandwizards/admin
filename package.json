@@ -35,17 +35,12 @@
     "check": "scaffolding check",
     "check:values": "bun test/no-values.ts",
     "check:fixture": "bun bin/admin-check.ts test/fixtures/spoke",
-    "check:pages": "bun --bun vitest run test/pages",
     "check:colours": "brand-colours",
     "check:copies": "brand-copies",
     "check:scan": "brand-scan",
-    "check:elements": "brand-elements",
     "check:markers": "brand-markers --site dist /catalog/stories/Pages/doc/default/ /catalog/stories/Pages/decisions/default/",
-    "check:retired": "brand-retired dist",
     "check:staged": "check-staged",
-    "fix": "bun --bun eslint --cache --concurrency=auto . --fix && bun --bun prettier --write .",
-    "test": "bun --bun vitest run --exclude 'test/pages/**'",
-    "explore": "scaffolding-explore",
+    "test": "scaffolding test",
     "mutation": "SCAFFOLDING_MUTATION_BUN=1 scaffolding-mutation"
   },
   "devDependencies": {
@@ -68,7 +63,12 @@
     "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "scaffolding": {
-    "test": "test",
+    "browserTest": "test/pages",
+    "brand": {
+      "retired": [
+        "dist"
+      ]
+    },
     "check": [
       "check:values",
       [
@@ -77,15 +77,10 @@
         "check:scan"
       ],
       "check:fixture",
-      "check:pages",
-      "check:elements",
-      "check:retired"
+      "browser-test",
+      "elements",
+      "retired"
     ],
-    "fullOnly": {
-      "check:pages": "builds and reads rendered pages and launches Chrome",
-      "check:elements": "renders and checks elements",
-      "check:retired": "scans generated output"
-    },
     "skip": {
       "admin": "this is admin: check:fixture runs admin-check on the invented fixture, and the repository keeps no items of its own"
     }

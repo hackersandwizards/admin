@@ -59,8 +59,9 @@ hub's addresses, pages, answers and the `admin` settings in `package.json` or `d
 
 - `bun install` installs and points the git hooks at `.githooks/`
 - `bun run test` runs the source and fixture tests locally and at push
-- `bun run check:pages` runs the tests that build or read rendered pages, including the Chrome tests
-- `bun run explore` runs the property tests with 512 cases each and prints a fresh seed. Add `--seed <seed>` to replay a run.
+- `bun --bun vitest run test/pages` runs the tests that build or read rendered pages, including the Chrome tests
+- `bun run scaffolding-explore` runs the property tests with 512 cases each and prints a fresh seed. Add `--seed <seed>` to replay a run.
+- `bun run scaffolding fix` applies ESLint fixes and formats the working tree with Prettier
 - `bun run mutation` checks which mutations the fast tests catch
 - `bun run check` runs the gate: scaffolding's shared steps, then the steps in `package.json`'s `scaffolding.check`
 - `bun run dev` runs the hub on `http://admin.localhost:4329`

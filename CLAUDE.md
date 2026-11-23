@@ -50,8 +50,9 @@ sits only where the text it answers is on screen: in the opened row, never on a 
 ## Checks
 
 `bun run test` runs the source and fixture tests at push and in the full gate.
-`bun run check:pages` runs the tests that build or read rendered pages, including the Chrome tests,
-in the full gate. Both use Vitest with Bun and read the gate's `SCAFFOLDING_TEST_TIMEOUT_MS`.
+`bun --bun vitest run test/pages` runs the tests that build or read rendered pages, including the
+Chrome tests. The full gate runs them as `browser-test`. Both suites use Vitest with Bun and read the
+gate's `SCAFFOLDING_TEST_TIMEOUT_MS`.
 
 `bun run mutation` runs `test/admin-fast.test.ts` and the property tests against the item,
 repository, repository key, path and site data modules listed in `stryker.config.mjs`. It runs outside the gate and writes
@@ -59,9 +60,10 @@ repository, repository key, path and site data modules listed in `stryker.config
 
 `bun run check` is the gate, `scaffolding check` from `@hackersandwizards/scaffolding`: the shared
 steps, then `check:values` (no design value here), `check:colours`, `check:copies` and
-`check:scan` (brand's colour, copy and expert-component scans), `check:fixture` (admin-check on the fixture), `check:elements`
+`check:scan` (brand's colour, copy and expert-component scans), `check:fixture` (admin-check on the
+fixture), `browser-test`, `elements`
 (brand-elements over the built catalog, `dist` served so its pages answer at `/catalog/` as on the
-hub) and `check:retired` (brand-retired over the built catalog). `check:markers` (brand-markers on
+hub) and `retired` (brand-retired over the built catalog). `check:markers` (brand-markers on
 the built doc and decisions pages, served the same way) stays out of the gate: run it after a brand
 raise and after a change to how lists are styled.
 The pre-commit hook runs scaffolding's `check-staged`.
