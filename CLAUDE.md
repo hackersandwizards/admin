@@ -58,9 +58,9 @@ gate's `SCAFFOLDING_TEST_TIMEOUT_MS`.
 repository, repository key, path and site data modules listed in `stryker.config.mjs`. It runs outside the gate and writes
 `.stryker-reports/mutation.json`.
 
-`bun run check` is the gate, `scaffolding check` from `@hackersandwizards/scaffolding`: the shared
-steps, then `check:values` (no design value here), `check:colours`, `check:copies` and
-`check:scan` (brand's colour, copy and expert-component scans), `check:fixture` (admin-check on the
+`bun run check` runs the shared steps from `@hackersandwizards/scaffolding`, including
+`colours` and `copies`. Then it runs `check:values` (no design value here),
+`check:scan` (brand's expert-component scan), `check:fixture` (admin-check on the
 fixture), `browser-test`, `elements`
 (brand-elements over the built catalog, `dist` served so its pages answer at `/catalog/` as on the
 hub) and `retired` (brand-retired over the built catalog). `check:markers` (brand-markers on

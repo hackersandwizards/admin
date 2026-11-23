@@ -35,8 +35,6 @@
     "check": "scaffolding check",
     "check:values": "bun test/no-values.ts",
     "check:fixture": "bun bin/admin-check.ts test/fixtures/spoke",
-    "check:colours": "brand-colours",
-    "check:copies": "brand-copies",
     "check:scan": "brand-scan",
     "check:markers": "brand-markers --site dist /catalog/stories/Pages/doc/default/ /catalog/stories/Pages/decisions/default/",
     "check:staged": "check-staged",
@@ -71,11 +69,7 @@
     },
     "check": [
       "check:values",
-      [
-        "check:colours",
-        "check:copies",
-        "check:scan"
-      ],
+      "check:scan",
       "check:fixture",
       "browser-test",
       "elements",
