@@ -62,7 +62,7 @@ export function tableScroll(html: string): string {
 // and its boxes are brand's read-only hw-check, a state shown rather than a control, each in a
 // <label> with its line's text up to the next block, which names the box; a loose item's label sits
 // inside its <p>. The text stops before the next <input, so a run of them costs no rescan each.
-// A <meta> tag shows as text, since csp() in serve.ts cannot stop its refresh. The opening is
+// A <meta> tag shows as text, since csp() in serve-http.ts cannot stop its refresh. The opening is
 // escaped rather than the attributes matched, which quoting would defeat.
 export const withElements = (html: string) =>
   tableScroll(html.replace(/<meta(?=[\s/>])/gi, "&lt;meta"))

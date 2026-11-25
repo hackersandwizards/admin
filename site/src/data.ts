@@ -29,7 +29,7 @@ export const hasPage = (path: string) =>
   (paths ??= new Set(data().pages.map((p) => p.path))).has(path);
 
 // What a hub page may load besides the scripts `scripts` names: the served hub's header (csp in
-// serve.ts) and a built page's <meta> (Layout.astro), which a page opened from disk runs under.
+// serve-http.ts) and a built page's <meta> (Layout.astro), which a page opened from disk runs under.
 // Docs render committed raw HTML, and /_file/ serves every committed file from the hub's origin,
 // so only the pages' own scripts may run, with no <base> to repoint them, else that markup could
 // read every repository through /_file/. Nor may it post a form or frame a page from elsewhere,

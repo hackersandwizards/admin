@@ -1,51 +1,80 @@
 // Each build runs in a child process, since an Astro build leaves about 50 MB behind in the
 // process that ran it, and file:// links are served under /_file/<repo>/, since a browser opens no
 // file:// link from an http page.
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
-import { basename, join, relative, resolve, sep } from "node:path";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
+import { buildCatalog, buildSite, filesUnder, PKG, shelled, writeSiteData } from "./build.ts";
+import { git } from "./git.ts";
+import { uniqueKeys } from "./hub.ts";
+import type { RepoData } from "./repo.ts";
 import {
-  buildCatalog,
-  buildSite,
-  filesUnder,
-  PKG,
-  SHELL,
-  shelled,
-  shellPath,
-  writeSiteData,
-} from "./build.ts";
+  astroAssetRoute,
+  createCatalogRoute,
+  createFileRoute,
+  createPageRoute,
+  createResponder,
+  parseRequest,
+} from "./serve-http.ts";
+import {
+  createPageDecorator,
+  extractShells,
+  formatNotice,
+  indexDocs,
+  linker,
+  type BuildNotice,
+  type Site,
+} from "./serve-pages.ts";
+import {
+  createRepoCache,
+  createRepoScanner,
+  errorMessageOf,
+  RETRY_MS,
+  type RepoCache,
+} from "./serve-repos.ts";
 import { firstWord, siteData } from "./site-data.ts";
-import elements from "../brand-elements.json";
-import { findRepos, uniqueKeys } from "./hub.ts";
-import { isPlainReportName } from "./items.ts";
-import { MISSING, NOTICE, policy } from "../site/src/data.ts";
-import { reportBody } from "../site/src/report.ts";
-import { THUMB_BOXES, when } from "./display.ts";
-import { fetchedAt, git, gitAsync, gitBytes } from "./git.ts";
-import { readRepo, type Doc, type Report, type RepoData } from "./repo.ts";
-import { docSlug, encodeFile, encodePath, fileHref } from "./repo-paths.ts";
 
 export type ServeOptions = { root: string; rescanMs?: number };
 
-// After the first fetch, stamp() updates the time without a rebuild if the refs and push tip stay put.
-async function stateOf(repo: string) {
-  const [refs, pushTip, fetched] = await Promise.all([
-    gitAsync(repo, ["show-ref", "--head"]),
-    gitAsync(repo, ["rev-parse", "--verify", "--quiet", "@{push}"]),
-    fetchedAt(repo),
-  ]);
-  return { state: [refs, pushTip, fetched ? "fetched" : ""].join("\n"), fetched };
+export class BuildError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BuildError";
+  }
 }
 
-const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
+export type BuildFailure = {
+  key: string;
+  at: number;
+  message: string;
+  isBuildError: boolean;
+};
 
-// The catalog is the package's own pages, with the inline scripts Astrobook and the catalog shell
-// write and no committed markup from a repository, so it gets brand-elements.json "csp" alone,
-// which brand-elements and brand-markers render the catalog under; every other page policy() in
-// site/src/data.ts, which only the site's own build under /_astro/ may run.
-const catalogCsp = elements.csp;
-export const csp = (origin: string) => `${policy(`${origin}/_astro/`)}; frame-ancestors 'self'`;
+export type SiteBuildAction = "reuse" | "rethrow" | "build";
 
-const IMMUTABLE = "public, max-age=31536000, immutable";
+export function decideSiteBuild(
+  current: { siteKey?: string; failed?: BuildFailure },
+  target: { key: string; fresh: boolean },
+  now: number,
+): SiteBuildAction {
+  if (current.siteKey === target.key && !target.fresh) return "reuse";
+  if (current.failed?.key === target.key && now - current.failed.at < RETRY_MS && !target.fresh)
+    return current.siteKey !== undefined ? "reuse" : "rethrow";
+  return "build";
+}
+
+export async function loadSiteForFile(
+  current: () => Site | undefined,
+  load: () => Promise<Site>,
+): Promise<Site | undefined> {
+  const existing = current();
+  if (existing) return existing;
+  try {
+    return await load();
+  } catch (error) {
+    if (error instanceof BuildError) return undefined;
+    throw error;
+  }
+}
 
 // Runs this file as a child that builds into `out`, then reads what it wrote, keyed by path.
 async function spawnBuild(what: string, args: string[], out: string) {
@@ -60,7 +89,7 @@ async function spawnBuild(what: string, args: string[], out: string) {
   if (await child.exited) {
     // The thrown error's own line, as Bun prints it: "TypeError: ...", "error: ...".
     const line = err.match(/^(?:error|[A-Z]\w*): \S.*$/m)?.[0];
-    throw new Error(`${what} failed: ${line ?? `exit ${child.exitCode}`}`);
+    throw new BuildError(`${what} failed: ${line ?? `exit ${child.exitCode}`}`);
   }
   return new Map(filesUnder(out).map((f) => [relative(out, f), readFileSync(f)]));
 }
@@ -76,440 +105,97 @@ async function catalogFiles() {
   }
 }
 
-// Fits an image into `box`. An animated file, one that already fits, one the WebP would not shrink
-// and one Bun cannot read answer as committed; only a file that is no image goes unlogged.
-async function resized(body: Buffer, [width, height]: readonly [number, number]) {
+async function rebuildSite(key: string, repos: RepoData[], you: string | undefined): Promise<Site> {
+  const work = mkdtempSync(join(PKG, "site", ".build-"));
+  const json = join(work, "data.json");
+  const out = join(work, "out");
   try {
-    const image = new Bun.Image(body, { maxPixels: 64_000_000 });
-    const size = await image.metadata();
-    const animated = size.format === "gif" || body.includes("acTL") || body.includes("ANIM");
-    if (animated || (size.width <= width && size.height <= height)) return undefined;
-    const small = await image
-      .resize(width, height, { fit: "inside" })
-      .webp({ quality: 80 })
-      .buffer();
-    return small.length < body.length ? small : undefined;
-  } catch (e) {
-    if ((e as { code?: string }).code !== "ERR_IMAGE_UNKNOWN_FORMAT")
-      console.error("admin-serve: thumbnail:", e);
-    return undefined;
+    const data = shelled(siteData(repos, you));
+    writeSiteData(json, data);
+    const files = await spawnBuild("build", [json], out);
+    const links = linker(repos);
+    const shells = extractShells(files, data.pages, links);
+    const docs = indexDocs(repos);
+    return { key, built: Date.now(), files, repos, links, shells, docs, filled: new Map() };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
   }
 }
 
-// file:// links as the hub serves them: one to a doc with a page opens that page, any other the
-// committed file under /_file/<repo>/.
-export function linker(repos: RepoData[]) {
-  const pageOf = new Map(
-    repos.flatMap((r) =>
-      [...r.reports, ...r.docs].map((d) => {
-        const slug = docSlug(d.path);
-        return [
-          fileHref(join(r.path, d.path)),
-          `/${encodePath(`${r.key}/${slug}`)}${slug.endsWith(".html") ? ".html" : ""}`,
-        ] as const;
-      }),
-    ),
-  );
-  // Longest path first: a repository nested in another keeps its own prefix.
-  const prefixes = [...repos]
-    .sort((a, b) => b.path.length - a.path.length)
-    .map((r) => [fileHref(r.path) + "/", `/_file/${encodeURIComponent(r.key)}/`] as const);
-  const files = (html: string) => {
-    for (const [from, to] of prefixes) html = html.replaceAll(from, to);
-    return html;
-  };
-  const pages = (html: string) =>
-    html.replace(
-      /(?<!data-doc-source )href="(file:\/\/[^"?#]*)([?#][^"]*)?"/g,
-      (link, file: string, rest = "") => {
-        const to = pageOf.get(file);
-        return to ? `href="${to}${rest}"` : link;
-      },
-    );
-  return { files, pages };
-}
-
-type Site = {
-  key: string;
-  built: number;
-  files: Map<string, Buffer>;
-  repos: RepoData[];
-  links: ReturnType<typeof linker>;
-  // A doc page's path to its doc, each repository's shells by their paths, and the doc pages
-  // filled so far.
-  docs: Map<string, { repo: RepoData; doc: Doc | Report }>;
-  shells: Map<string, string>;
-  filled: Map<string, Buffer>;
-};
-
-// A read or build that failed is tried again on a request once this passed, or sooner once a
-// repository moves.
-const RETRY_MS = 60_000;
-const messageOf = (e: unknown) => (e as Error).message ?? String(e);
-
-export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
-  let paths: Promise<string[]> | undefined;
-  let scanned = 0;
-  let scanning: Promise<string[]> | undefined;
-  const read = new Map<string, { state: string; data: RepoData }>();
-  // Each repository's fetch time as the latest request found it.
-  const fetchedNow = new Map<string, number | undefined>();
+export function createSiteStore(
+  listRepos: () => Promise<string[]>,
+  repoCache: RepoCache,
+  build: (key: string, repos: RepoData[]) => Promise<Site>,
+) {
+  let site: Site | undefined;
   // A repository that failed to read at a state, and a build that failed for a key, say on every
   // page what went wrong.
-  const unread = new Map<string, { state: string; at: number; message: string }>();
-  let failed: { key: string; at: number; message: string } | undefined;
-  const settled = (at: number) => Date.now() - at < RETRY_MS;
-  let site: Site | undefined;
-  let refreshing: Promise<Site> | undefined;
-  let catalog: Promise<Map<string, Buffer>> | undefined;
-  // A built file is compressed once, on its first request that accepts gzip.
-  const gzipped = new WeakMap<Buffer, Uint8Array<ArrayBuffer>>();
-  // The hub's user is the machine's git identity, by first name as item owners write it.
-  const you = firstWord(git(root, "config", "user.name").trim()) || undefined;
+  let failed: BuildFailure | undefined;
 
-  async function rebuild(key: string, repos: RepoData[]): Promise<Site> {
-    const work = mkdtempSync(join(PKG, "site", ".build-"));
-    const json = join(work, "data.json");
-    const out = join(work, "out");
-    try {
-      const data = shelled(siteData(repos, you));
-      writeSiteData(json, data);
-      const files = await spawnBuild("build", [json], out);
-      const links = linker(repos);
-      const shellPaths = new Set(data.pages.filter((p) => p.article === SHELL).map((p) => p.path));
-      const shells = new Map<string, string>();
-      for (const [name, bytes] of files) {
-        if (!name.endsWith(".html")) continue;
-        const html = links.files(links.pages(bytes.toString("utf8")));
-        const page = name.slice(0, -".html".length);
-        if (shellPaths.has(page)) {
-          shells.set(page, html);
-          files.delete(name);
-        } else files.set(name, Buffer.from(html));
-      }
-      // A doc's page is its repository's key and its slug, as siteData names it.
-      const docs = new Map(
-        repos.flatMap((repo) =>
-          [...repo.reports, ...repo.docs].map(
-            (doc) => [`${repo.key}/${docSlug(doc.path)}`, { repo, doc }] as const,
-          ),
-        ),
-      );
-      return { key, built: Date.now(), files, repos, links, shells, docs, filled: new Map() };
-    } finally {
-      rmSync(work, { recursive: true, force: true });
-    }
-  }
-
-  // A doc page, its doc filled into the shell for its depth, once per build.
-  function docPage(name: string) {
-    const hit = site?.docs.get(name);
-    if (!site || !hit) return undefined;
-    const done = site.filled.get(name);
-    if (done) return done;
-    const { repo, doc } = hit;
-    const report = "stem" in doc ? doc : undefined;
-    const { links } = site;
-    const shell = site.shells.get(shellPath(`${repo.key}/`, name.split("/").length))!;
-    // As Astro escapes, so a filled page is the page a build renders.
-    const escape = (text: string) => Bun.escapeHTML(text).replaceAll("&#x27;", "&#39;");
-    const marks: Record<string, string> = {
-      [` id="${SHELL.titleId}"`]: doc.titleId ? ` id="${escape(doc.titleId)}"` : "",
-      [`/${SHELL.path}"`]: `/${escape(encodeFile(doc.path))}"`,
-      [SHELL.path]: escape(doc.path),
-      [SHELL.title]: escape(doc.title),
-      [`"${SHELL.name}.html"`]: `"${encodeURIComponent(name.split("/").pop()!)}.html"`,
-      [SHELL.html]: links.files(links.pages(report ? reportBody(repo.key, report) : doc.html)),
-    };
-    const page = Buffer.from(
-      shell
-        .replace(
-          /<div class="admin-action bg-background" data-shell-action(?:="[^"]*")?>[\s\S]*?<\/div>/,
-          (bar) =>
-            isPlainReportName(report?.stem)
-              ? bar.replace(/ data-shell-action(?:="[^"]*")?/, "")
-              : "",
-        )
-        .replace(
-          new RegExp(Object.keys(marks).map(RegExp.escape).join("|"), "g"),
-          (mark) => marks[mark]!,
-        ),
-    );
-    site.filled.set(name, page);
-    return page;
-  }
-
-  // What went wrong, for the notice on every page: the build that failed, and each repository
-  // that could not be read at its current state. Set once a refresh ends.
-  let notice = "";
-  let noticed = new WeakMap<Buffer, Buffer>();
-  function noticeHtml() {
-    const lines = [...unread].map(([p, u]) => {
-      const had = read.get(p);
-      const name = had?.data.key ?? basename(p);
-      return `${name} could not be read: ${u.message}. ${had ? "Its pages show its last read." : "It is left out."}`;
-    });
-    if (failed) lines.unshift(`The build stopped: ${failed.message}`);
-    if (!lines.length) return "";
-    const head = failed
-      ? `The hub could not rebuild on ${when(failed.at)}.`
-      : `The hub could not read ${lines.length === 1 ? "a repository" : `${lines.length} repositories`}.`;
-    const shows =
-      failed && site ? ` These pages show the repositories as of ${when(site.built)}.` : "";
-    return `<p><b>${head}</b>${shows} It tries again a minute later, or once a repository changes; nothing to do unless this stays, and then the terminal running admin-serve shows the whole error.</p><ul class="hw-marker-list">${lines.map((l) => `<li>${Bun.escapeHTML(l)}</li>`).join("")}</ul>`;
-  }
-  const withNotice = (html: Buffer) => {
-    if (!notice) return html;
-    let page = noticed.get(html);
-    if (!page)
-      noticed.set(html, (page = Buffer.from(html.toString("utf8").replace(NOTICE, () => notice))));
-    return page;
-  };
-
-  // Every request checks each repository first, so a page is current when it is served: a hub
-  // page's provenance line ends on the request's time, and a repository page's on the fetch time this
-  // request found, once a fetch that moved no ref left the page unbuilt.
-  const stamped = new WeakMap<Buffer, { key: string; page: Buffer }>();
-  const stamp = (html: Buffer, page: string) => {
-    const repo = site?.repos.find((r) => page.startsWith(`${r.key}/`));
-    const at = repo ? newerFetch(repo) : Date.now();
-    if (!at) return html;
-    const key = when(at);
-    const done = stamped.get(html);
-    if (done?.key === key) return done.page;
-    const text = html
-      .toString("utf8")
-      .replace(/(<span data-stamp>)[^<]*/, (_, mark: string) => mark + Bun.escapeHTML(key));
-    const next = Buffer.from(text);
-    stamped.set(html, { key, page: next });
-    return next;
-  };
-  // A fetch time this request found that differs from the one its pages print.
-  const newerFetch = (repo: RepoData) => {
-    const at = fetchedNow.get(repo.path);
-    return repo.fetched && at && at !== repo.fetched ? at : undefined;
-  };
-
-  // Requests that arrive while one checks, reads or builds share its answer.
-  const pages = () =>
-    (refreshing ??= refresh().finally(() => {
-      refreshing = undefined;
-      const next = noticeHtml();
-      if (next !== notice) [notice, noticed] = [next, new WeakMap()];
-    }));
-
-  async function refresh() {
-    // The first request waits for the search; a later one keeps the last result while the next
-    // search runs.
-    if (!paths || Date.now() - scanned > rescanMs) {
-      scanned = Date.now();
-      const next = (scanning = findRepos(root));
-      if (paths)
-        next.then(() => {
-          // Only the latest search replaces the list, should an earlier one finish after it.
-          if (scanning === next) paths = next;
-        }, console.error);
-      else (paths = next).catch(() => (paths = undefined));
-    }
-    const current = await paths;
-    // A repository gone from the search keeps no entry: its failed read would stay in the notice.
-    for (const p of read.keys()) if (!current.includes(p)) read.delete(p);
-    for (const p of unread.keys()) if (!current.includes(p)) unread.delete(p);
-    for (const p of fetchedNow.keys()) if (!current.includes(p)) fetchedNow.delete(p);
-    const states = await Promise.all(
-      current.map(async (p) => {
-        const { state, fetched } = await stateOf(p);
-        fetchedNow.set(p, fetched);
-        return [p, state] as const;
-      }),
-    );
-    // The day is part of the state: a due date comes within a week of it with no commit.
-    const key = [new Date(Date.now()).toDateString(), ...states.map(([p, s]) => `${p} ${s}`)].join(
-      "\n",
-    );
-    // Back at the state of its last read, a failed read since then no longer applies.
-    for (const [p, s] of states) if (read.get(p)?.state === s) unread.delete(p);
-    const due = [...unread.values()].some((u) => !settled(u.at));
+  async function refresh(): Promise<Site> {
+    const { states, key, due } = await repoCache.probe(await listRepos());
     if (site?.key === key && !due) return site;
-    // A repository that fails to read keeps its last pages, or is left out.
-    let fresh = false;
-    const repos = (
-      await Promise.all(
-        states.map(async ([p, s]) => {
-          const had = read.get(p);
-          const u = unread.get(p);
-          if (had?.state === s || (u?.state === s && settled(u.at))) return had ? [had.data] : [];
-          try {
-            const data = await readRepo(p);
-            read.set(p, { state: s, data });
-            unread.delete(p);
-            fresh = true;
-            return [data];
-          } catch (e) {
-            console.error(`admin-serve: ${p}:`, e);
-            unread.set(p, { state: s, at: Date.now(), message: messageOf(e) });
-            return had ? [had.data] : [];
-          }
-        }),
-      )
-    ).flat();
-    if (site?.key === key && !fresh) return site;
-    if (failed?.key === key && settled(failed.at) && !fresh) {
-      if (site) return site;
-      throw new Error(failed.message);
+    const { repos, fresh } = await repoCache.load(states);
+    const action = decideSiteBuild({ siteKey: site?.key, failed }, { key, fresh }, Date.now());
+    if (action === "reuse") return site!;
+    if (action === "rethrow") {
+      throw failed!.isBuildError ? new BuildError(failed!.message) : new Error(failed!.message);
     }
     try {
-      site = await rebuild(key, uniqueKeys(repos));
+      site = await build(key, uniqueKeys(repos));
       failed = undefined;
     } catch (e) {
       console.error(e);
-      failed = { key, at: Date.now(), message: messageOf(e) };
+      failed = {
+        key,
+        at: Date.now(),
+        message: errorMessageOf(e),
+        isBuildError: e instanceof BuildError,
+      };
       if (!site) throw e;
     }
     return site;
   }
 
-  // Specimen pages link brand's stylesheets under node_modules, which no commit holds, so the
-  // installed file answers, only from inside the repository, since a symlink there may point
-  // anywhere on disk.
-  async function file(repoKey: string, path: string) {
-    const repo = site?.repos.find((r) => r.key === repoKey)?.path;
-    if (!repo || path.split("/").includes("..")) return undefined;
-    if (path.startsWith("node_modules/")) {
-      const installed = join(repo, path);
-      if (!existsSync(installed) || !statSync(installed).isFile()) return undefined;
-      return realpathSync(installed).startsWith(realpathSync(repo) + sep)
-        ? readFileSync(installed)
-        : undefined;
-    }
-    const blob = await gitBytes(repo, ["cat-file", "blob", `HEAD:${path}`]);
-    if (!blob) return undefined;
-    const oid = blob
-      .subarray(0, 200)
-      .toString()
-      .match(/^version https:\/\/git-lfs\S+\noid sha256:([0-9a-f]{64})/)?.[1];
-    if (!oid) return blob;
-    const common = resolve(repo, (await gitAsync(repo, ["rev-parse", "--git-common-dir"])).trim());
-    const object = join(common, "lfs/objects", oid.slice(0, 2), oid.slice(2, 4), oid);
-    return existsSync(object) ? readFileSync(object) : undefined;
+  function buildFailure(): BuildNotice | undefined {
+    return failed ? { at: failed.at, message: failed.message, builtAt: site?.built } : undefined;
   }
 
+  return { current: () => site, buildFailure, refresh };
+}
+
+export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
+  const listRepos = createRepoScanner(root, rescanMs);
+  const repoCache = createRepoCache();
+  const decorator = createPageDecorator(repoCache.fetchedTime);
+  // The hub's user is the machine's git identity, by first name as item owners write it.
+  const you = firstWord(git(root, "config", "user.name").trim()) || undefined;
+  const siteStore = createSiteStore(listRepos, repoCache, (key, repos) =>
+    rebuildSite(key, repos, you),
+  );
+  let refreshing: Promise<Site> | undefined;
+  // Requests that arrive while one checks, reads or builds share its answer.
+  const pages = () =>
+    (refreshing ??= siteStore.refresh().finally(() => {
+      refreshing = undefined;
+      decorator.setNotice(formatNotice(repoCache.unreadNotices(), siteStore.buildFailure()));
+    }));
+  const ensureSite = () => loadSiteForFile(siteStore.current, pages);
+  const responder = createResponder();
+  const fileRoute = createFileRoute(ensureSite, responder);
+  const catalogRoute = createCatalogRoute(catalogFiles, responder);
+  const pageRoute = createPageRoute(pages, decorator, responder);
+
   async function fetch(req: Request) {
-    const url = new URL(req.url);
-    // Only a local name: a page elsewhere that points its own domain at 127.0.0.1 reads nothing.
-    if (!LOCAL.test(url.hostname)) return new Response("local only", { status: 403 });
-    // A page elsewhere, another port of this machine included, may link the hub, but a script,
-    // image or fetch from it would learn which repositories and files exist from whether each one
-    // loads.
-    const from = req.headers.get("sec-fetch-site");
-    if (
-      from &&
-      from !== "same-origin" &&
-      from !== "none" &&
-      req.headers.get("sec-fetch-mode") !== "navigate"
-    )
-      return new Response("not from another site", { status: 403 });
-    let path: string;
-    try {
-      path = decodeURIComponent(url.pathname);
-    } catch {
-      return new Response("malformed path", { status: 400 });
-    }
-    const catalogPage = path === "/catalog" || path.startsWith("/catalog/");
-    const gzip = /\bgzip\b/.test(req.headers.get("accept-encoding") ?? "");
-    // Only a built file is compressed: a committed file under /_file/ is read per request.
-    const typed = (body: Buffer, name: string, cache = "no-store", built = true) => {
-      const type = Bun.file(name).type;
-      const zip =
-        built && gzip && body.length > 1024 && /^(text\/|application\/json|image\/svg)/.test(type);
-      let bytes = zip ? gzipped.get(body) : new Uint8Array(body);
-      if (!bytes) gzipped.set(body, (bytes = Bun.gzipSync(new Uint8Array(body))));
-      return new Response(bytes, {
-        headers: {
-          "content-type": type,
-          "cache-control": cache,
-          "content-security-policy": catalogPage ? catalogCsp : csp(url.origin),
-          "x-content-type-options": "nosniff",
-          "cross-origin-resource-policy": "same-origin",
-          vary: "accept-encoding",
-          ...(zip && { "content-encoding": "gzip" }),
-        },
-      });
-    };
-    // Hashed asset names never change, so an asset needs no check whether a repository moved, and
-    // the browser keeps it.
-    if (path.startsWith("/_astro/") && site?.files.has(path.slice(1)))
-      return typed(site.files.get(path.slice(1))!, path, IMMUTABLE);
-    if (path.startsWith("/_file/")) {
-      if (!site) await pages().catch(() => undefined);
-      const [repoKey, ...rest] = path.slice("/_file/".length).split("/");
-      const body = await file(repoKey!, rest.join("/"));
-      if (!body) return new Response("not committed", { status: 404 });
-      const box = THUMB_BOXES.find(([w]) => w === Number(url.searchParams.get("w")));
-      // Unchanged bytes keep their tag, so a repeat view skips the resize and the download.
-      const etag = `"${Bun.hash(body).toString(36)}${box ? `-${box[0]}` : ""}"`;
-      if (req.headers.get("if-none-match") === etag)
-        return new Response(null, { status: 304, headers: { etag } });
-      const small = box && (await resized(body, box));
-      const response = typed(small || body, small ? "thumb.webp" : path, "no-cache", false);
-      response.headers.set("etag", etag);
-      return response;
-    }
-    if (path === "/catalog") return Response.redirect(`${url.origin}/catalog/${url.search}`, 302);
-    if (catalogPage) {
-      // A failed build answers with its reason until the hub restarts, rather than building again
-      // on every request.
-      const built = await (catalog ??= catalogFiles()).catch((e: Error) => e);
-      if (built instanceof Error)
-        return new Response(
-          `${built.message}: the catalog builds with astrobook and @hackersandwizards/scaffolding installed beside this package; install them and restart admin-serve`,
-          { status: 503 },
-        );
-      const name = path.slice("/catalog/".length).replace(/\/$/, "");
-      const at = [name, name ? `${name}/index.html` : "index.html"].find((n) => built.has(n));
-      return at
-        ? typed(built.get(at)!, at, at.startsWith("_astro/") ? IMMUTABLE : "no-store")
-        : new Response("no such page", { status: 404 });
-    }
-    // An address no page answers: the hub's own 404 page, its relative addresses made absolute so
-    // they hold at any depth.
-    function missing(built: Site, path: string) {
-      const page = built.files
-        .get("404.html")!
-        .toString("utf8")
-        .replace(/((?:href|src)=")(?:\.\/)?(?![a-z][\w+.-]*:|#|\/)/gi, "$1/")
-        .replaceAll(MISSING, () => Bun.escapeHTML(path));
-      const r = typed(withNotice(Buffer.from(page)), "404.html");
-      return new Response(r.body, { status: 404, headers: r.headers });
-    }
-    const built = await pages().catch((e: Error) => e);
-    if (built instanceof Error)
-      return new Response(
-        `The hub could not build its pages: ${built.message}. It tries again a minute later, or once a repository changes.`,
-        { status: 503 },
-      );
-    const { files, docs } = built;
-    // A page's asset URLs are relative, so they only resolve from the page's own address.
-    const bare = path.slice(1, -1);
-    if (path.length > 1 && path.endsWith("/") && (files.has(`${bare}.html`) || docs.has(bare)))
-      return Response.redirect(url.origin + url.pathname.slice(0, -1) + url.search, 302);
-    const name = path.slice(1) || "index.html";
-    // The 404 page answers only where no page does.
-    const at = [name, `${name}.html`].find((n) => n !== "404.html" && files.has(n));
-    if (at) {
-      const hit = files.get(at)!;
-      return typed(at.endsWith(".html") ? withNotice(stamp(hit, at)) : hit, at);
-    }
-    // A doc's slug may end in .html itself, as for x.html.md.
-    const doc = docPage(name.replace(/\.html$/, "")) ?? docPage(name);
-    if (doc) return typed(withNotice(doc), "doc.html");
-    // A repository's own address, with or without the slash, opens its dashboard.
-    if (files.has(`${path.slice(1).replace(/\/$/, "")}/dashboard.html`))
-      return Response.redirect(
-        `${url.origin}${url.pathname.replace(/\/$/, "")}/dashboard${url.search}`,
-        302,
-      );
-    return missing(built, url.pathname);
+    const checked = parseRequest(req);
+    if ("response" in checked) return checked.response;
+    const { request } = checked;
+    return (
+      astroAssetRoute(request, siteStore.current(), responder) ??
+      (await fileRoute(request)) ??
+      (await catalogRoute(request)) ??
+      (await pageRoute(request))
+    );
   }
 
   return { fetch, pages };

@@ -18,7 +18,7 @@ exported file is a release whose commit names the change.
   Markdown, diagrams, entities and display helpers (`repo.ts`, `repo-config.ts`, `markdown.ts`,
   `diagrams.ts`, `entities.ts`, `display.ts`), the hub's repository search (`hub.ts`), prerequisite
   graphs (`needs-graph.ts`), page data (`site-data.ts`) and the Astro build (`build.ts`), the hub's
-  server (`serve.ts`).
+  server (`serve.ts`, `serve-repos.ts`, `serve-pages.ts`, `serve-files.ts`, `serve-http.ts`).
 - `site/`: the Astro site the build renders, brand's components and elements, the shell's own
   layout (`site/src/layout.css`), and the browser scripts (`site/src/theme.js` and
   `site/src/admin.js` with its `storage.ts`, `time.ts`, `visits.ts`, `answer-rules.ts`,
@@ -29,7 +29,7 @@ exported file is a release whose commit names the change.
   `site/src/admin.js` or the modules it imports, bundled at start), `bun run build` writes it to `dist/catalog/`. Every component and page type has a story, guarded by `admin.test.ts`.
   `bun run dev` runs the hub (`admin-serve`) on 4329. `brand-elements.json` lists the brand
   elements the site uses and the ones it keeps, and holds the catalog's Content-Security-Policy
-  (`csp`), which `serve.ts` sends for the catalog and `policy()` in `site/src/data.ts` extends for the
+  (`csp`), which `serve-http.ts` sends for the catalog and `policy()` in `site/src/data.ts` extends for the
   hub's pages.
 - `test/`: tests and invented fixtures. `test/pages/` holds the tests that build or read rendered
   pages. `no-values.ts` checks that no design value lives here.

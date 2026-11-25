@@ -31,7 +31,9 @@ import { uniqueKeys } from "../../src/hub.ts";
 import { when } from "../../src/display.ts";
 import { treeSource } from "../../src/git.ts";
 import { readRepo } from "../../src/repo.ts";
-import { createHub, csp, linker } from "../../src/serve.ts";
+import { createHub } from "../../src/serve.ts";
+import { csp } from "../../src/serve-http.ts";
+import { linker } from "../../src/serve-pages.ts";
 import {
   FIX,
   commit,
