@@ -314,9 +314,15 @@ describe("row visibility classification", () => {
       expected: 1,
     },
     {
-      label: "excludes rows in hidden repositories unless targeted",
+      label: "excludes a row in a hidden repository",
       rows: [
         { key: "alpha:hidden", repo: "alpha", isReport: false, isTarget: false },
+      ] as ChangedRowInfo[],
+      expected: 0,
+    },
+    {
+      label: "counts the row the link names in a hidden repository",
+      rows: [
         { key: "alpha:target", repo: "alpha", isReport: false, isTarget: true },
       ] as ChangedRowInfo[],
       expected: 1,
