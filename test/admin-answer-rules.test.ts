@@ -5,18 +5,23 @@ import {
   answerSummary,
   buildAnswer,
   describeCopyButton,
-  describeRowMark,
   formatAnswerChoice,
   formatCopyBlock,
   formatCopyLine,
+  isAnswerCopied,
+  isControlChecked,
   isStaleAnswer,
   optionSummary,
   pendingStatusText,
   pickedKeys,
   rowMarkMode,
+  rowMarkText,
+  savedLineText,
   selectAnswersToCopy,
   staleAnswerDetail,
   staleCopyNote,
+  staleNoticeText,
+  type AnswerControl,
   type StoredAnswer,
 } from "../site/src/answer-rules.ts";
 
@@ -50,6 +55,11 @@ describe("answer helpers", () => {
       label: "array containing null from JSON-serialized undefined",
       answer: { label: ["Option A", null], at: atMorning },
       expected: ["Option A", null],
+    },
+    {
+      label: "numeric scalar label",
+      answer: { label: 42, at: atMorning },
+      expected: [42],
     },
   ])("answerLabels handles $label", ({ answer, expected }) => {
     expect(answerLabels(answer)).toEqual(expected);
@@ -100,6 +110,67 @@ describe("answer helpers", () => {
     },
   ])("isStaleAnswer returns $expected for $label", ({ answer, question, expected }) => {
     expect(isStaleAnswer(answer, question)).toBe(expected);
+  });
+
+  test.each([
+    {
+      label: "null answer unchecks option",
+      control: { kind: "option", value: "a" } as AnswerControl,
+      answer: null,
+      stale: false,
+      expected: false,
+    },
+    {
+      label: "stale answer unchecks matching option",
+      control: { kind: "option", value: "a" } as AnswerControl,
+      answer: { option: "a", at: atMorning },
+      stale: true,
+      expected: false,
+    },
+    {
+      label: "matching option is checked",
+      control: { kind: "option", value: "b" } as AnswerControl,
+      answer: { option: "a,b", at: atMorning },
+      stale: false,
+      expected: true,
+    },
+    {
+      label: "unmatched option is unchecked",
+      control: { kind: "option", value: "c" } as AnswerControl,
+      answer: { option: "a,b", at: atMorning },
+      stale: false,
+      expected: false,
+    },
+    {
+      label: "matching stance is checked",
+      control: { kind: "stance", value: "veto" } as AnswerControl,
+      answer: { stance: "veto", at: atMorning },
+      stale: false,
+      expected: true,
+    },
+    {
+      label: "unmatched stance is unchecked",
+      control: { kind: "stance", value: "agree" } as AnswerControl,
+      answer: { stance: "veto", at: atMorning },
+      stale: false,
+      expected: false,
+    },
+    {
+      label: "done checkbox follows done flag",
+      control: { kind: "done", value: "on" } as AnswerControl,
+      answer: { done: true, at: atMorning },
+      stale: false,
+      expected: true,
+    },
+    {
+      label: "later checkbox follows later flag",
+      control: { kind: "later", value: "on" } as AnswerControl,
+      answer: { later: true, at: atMorning },
+      stale: false,
+      expected: true,
+    },
+  ])("isControlChecked: $label", ({ control, answer, stale, expected }) => {
+    expect(isControlChecked(control, answer, stale)).toBe(expected);
   });
 });
 
@@ -199,9 +270,19 @@ describe("row mark wording", () => {
 
   test.each([
     {
+      label: "single string label",
+      answer: { option: "a", label: "First", at: atMorning },
+      expected: "You picked “First”",
+    },
+    {
       label: "picked options with labels",
       answer: { option: "a,b", label: ["First", "Second"], at: atMorning },
       expected: "You picked “First”, “Second”",
+    },
+    {
+      label: "picked options with list holding null",
+      answer: { option: "a,b", label: ["First", null], at: atMorning },
+      expected: "You picked “First”, “null”",
     },
     {
       label: "picked option with null label",
@@ -209,9 +290,9 @@ describe("row mark wording", () => {
       expected: "You picked a",
     },
     {
-      label: "picked option with array of null",
-      answer: { option: "a", label: [null], at: atMorning },
-      expected: "You picked a",
+      label: "picked option with numeric scalar label",
+      answer: { option: "a", label: 42, at: atMorning },
+      expected: "You picked “42”",
     },
     {
       label: "picked option without labels",
@@ -238,61 +319,98 @@ describe("row mark wording", () => {
   });
 
   test.each([
-    {
-      label: "no answer",
-      answer: null,
-      ctx: { stale: false, copiedAt: "" },
-      expected: {
-        markText: "",
-        isError: false,
-        showReset: false,
-        savedText: "",
-        showStaleNotice: false,
-        staleText: "",
-      },
-    },
-    {
-      label: "deferred answer",
-      answer: { later: true, at: atMorning },
-      ctx: { stale: false, copiedAt: atNoon },
-      expected: {
-        markText: "later",
-        isError: false,
-        showReset: true,
-        savedText: "saved 09:15",
-        showStaleNotice: false,
-        staleText: "",
-      },
-    },
+    { label: "null answer", answer: null, stale: false, copiedAt: atNoon, expected: false },
     {
       label: "copied current answer",
       answer: { option: "a", at: atMorning },
-      ctx: { stale: false, copiedAt: atNoon, currentOptionLabel: "Option A" },
-      expected: {
-        markText: "✓ Option A · copied",
-        isError: false,
-        showReset: true,
-        savedText: "saved 09:15, copied 12:30",
-        showStaleNotice: false,
-        staleText: "",
-      },
+      stale: false,
+      copiedAt: atNoon,
+      expected: true,
+    },
+    {
+      label: "deferred answer is not copied",
+      answer: { later: true, at: atMorning },
+      stale: false,
+      copiedAt: atNoon,
+      expected: false,
+    },
+    {
+      label: "stale answer is not copied",
+      answer: { option: "a", at: atMorning },
+      stale: true,
+      copiedAt: atNoon,
+      expected: false,
+    },
+    {
+      label: "answer saved after copy time",
+      answer: { option: "a", at: atNoon },
+      stale: false,
+      copiedAt: atMorning,
+      expected: false,
+    },
+  ])("isAnswerCopied returns $expected for $label", ({ answer, stale, copiedAt, expected }) => {
+    expect(isAnswerCopied(answer, stale, copiedAt)).toBe(expected);
+  });
+
+  test.each([
+    { label: "no answer", answer: null, stale: false, optionLabel: undefined, expected: "" },
+    {
+      label: "deferred answer",
+      answer: { later: true, at: atMorning },
+      stale: false,
+      optionLabel: undefined,
+      expected: "later",
     },
     {
       label: "stale answer",
-      answer: { option: "a", label: ["Old"], at: atMorning },
-      ctx: { stale: true, copiedAt: atNoon },
-      expected: {
-        markText: "! answered before the question changed",
-        isError: true,
-        showReset: true,
-        savedText: "saved 09:15",
-        showStaleNotice: true,
-        staleText:
-          "You picked “Old” on 5 Jan at 09:15. The question or its options changed since: read them again and answer again.",
-      },
+      answer: { option: "a", at: atMorning },
+      stale: true,
+      optionLabel: undefined,
+      expected: "! answered before the question changed",
     },
-  ])("describeRowMark returns exact view for $label", ({ answer, ctx, expected }) => {
-    expect(describeRowMark(answer, ctx)).toEqual(expected);
+    {
+      label: "current answer",
+      answer: { option: "a", at: atMorning },
+      stale: false,
+      optionLabel: "Option A",
+      expected: "✓ Option A",
+    },
+  ])("rowMarkText formats $label", ({ answer, stale, optionLabel, expected }) => {
+    expect(rowMarkText(answer, stale, optionLabel)).toBe(expected);
+  });
+
+  test.each([
+    { label: "no answer", answer: null, copiedAt: atNoon, sent: false, expected: "" },
+    {
+      label: "unsent answer",
+      answer: { option: "a", at: atMorning },
+      copiedAt: atNoon,
+      sent: false,
+      expected: "saved 09:15",
+    },
+    {
+      label: "copied answer",
+      answer: { option: "a", at: atMorning },
+      copiedAt: atNoon,
+      sent: true,
+      expected: "saved 09:15, copied 12:30",
+    },
+  ])("savedLineText formats $label", ({ answer, copiedAt, sent, expected }) => {
+    expect(savedLineText(answer, copiedAt, sent)).toBe(expected);
+  });
+
+  test.each([
+    { label: "no answer", answer: null, stale: true, expected: "" },
+    { label: "not stale", answer: { option: "a", at: atMorning }, stale: false, expected: "" },
+    {
+      label: "stale answer",
+      answer: { option: "a", label: ["Old"], at: atMorning },
+      stale: true,
+      expected:
+        "You picked “Old” on 5 Jan at 09:15. The question or its options changed since: read them again and answer again.",
+    },
+  ])("staleNoticeText formats $label", ({ answer, stale, expected }) => {
+    expect(staleNoticeText(answer, stale)).toBe(expected);
   });
 });
 
@@ -429,6 +547,11 @@ describe("copy selection and wording", () => {
       answer: { option: "a,b,c", label: ["Stored A", null, null], at: atMorning } as StoredAnswer,
       expected: "a (Stored A), b (Live B), c",
     },
+    {
+      label: "numeric scalar label renders as string",
+      answer: { option: "a", label: 42, at: atMorning } as StoredAnswer,
+      expected: "a (42)",
+    },
   ])("formatAnswerChoice handles $label", ({ answer, expected }) => {
     const labels: Record<string, string> = { b: "Live B" };
     expect(formatAnswerChoice(answer, (key) => labels[key])).toBe(expected);
@@ -448,8 +571,8 @@ describe("copy selection and wording", () => {
       expected: "alpha:item: done",
     },
     {
-      label: "non-string note is treated as empty",
-      answer: { done: true, note: 42, at: atMorning },
+      label: "empty note omitted",
+      answer: { done: true, note: "", at: atMorning },
       choice: "",
       expected: "alpha:item: done",
     },

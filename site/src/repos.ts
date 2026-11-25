@@ -21,7 +21,8 @@ export class HiddenRepos {
     return this.#off;
   }
 
-  // Reads the choice from storage first, as on load and when another tab changed it.
+  // `stored` reads the choice from storage first, as on load and when another tab changed it.
+  // Split here into reload() and render().
   reload(): void {
     if (!this.#boxes.length) return;
     this.#off = loadHiddenRepos(this.#store.readJson("repos"), this.#allRepos);

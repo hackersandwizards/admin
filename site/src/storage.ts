@@ -1,7 +1,6 @@
-// Browser storage wrapper for admin pages. A browser that blocks site data throws SecurityError
-// on localStorage itself: the page then keeps its state in MemoryStorage for this visit only, and
-// every control still works. QuotaExceededError and SecurityError on reads/writes fall back; any
-// other error propagates.
+// A browser that blocks site data throws on localStorage itself: the page then keeps its state
+// for this visit only, and every control still works.
+// Only QuotaExceededError and SecurityError fall back; any other error propagates.
 
 export interface StorageLike {
   readonly length: number;

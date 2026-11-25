@@ -3,10 +3,13 @@ import { MemoryStorage, createStore, type StorageLike } from "../site/src/storag
 import {
   isGoneItem,
   isStaleComment,
+  pruneStoredAnswers,
   pruneVersions,
+  recordVisit,
   rolloverDeferredAnswers,
   rowChangeNotice,
   wasCopied,
+  type KeyedRowVersion,
   type RowVersion,
 } from "../site/src/visits.ts";
 
@@ -84,6 +87,29 @@ describe("answer pruning predicates", () => {
       "#alpha:report": "r1 ",
       "beta:gone": 42,
     });
+  });
+
+  test("pruneStoredAnswers removes copied gone items and copied stale comments while keeping uncopied or live ones", () => {
+    const mem = new MemoryStorage();
+    const store = createStore(mem, "admin-answers:");
+    store.setText("copied", "2026-01-01T12:00:00.000Z");
+    store.writeJson("alpha:gone-copied", { done: true, at: "2026-01-01T10:00:00.000Z" });
+    store.writeJson("alpha:gone-fresh", { done: true, at: "2026-01-01T13:00:00.000Z" });
+    store.writeJson("alpha:item-1", { done: true, at: "2026-01-01T10:00:00.000Z" });
+    store.writeJson("alpha:r#old", {
+      report: "#alpha:report",
+      version: "v1",
+      at: "2026-01-01T10:00:00.000Z",
+    });
+    store.writeJson("alpha:r#fresh", {
+      report: "#alpha:report",
+      version: "v1",
+      at: "2026-01-01T13:00:00.000Z",
+    });
+
+    pruneStoredAnswers(store, { live, liveRepos, reportVersions: reports });
+
+    expect(store.answerIds().sort()).toEqual(["alpha:gone-fresh", "alpha:item-1", "alpha:r#fresh"]);
   });
 });
 
@@ -197,7 +223,7 @@ describe("rolloverDeferredAnswers", () => {
     });
   });
 
-  test("stops and returns false when a write hits QuotaExceededError", () => {
+  test("stops and returns false when writing the deferred note hits QuotaExceededError", () => {
     const mem = new MemoryStorage();
     mem.setItem(
       "admin-answers:alpha:noted",
@@ -207,19 +233,166 @@ describe("rolloverDeferredAnswers", () => {
       "admin-answers:alpha:bare",
       JSON.stringify({ later: true, note: "", at: "2026-01-01T08:00:00.000Z" }),
     );
+    const attempted: string[] = [];
+    const writeByKey: Record<string, () => void> = {
+      "admin-answers:alpha:noted": () => {
+        throw new DOMException("full", "QuotaExceededError");
+      },
+    };
     const full: StorageLike = {
       get length() {
         return mem.length;
       },
       getItem: (k) => mem.getItem(k),
-      setItem: () => {
-        throw new DOMException("full", "QuotaExceededError");
+      setItem: (k) => {
+        attempted.push(k);
+        writeByKey[k]!();
       },
       removeItem: (k) => mem.removeItem(k),
       key: (i) => mem.key(i),
     };
     const store = createStore(full, "admin-answers:");
     expect(rolloverDeferredAnswers(store, Date.UTC(2026, 0, 2, 10, 0))).toBe(false);
+    expect(attempted).toEqual(["admin-answers:alpha:noted"]);
     expect(mem.getItem("admin-answers:alpha:bare")).not.toBeNull();
+  });
+});
+
+describe("recordVisit", () => {
+  const live = new Set(["alpha:item-1"]);
+  const liveRepos = new Set(["alpha"]);
+  const sampleRow: KeyedRowVersion = {
+    key: "alpha:item-1",
+    version: "v2",
+    asked: "q2",
+    changed: 200,
+    kind: "item",
+  };
+
+  test("first visit records seen and versions without marking rows", () => {
+    const mem = new MemoryStorage();
+    const store = createStore(mem, "admin-answers:");
+    const now = Date.UTC(2026, 0, 2, 10, 0);
+
+    const outcome = recordVisit(store, { live, liveRepos, rows: [sampleRow] }, now);
+
+    expect(outcome).toEqual({ updatedSince: 0, changes: [{ changed: false, text: null }] });
+    expect(store.getText("seen")).toBe(String(now));
+    expect(store.readRecord("versions")).toEqual({ "alpha:item-1": "v2 q2" });
+  });
+
+  test("new visit rolls over history, prunes gone versions, and returns row change marks", () => {
+    const mem = new MemoryStorage();
+    const store = createStore(mem, "admin-answers:");
+    const prev = Date.UTC(2026, 0, 2, 8, 0);
+    const now = Date.UTC(2026, 0, 2, 10, 0);
+    store.setText("seen", String(prev));
+    store.setText("who", "Kim");
+    store.writeJson("versions", { "alpha:item-1": "v1 q1", "alpha:gone": "v0 q0" });
+
+    const outcome = recordVisit(store, { live, liveRepos, rows: [sampleRow] }, now);
+
+    expect(outcome).toEqual({
+      updatedSince: prev,
+      changes: [{ changed: true, text: "question or options changed ·" }],
+    });
+    expect(store.getText("who")).toBeNull();
+    expect(store.readRecord("versions")).toEqual({ "alpha:item-1": "v2 q2" });
+  });
+
+  test("stops before modifying before, who, or seen when saving visit hits QuotaExceededError", () => {
+    const mem = new MemoryStorage();
+    const prev = Date.UTC(2026, 0, 2, 8, 0);
+    mem.setItem("admin-answers:seen", String(prev));
+    mem.setItem("admin-answers:who", "Kim");
+    mem.setItem("admin-answers:versions", JSON.stringify({ "alpha:item-1": "v1 q1" }));
+    const attempted: string[] = [];
+    const writeByKey: Record<string, () => void> = {
+      "admin-answers:visit": () => {
+        throw new DOMException("full", "QuotaExceededError");
+      },
+    };
+    const full: StorageLike = {
+      get length() {
+        return mem.length;
+      },
+      getItem: (k) => mem.getItem(k),
+      setItem: (k) => {
+        attempted.push(k);
+        writeByKey[k]!();
+      },
+      removeItem: (k) => mem.removeItem(k),
+      key: (i) => mem.key(i),
+    };
+    const store = createStore(full, "admin-answers:");
+
+    const outcome = recordVisit(
+      store,
+      { live, liveRepos, rows: [sampleRow] },
+      Date.UTC(2026, 0, 2, 10, 0),
+    );
+
+    expect(outcome).toEqual({ updatedSince: 0, changes: [] });
+    expect(attempted).toEqual(["admin-answers:visit"]);
+    expect(mem.getItem("admin-answers:who")).toBe("Kim");
+    expect(mem.getItem("admin-answers:seen")).toBe(String(prev));
+  });
+
+  test("stops before marking rows when saving seen hits QuotaExceededError during same visit", () => {
+    const mem = new MemoryStorage();
+    const prev = Date.UTC(2026, 0, 2, 9, 30);
+    mem.setItem("admin-answers:seen", String(prev));
+    mem.setItem("admin-answers:visit", String(Date.UTC(2026, 0, 2, 7, 0)));
+    mem.setItem("admin-answers:before", JSON.stringify({ "alpha:item-1": "v1 q1" }));
+    mem.setItem("admin-answers:versions", JSON.stringify({ "alpha:item-1": "v1 q1" }));
+    const attempted: string[] = [];
+    const writeByKey: Record<string, () => void> = {
+      "admin-answers:seen": () => {
+        throw new DOMException("full", "QuotaExceededError");
+      },
+    };
+    const full: StorageLike = {
+      get length() {
+        return mem.length;
+      },
+      getItem: (k) => mem.getItem(k),
+      setItem: (k) => {
+        attempted.push(k);
+        writeByKey[k]!();
+      },
+      removeItem: (k) => mem.removeItem(k),
+      key: (i) => mem.key(i),
+    };
+    const store = createStore(full, "admin-answers:");
+
+    const outcome = recordVisit(
+      store,
+      { live, liveRepos, rows: [sampleRow] },
+      Date.UTC(2026, 0, 2, 10, 0),
+    );
+
+    expect(outcome).toEqual({ updatedSince: 0, changes: [] });
+    expect(attempted).toEqual(["admin-answers:seen"]);
+    expect(mem.getItem("admin-answers:versions")).toBe(JSON.stringify({ "alpha:item-1": "v1 q1" }));
+  });
+
+  test("stops without marking rows or overwriting versions when before holds invalid JSON", () => {
+    const mem = new MemoryStorage();
+    const store = createStore(mem, "admin-answers:");
+    const prev = Date.UTC(2026, 0, 2, 9, 30);
+    store.setText("seen", String(prev));
+    store.setText("visit", String(Date.UTC(2026, 0, 2, 7, 0)));
+    store.setText("before", "{broken");
+    store.writeJson("versions", { "alpha:item-1": "v1 q1" });
+
+    const outcome = recordVisit(
+      store,
+      { live, liveRepos, rows: [sampleRow] },
+      Date.UTC(2026, 0, 2, 10, 0),
+    );
+
+    expect(outcome).toEqual({ updatedSince: 0, changes: [] });
+    expect(store.readRecord("versions")).toEqual({ "alpha:item-1": "v1 q1" });
+    expect(store.getText("before")).toBe("{broken");
   });
 });

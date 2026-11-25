@@ -1018,20 +1018,25 @@ describe("admin.js", () => {
     backing.setItem("admin-answers:who", "Kim");
     backing.setItem("admin-answers:versions", "{}");
     backing.setItem("admin-answers:spoke:pick-a-logo", deferred);
-    const writes = [
-      (k: string, v: string) => backing.setItem(k, v),
-      () => {
+    const attempted: string[] = [];
+    const writeByKey: Record<string, (k: string, v: string) => void> = {
+      "admin-answers:visit": (k, v) => backing.setItem(k, v),
+      "admin-answers:before": () => {
         throw new window.DOMException("quota full", "QuotaExceededError");
       },
-    ];
-    let step = 0;
+      "admin-answers:seen": (k, v) => backing.setItem(k, v),
+      "admin-answers:versions": (k, v) => backing.setItem(k, v),
+    };
     Object.defineProperty(window, "localStorage", {
       value: {
         get length() {
           return backing.length;
         },
         getItem: (k: string) => backing.getItem(k),
-        setItem: (k: string, v: string) => writes[step++]!(k, v),
+        setItem: (k: string, v: string) => {
+          attempted.push(k);
+          writeByKey[k]!(k, v);
+        },
         removeItem: (k: string) => backing.removeItem(k),
         key: (i: number) => backing.key(i),
       },
@@ -1040,7 +1045,12 @@ describe("admin.js", () => {
       readForDom(join(out, "index.html")).replace(/<script[^>]*><\/script>/g, ""),
     );
     evaluate(window, code);
-    expect(backing.getItem("admin-answers:who")).toBe("Kim");
+    expect(attempted).toEqual(["admin-answers:visit", "admin-answers:before"]);
+    expect(
+      window.document
+        .querySelector('[data-who-button][aria-pressed="true"]')
+        ?.getAttribute("data-who-button"),
+    ).toBe("Kim");
     expect(backing.getItem("admin-answers:seen")).toBe(oldSeen);
     expect(backing.getItem("admin-answers:spoke:pick-a-logo")).toBe(deferred);
     expect(window.document.querySelectorAll("[data-updated]:not([hidden])").length).toBe(0);
@@ -1075,15 +1085,18 @@ describe("admin.js", () => {
     expect(cloneSpy).toHaveBeenCalled();
   });
 
-  test("a stored non-string note loads as an empty field", () => {
+  test.each([
+    ["a falsy stored note loads as an empty field", 0, ""],
+    ["a numeric stored note loads as written", 42, "42"],
+  ])("%s", (_label, note, expected) => {
     const page = open("spoke/decisions", {
       "admin-answers:spoke:check-the-copy": JSON.stringify({
-        note: 42,
+        note,
         at: "2026-01-01T12:00:00.000Z",
       }),
     });
     const field = page.document.querySelector<DomTextArea>("#spoke\\:check-the-copy textarea")!;
-    expect(field.value).toBe("");
+    expect(field.value).toBe(expected);
   });
 
   test("opening a variant image gives the dialog an accessible name before it opens", () => {

@@ -3,18 +3,23 @@ import {
   assumptionsText,
   changedSinceText,
   classifyRow,
+  countAssumedRows,
+  countOpenForPerson,
+  countOpenOfKind,
   decodeHash,
   describeHiddenRepos,
   goneItemNotice,
   hiddenRepoMatchesClause,
   isRowAway,
   loadHiddenRepos,
+  matchesKind,
   matchesPerson,
-  matchesSearchAndKind,
+  matchesSearch,
   noMatchSentence,
   otherPeopleMatchesClause,
   pluralCount,
   type ActiveFilters,
+  type PageRow,
   type RowFilterInfo,
 } from "../site/src/filter-rules.ts";
 
@@ -128,6 +133,28 @@ describe("row visibility classification", () => {
     expect(matchesPerson(row, person, hiddenRepos)).toBe(expected);
   });
 
+  test.each([
+    { label: "empty term matches any text", text: "pick a variant", term: "", expected: true },
+    { label: "matching substring", text: "pick a variant", term: "variant", expected: true },
+    { label: "missing substring", text: "pick a variant", term: "logo", expected: false },
+  ])("matchesSearch returns $expected for $label", ({ text, term, expected }) => {
+    expect(matchesSearch({ text }, term)).toBe(expected);
+  });
+
+  test.each([
+    { label: "all accepts any kind", rowKind: "work", filterKind: "all", expected: true },
+    {
+      label: "kindless row matches specific filter",
+      rowKind: "",
+      filterKind: "work",
+      expected: true,
+    },
+    { label: "matching kind", rowKind: "decision", filterKind: "decision", expected: true },
+    { label: "different kind", rowKind: "work", filterKind: "decision", expected: false },
+  ])("matchesKind returns $expected for $label", ({ rowKind, filterKind, expected }) => {
+    expect(matchesKind({ kind: rowKind }, filterKind)).toBe(expected);
+  });
+
   const baseRow: RowFilterInfo = {
     who: "Sam",
     kind: "decision",
@@ -141,41 +168,6 @@ describe("row visibility classification", () => {
     term: "variant",
     hiddenRepos,
   };
-
-  test.each([
-    {
-      label: "matching term and all kinds",
-      row: baseRow,
-      filters: baseFilters,
-      expected: true,
-    },
-    {
-      label: "empty term and matching kind",
-      row: baseRow,
-      filters: { ...baseFilters, term: "", kind: "decision" },
-      expected: true,
-    },
-    {
-      label: "kindless row matches specific kind filter",
-      row: { ...baseRow, kind: "" },
-      filters: { ...baseFilters, kind: "work" },
-      expected: true,
-    },
-    {
-      label: "non-matching term",
-      row: baseRow,
-      filters: { ...baseFilters, term: "logo" },
-      expected: false,
-    },
-    {
-      label: "non-matching kind",
-      row: baseRow,
-      filters: { ...baseFilters, kind: "work" },
-      expected: false,
-    },
-  ])("matchesSearchAndKind returns $expected for $label", ({ row, filters, expected }) => {
-    expect(matchesSearchAndKind(row, filters)).toBe(expected);
-  });
 
   test.each([
     {
@@ -210,6 +202,96 @@ describe("row visibility classification", () => {
     },
   ])("classifyRow: $label", ({ row, filters, expected }) => {
     expect(classifyRow(row, filters)).toBe(expected);
+  });
+
+  const pageRows: PageRow[] = [
+    {
+      who: "Kim",
+      kind: "decision",
+      repo: "beta",
+      status: "open",
+      isItem: true,
+      isTarget: false,
+      text: "",
+    },
+    {
+      who: "Kim",
+      kind: "work",
+      repo: "beta",
+      status: "open",
+      isItem: true,
+      isTarget: false,
+      text: "",
+    },
+    {
+      who: "Sam",
+      kind: "decision",
+      repo: "beta",
+      status: "open",
+      isItem: true,
+      isTarget: false,
+      text: "",
+    },
+    {
+      who: "Kim",
+      kind: "decision",
+      repo: "alpha",
+      status: "open",
+      isItem: true,
+      isTarget: false,
+      text: "",
+    },
+    {
+      who: "Kim",
+      kind: "decision",
+      repo: "beta",
+      status: "open",
+      isItem: false,
+      isTarget: false,
+      text: "",
+    },
+    {
+      who: "Kim",
+      kind: "decision",
+      repo: "beta",
+      status: "assumed",
+      isItem: true,
+      isTarget: false,
+      text: "",
+    },
+    {
+      who: "Sam",
+      kind: "decision",
+      repo: "beta",
+      status: "assumed",
+      isItem: true,
+      isTarget: false,
+      text: "",
+    },
+  ];
+
+  test.each([
+    { label: "counts Kim open items in visible repos", person: "Kim", expected: 2 },
+    { label: "counts all open items in visible repos", person: null, expected: 3 },
+  ])("countOpenForPerson: $label", ({ person, expected }) => {
+    expect(countOpenForPerson(pageRows, person, hiddenRepos)).toBe(expected);
+  });
+
+  const openKimRows = pageRows.slice(0, 2);
+
+  test.each([
+    { kind: "all", expected: 2 },
+    { kind: "decision", expected: 1 },
+    { kind: "review", expected: 0 },
+  ])("countOpenOfKind($kind)", ({ kind, expected }) => {
+    expect(countOpenOfKind(openKimRows, kind)).toBe(expected);
+  });
+
+  test.each([
+    { label: "filtered to Kim", person: "Kim", expected: 1 },
+    { label: "unfiltered all", person: null, expected: 2 },
+  ])("countAssumedRows: $label", ({ person, expected }) => {
+    expect(countAssumedRows(pageRows, { ...baseFilters, person })).toBe(expected);
   });
 });
 

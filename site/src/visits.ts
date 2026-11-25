@@ -25,9 +25,30 @@ export interface RowVersion {
   readonly kind: "article-report" | "listed-report" | "item";
 }
 
+export interface KeyedRowVersion extends RowVersion {
+  readonly key: string;
+}
+
 export interface RowChangeResult {
   readonly changed: boolean;
   readonly text: string | null;
+}
+
+export interface PageInventory {
+  readonly live: ReadonlySet<string>;
+  readonly liveRepos: ReadonlySet<string>;
+  readonly reportVersions: ReadonlyMap<string, string>;
+}
+
+export interface VisitPageSnapshot {
+  readonly live: ReadonlySet<string>;
+  readonly liveRepos: ReadonlySet<string>;
+  readonly rows: readonly KeyedRowVersion[];
+}
+
+export interface VisitOutcome {
+  readonly updatedSince: number;
+  readonly changes: RowChangeResult[];
 }
 
 export function isGoneItem(
@@ -91,56 +112,14 @@ export function rolloverDeferredAnswers(store: AdminStore, now: number): boolean
   return true;
 }
 
-function liveInventory(doc: Document): {
-  live: Set<string>;
-  liveRepos: Set<string>;
-  reportVersions: Map<string, string>;
-} {
-  // A page that names every item of its repositories knows which answers lost their item.
-  const live = new Set(doc.body.dataset.answers?.split(" ").filter(Boolean));
-  const liveRepos = new Set([...live].map((k) => k.split(":")[0]!));
-  const reportVersions = new Map(
-    [...doc.querySelectorAll<HTMLElement>("[data-report][data-version]")].map((el) => [
-      el.dataset.k ?? "",
-      el.dataset.version ?? "",
-    ]),
-  );
-  return { live, liveRepos, reportVersions };
-}
-
-export function pruneAnswers(store: AdminStore, doc: Document): void {
-  const { live, liveRepos, reportVersions } = liveInventory(doc);
+export function pruneStoredAnswers(store: AdminStore, inventory: PageInventory): void {
   const copied = store.copiedAt();
   for (const id of store.answerIds()) {
     const answer = store.readJson(id) as StoredAnswer | null;
-    const gone = isGoneItem(id, live, liveRepos);
-    const edited = isStaleComment(answer, reportVersions);
+    const gone = isGoneItem(id, inventory.live, inventory.liveRepos);
+    const edited = isStaleComment(answer, inventory.reportVersions);
     if ((gone || edited) && wasCopied(answer, copied)) store.remove(id);
   }
-}
-
-function rowVersionOf(el: HTMLElement, report: HTMLElement | null): RowVersion {
-  const kind: RowVersion["kind"] = !el.hasAttribute("data-report")
-    ? "item"
-    : el === report
-      ? "article-report"
-      : "listed-report";
-  return {
-    version: el.dataset.version ?? "",
-    asked: el.dataset.asked ?? "",
-    changed: Number(el.dataset.changed),
-    kind,
-  };
-}
-
-function applyRowChange(el: HTMLElement, result: RowChangeResult): boolean {
-  if (!result.changed) return false;
-  const markEl = el.querySelector<HTMLElement>("[data-updated]");
-  if (markEl) {
-    markEl.hidden = false;
-    if (result.text !== null) markEl.textContent = result.text;
-  }
-  return true;
 }
 
 function advanceVisit(
@@ -159,25 +138,80 @@ function advanceVisit(
   return Number(store.getText("visit")) || 0;
 }
 
-// storage blocked: no row says what changed. Corrupt visit history or a failed storage write stops
-// visit bookkeeping before overwriting stored history or marking rows against a stale snapshot.
-export function trackVisit(store: AdminStore, doc: Document, now = Date.now()): number {
+// storage blocked: no row says what changed
+// Corrupt visit history or a failed storage write stops visit bookkeeping before overwriting
+// stored history or marking rows against a stale snapshot.
+export function recordVisit(
+  store: AdminStore,
+  page: VisitPageSnapshot,
+  now = Date.now(),
+): VisitOutcome {
+  const empty: VisitOutcome = { updatedSince: 0, changes: [] };
   const versions = store.readRecord("versions");
-  if (!versions) return 0;
+  if (!versions) return empty;
   const since = advanceVisit(store, versions, now);
-  if (since === null) return 0;
+  if (since === null) return empty;
   const before = store.readRecord("before");
-  if (!before) return 0;
+  if (!before) return empty;
+  let updatedSince = 0;
+  const changes = page.rows.map((row) => {
+    const previous = typeof before[row.key] === "string" ? before[row.key] : "";
+    const result = rowChangeNotice(row, previous, since);
+    if (result.changed) updatedSince = since;
+    versions[row.key] = `${row.version} ${row.asked}`;
+    return result;
+  });
+  store.writeJson("versions", pruneVersions(versions, page.live, page.liveRepos));
+  return { updatedSince, changes };
+}
+
+function liveInventory(doc: Document): PageInventory {
+  // A page that names every item of its repositories knows which answers lost their item.
+  const live = new Set(doc.body.dataset.answers?.split(" ").filter(Boolean));
+  const liveRepos = new Set([...live].map((k) => k.split(":")[0]!));
+  const reportVersions = new Map(
+    [...doc.querySelectorAll<HTMLElement>("[data-report][data-version]")].map((el) => [
+      el.dataset.k ?? "",
+      el.dataset.version ?? "",
+    ]),
+  );
+  return { live, liveRepos, reportVersions };
+}
+
+export function pruneAnswers(store: AdminStore, doc: Document): void {
+  pruneStoredAnswers(store, liveInventory(doc));
+}
+
+function rowVersionOf(el: HTMLElement, report: HTMLElement | null): KeyedRowVersion {
+  const kind: RowVersion["kind"] = !el.hasAttribute("data-report")
+    ? "item"
+    : el === report
+      ? "article-report"
+      : "listed-report";
+  return {
+    key: el.dataset.k ?? "",
+    version: el.dataset.version ?? "",
+    asked: el.dataset.asked ?? "",
+    changed: Number(el.dataset.changed),
+    kind,
+  };
+}
+
+function applyRowChange(el: HTMLElement, result: RowChangeResult): void {
+  if (!result.changed) return;
+  const markEl = el.querySelector<HTMLElement>("[data-updated]");
+  if (markEl) {
+    markEl.hidden = false;
+    if (result.text !== null) markEl.textContent = result.text;
+  }
+}
+
+export function trackVisit(store: AdminStore, doc: Document, now = Date.now()): number {
   const { live, liveRepos } = liveInventory(doc);
   const report = doc.querySelector<HTMLElement>("article [data-report]");
-  let updatedSince = 0;
-  for (const el of doc.querySelectorAll<HTMLElement>("[data-k][data-version]")) {
-    const key = el.dataset.k ?? "";
-    const row = rowVersionOf(el, report);
-    const previous = typeof before[key] === "string" ? before[key] : "";
-    if (applyRowChange(el, rowChangeNotice(row, previous, since))) updatedSince = since;
-    versions[key] = `${row.version} ${row.asked}`;
-  }
-  store.writeJson("versions", pruneVersions(versions, live, liveRepos));
-  return updatedSince;
+  const elements = [...doc.querySelectorAll<HTMLElement>("[data-k][data-version]")];
+  const rows = elements.map((el) => rowVersionOf(el, report));
+  const outcome = recordVisit(store, { live, liveRepos, rows }, now);
+  outcome.changes.forEach((result, index) => applyRowChange(elements[index]!, result));
+  return outcome.updatedSince;
 }

@@ -2,17 +2,25 @@ import {
   assumptionsText,
   changedSinceText,
   classifyRow,
+  countAssumedRows,
+  countOpenForPerson,
+  countOpenOfKind,
   decodeHash,
   matchesPerson,
   noMatchSentence,
   type ActiveFilters,
   type HiddenMatches,
-  type RowFilterInfo,
+  type PageRow,
 } from "./filter-rules.ts";
 import { HiddenRepos } from "./repos.ts";
 import type { AdminStore } from "./storage.ts";
 
 const STRIP_MARKS = "[data-updated], .mark, .saved, [data-stale], [data-repo-off]";
+
+interface BoundRow {
+  readonly element: HTMLElement;
+  readonly info: PageRow;
+}
 
 function isElementShown(el: Element): boolean {
   return !el.closest("[hidden]");
@@ -43,27 +51,15 @@ function narrowOptionRows(row: HTMLElement, term: string): void {
   });
 }
 
-function rowIdentityOf(row: HTMLElement, target: HTMLElement | null) {
-  return {
-    who: row.dataset.who ?? "",
-    repo: row.dataset.repo ?? "",
-    isTarget: row === target,
-  };
-}
-
-function filterRows(
-  rows: readonly HTMLElement[],
-  filters: ActiveFilters,
-  inspect: (row: HTMLElement) => RowFilterInfo,
-): HiddenMatches {
+function applyRowVisibility(rows: readonly BoundRow[], filters: ActiveFilters): HiddenMatches {
   let elsewhere = 0;
   let unseen = 0;
-  for (const row of rows) {
-    const outcome = classifyRow(inspect(row), filters);
-    row.hidden = outcome !== "shown";
+  for (const { element, info } of rows) {
+    const outcome = classifyRow(info, filters);
+    element.hidden = outcome !== "shown";
     if (outcome === "unseen") unseen++;
     else if (outcome === "elsewhere") elsewhere++;
-    narrowOptionRows(row, filters.term);
+    narrowOptionRows(element, filters.term);
   }
   return { elsewhere, unseen };
 }
@@ -109,28 +105,26 @@ function openDefaultFold(scope: Element): void {
 
 function updatePersonButtons(
   buttons: readonly HTMLElement[],
-  openRows: readonly HTMLElement[],
-  matches: (row: HTMLElement, person: string | null) => boolean,
+  rows: readonly PageRow[],
+  hiddenRepos: ReadonlySet<string>,
 ): void {
   for (const button of buttons) {
     const who = button.dataset.whoButton ?? "all";
     const person = who === "all" ? null : who;
     button.querySelector("[data-who-count]")!.textContent = String(
-      openRows.filter((row) => matches(row, person)).length,
+      countOpenForPerson(rows, person, hiddenRepos),
     );
   }
 }
 
 function updateKindButtons(
   kinds: readonly HTMLElement[],
-  openMineRows: readonly HTMLElement[],
+  openMineRows: readonly PageRow[],
   activeKind: string,
 ): void {
   for (const button of kinds) {
     const kindKey = button.dataset.kindButton ?? "all";
-    const count = openMineRows.filter(
-      (row) => kindKey === "all" || row.dataset.kind === kindKey,
-    ).length;
+    const count = countOpenOfKind(openMineRows, kindKey);
     button.setAttribute("aria-pressed", String(kindKey === activeKind));
     button.querySelector("[data-kind-count]")!.textContent = String(count);
     button.hidden = !count && kindKey !== "all" && kindKey !== activeKind;
@@ -144,22 +138,29 @@ function updateAssumedCount(doc: Document, count: number): void {
   veto.querySelector("[data-assumed-count]")!.textContent = assumptionsText(count);
 }
 
-function updateChangedSince(
+function countChangedItems(
   doc: Document,
-  updatedSince: number,
-  isAway: (row: HTMLElement) => boolean,
-): void {
+  hiddenRepos: ReadonlySet<string>,
+  target: HTMLElement | null,
+): number {
   // The page's changed items, but those a hidden repository holds.
-  const since = doc.getElementById("admin-since");
-  if (!since) return;
-  const marked = new Set(
+  return new Set(
     [...doc.querySelectorAll("[data-updated]:not([hidden])")]
       .map((el) => el.closest<HTMLElement>("[data-k]")!)
-      .filter((row) => !row.hasAttribute("data-report") && !isAway(row))
+      .filter(
+        (row) =>
+          !row.hasAttribute("data-report") &&
+          !(hiddenRepos.has(row.dataset.repo ?? "") && row !== target),
+      )
       .map((row) => row.dataset.k),
   ).size;
-  since.hidden = !marked;
-  since.textContent = changedSinceText(marked, updatedSince);
+}
+
+function renderChangedSince(doc: Document, text: string): void {
+  const since = doc.getElementById("admin-since");
+  if (!since) return;
+  since.hidden = !text;
+  since.textContent = text;
 }
 
 function renderNoHit(doc: Document, sentence: string): void {
@@ -224,6 +225,21 @@ export class FiltersController {
     };
   }
 
+  #readRows(term: string): BoundRow[] {
+    return [...this.#doc.querySelectorAll<HTMLElement>("[data-row]")].map((element) => ({
+      element,
+      info: {
+        who: element.dataset.who ?? "",
+        kind: element.dataset.kind ?? "",
+        repo: element.dataset.repo ?? "",
+        status: element.dataset.status ?? "",
+        isItem: element.matches("details.item"),
+        isTarget: element === this.#target,
+        text: term ? this.#textOf(element) : "",
+      },
+    }));
+  }
+
   #bindEvents(): void {
     for (const button of this.#buttons)
       button.addEventListener("click", () => {
@@ -270,33 +286,29 @@ export class FiltersController {
 
   apply(picked = false): void {
     const filters = this.#activeFilters();
-    const rows = [...this.#doc.querySelectorAll<HTMLElement>("[data-row]")];
-    const inspect = (row: HTMLElement): RowFilterInfo => ({
-      ...rowIdentityOf(row, this.#target),
-      kind: row.dataset.kind ?? "",
-      text: filters.term ? this.#textOf(row) : "",
-    });
-    const matches = (row: HTMLElement, person: string | null) =>
-      matchesPerson(rowIdentityOf(row, this.#target), person, filters.hiddenRepos);
-    const mine = (row: HTMLElement) => matches(row, filters.person);
-    const misses = filterRows(rows, filters, inspect);
+    const bound = this.#readRows(filters.term);
+    const rows = bound.map((entry) => entry.info);
+    const misses = applyRowVisibility(bound, filters);
     updateGroups(this.#doc, filters);
     updateSections(this.#doc, this.#buttons[0] ?? null);
     if ((picked || !this.#arrived) && this.#scope) openDefaultFold(this.#scope);
     this.#arrived = true;
     for (const button of this.#buttons)
       button.setAttribute("aria-pressed", String(button.dataset.whoButton === this.#who));
-    const openRows = [...this.#doc.querySelectorAll<HTMLElement>("details.item[data-status=open]")];
-    updatePersonButtons(this.#buttons, openRows, matches);
-    updateKindButtons(this.#kinds, openRows.filter(mine), filters.kind);
-    const assumed = [...this.#doc.querySelectorAll<HTMLElement>("[data-row][data-status=assumed]")];
-    updateAssumedCount(this.#doc, assumed.filter(mine).length);
-    updateChangedSince(
-      this.#doc,
-      this.#updatedSince,
-      (row) => filters.hiddenRepos.has(row.dataset.repo ?? "") && row !== this.#target,
+    updatePersonButtons(this.#buttons, rows, filters.hiddenRepos);
+    const openMine = rows.filter(
+      (row) =>
+        row.isItem &&
+        row.status === "open" &&
+        matchesPerson(row, filters.person, filters.hiddenRepos),
     );
-    const empty = Boolean(filters.term) && !rows.some((row) => !row.hidden && isElementShown(row));
+    updateKindButtons(this.#kinds, openMine, filters.kind);
+    updateAssumedCount(this.#doc, countAssumedRows(rows, filters));
+    const marked = countChangedItems(this.#doc, filters.hiddenRepos, this.#target);
+    renderChangedSince(this.#doc, changedSinceText(marked, this.#updatedSince));
+    const empty =
+      Boolean(filters.term) &&
+      !bound.some((entry) => !entry.element.hidden && isElementShown(entry.element));
     renderNoHit(this.#doc, empty ? noMatchSentence(filters.term, filters.person, misses) : "");
   }
 

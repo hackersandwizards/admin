@@ -1,17 +1,21 @@
 import {
   buildAnswer,
   describeCopyButton,
-  describeRowMark,
   formatAnswerChoice,
   formatCopyBlock,
   formatCopyLine,
+  isAnswerCopied,
+  isControlChecked,
   isStaleAnswer,
-  pickedKeys,
+  rowMarkText,
+  savedLineText,
   selectAnswersToCopy,
   staleCopyNote,
+  staleNoticeText,
+  type AnswerControl,
+  type AnswerControlKind,
   type AnswerDraft,
   type QuestionSnapshot,
-  type RowMarkView,
   type StoredAnswer,
 } from "./answer-rules.ts";
 import type { AdminStore } from "./storage.ts";
@@ -25,32 +29,16 @@ function optionLabelOf(row: HTMLElement | undefined, key: string): string | unde
     ?.dataset.label;
 }
 
-function renderRowMark(row: HTMLElement, view: RowMarkView): void {
-  const markEl = row.querySelector<HTMLElement>(".mark");
-  if (markEl) {
-    markEl.textContent = view.markText;
-    markEl.classList.toggle("text-error", view.isError);
-  }
-  const reset = row.querySelector<HTMLElement>(".clear");
-  if (reset) reset.hidden = !view.showReset;
-  const saved = row.querySelector<HTMLElement>(".saved");
-  if (saved) saved.textContent = view.savedText;
-  const notice = row.querySelector<HTMLElement>("[data-stale]");
-  if (notice) {
-    notice.hidden = !view.showStaleNotice;
-    notice.textContent = view.staleText;
-  }
-}
-
-function inputShouldBeChecked(
-  input: HTMLInputElement,
-  answer: StoredAnswer | null,
-  stale: boolean,
-): boolean {
-  if (!answer || stale) return false;
-  if ("option" in input.dataset) return pickedKeys(answer).includes(input.value);
-  if ("stance" in input.dataset) return answer.stance === input.value;
-  return Boolean(answer["done" in input.dataset ? "done" : "later"]);
+function controlOf(input: HTMLInputElement): AnswerControl {
+  const kind: AnswerControlKind =
+    "option" in input.dataset
+      ? "option"
+      : "stance" in input.dataset
+        ? "stance"
+        : "done" in input.dataset
+          ? "done"
+          : "later";
+  return { kind, value: input.value };
 }
 
 function readRowDraft(row: HTMLElement, report: HTMLElement | null): AnswerDraft {
@@ -127,22 +115,33 @@ export class AnswersController {
   }
 
   #markRow(row: HTMLElement, answer: StoredAnswer | null): void {
-    const key = row.dataset.k ?? "";
-    const stale = this.#staleFor(key, answer);
-    const currentOptionLabel = answer?.option ? optionLabelOf(row, answer.option) : undefined;
-    renderRowMark(
-      row,
-      describeRowMark(answer, { stale, copiedAt: this.#store.copiedAt(), currentOptionLabel }),
-    );
+    const stale = this.#staleFor(row.dataset.k ?? "", answer);
+    const copiedAt = this.#store.copiedAt();
+    const sent = isAnswerCopied(answer, stale, copiedAt);
+    const currentLabel = answer?.option ? optionLabelOf(row, answer.option) : undefined;
+    const markEl = row.querySelector<HTMLElement>(".mark");
+    if (markEl) {
+      markEl.textContent = rowMarkText(answer, stale, currentLabel) + (sent ? " · copied" : "");
+      markEl.classList.toggle("text-error", stale);
+    }
+    const reset = row.querySelector<HTMLElement>(".clear");
+    if (reset) reset.hidden = !answer;
+    const saved = row.querySelector<HTMLElement>(".saved");
+    if (saved) saved.textContent = savedLineText(answer, copiedAt, sent);
+    const notice = row.querySelector<HTMLElement>("[data-stale]");
+    if (notice) {
+      notice.hidden = !stale;
+      notice.textContent = staleNoticeText(answer, stale);
+    }
   }
 
   #loadRow(row: HTMLElement): void {
     const answer = this.#readAnswer(row.dataset.k ?? "");
     const stale = this.#staleFor(row.dataset.k ?? "", answer);
     for (const input of row.querySelectorAll<HTMLInputElement>(ANSWER_INPUTS))
-      input.checked = inputShouldBeChecked(input, answer, stale);
+      input.checked = isControlChecked(controlOf(input), answer, stale);
     const textarea = row.querySelector<HTMLTextAreaElement>("textarea");
-    if (textarea) textarea.value = typeof answer?.note === "string" ? answer.note : "";
+    if (textarea) textarea.value = String(answer?.note || "");
     this.#markRow(row, answer);
   }
 

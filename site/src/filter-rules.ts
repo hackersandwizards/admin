@@ -15,6 +15,11 @@ export interface RowFilterInfo {
   readonly text: string;
 }
 
+export interface PageRow extends RowFilterInfo {
+  readonly status: string;
+  readonly isItem: boolean;
+}
+
 export interface ActiveFilters {
   readonly person: string | null;
   readonly kind: string;
@@ -71,17 +76,39 @@ export function matchesPerson(
   return !isRowAway(row, hiddenRepos) && (person === null || !row.who || row.who === person);
 }
 
-export function matchesSearchAndKind(row: RowFilterInfo, filters: ActiveFilters): boolean {
-  const hit = !filters.term || row.text.includes(filters.term);
-  const ofKind = filters.kind === "all" || !row.kind || row.kind === filters.kind;
-  return hit && ofKind;
+export function matchesSearch(row: Pick<RowFilterInfo, "text">, term: string): boolean {
+  return !term || row.text.includes(term);
+}
+
+export function matchesKind(row: Pick<RowFilterInfo, "kind">, kind: string): boolean {
+  return kind === "all" || !row.kind || row.kind === kind;
 }
 
 export function classifyRow(row: RowFilterInfo, filters: ActiveFilters): RowMatchOutcome {
-  if (!matchesSearchAndKind(row, filters)) return "hidden";
+  if (!matchesSearch(row, filters.term) || !matchesKind(row, filters.kind)) return "hidden";
   if (matchesPerson(row, filters.person, filters.hiddenRepos)) return "shown";
   if (!filters.term) return "hidden";
   return isRowAway(row, filters.hiddenRepos) ? "unseen" : "elsewhere";
+}
+
+export function countOpenForPerson(
+  rows: readonly PageRow[],
+  person: string | null,
+  hiddenRepos: ReadonlySet<string>,
+): number {
+  return rows.filter(
+    (row) => row.isItem && row.status === "open" && matchesPerson(row, person, hiddenRepos),
+  ).length;
+}
+
+export function countOpenOfKind(openMineRows: readonly PageRow[], kind: string): number {
+  return openMineRows.filter((row) => kind === "all" || row.kind === kind).length;
+}
+
+export function countAssumedRows(rows: readonly PageRow[], filters: ActiveFilters): number {
+  return rows.filter(
+    (row) => row.status === "assumed" && matchesPerson(row, filters.person, filters.hiddenRepos),
+  ).length;
 }
 
 export function assumptionsText(count: number): string {

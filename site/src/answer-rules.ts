@@ -4,10 +4,10 @@ export interface StoredAnswer {
   readonly later?: boolean;
   readonly stance?: string;
   readonly option?: string;
-  readonly label?: string | null | readonly (string | null | undefined)[];
+  readonly label?: unknown;
   readonly asked?: string;
   readonly done?: boolean;
-  readonly note?: unknown;
+  readonly note?: string;
   readonly at: string;
   readonly report?: string;
   readonly version?: string;
@@ -19,19 +19,11 @@ export interface QuestionSnapshot {
   readonly currentOptionLabel?: string;
 }
 
-export interface RowMarkContext {
-  readonly stale: boolean;
-  readonly copiedAt: string;
-  readonly currentOptionLabel?: string;
-}
+export type AnswerControlKind = "option" | "stance" | "done" | "later";
 
-export interface RowMarkView {
-  readonly markText: string;
-  readonly isError: boolean;
-  readonly showReset: boolean;
-  readonly savedText: string;
-  readonly showStaleNotice: boolean;
-  readonly staleText: string;
+export interface AnswerControl {
+  readonly kind: AnswerControlKind;
+  readonly value: string;
 }
 
 export interface AnswerDraft {
@@ -69,9 +61,8 @@ export function pickedKeys(answer: StoredAnswer | null): string[] {
 }
 
 // The labels as answered, one per pick: a single text in an answer stored before v1.24.0.
-export function answerLabels(answer: StoredAnswer): (string | null | undefined)[] {
-  if (answer.label == null) return [];
-  return typeof answer.label === "string" ? [answer.label] : [...answer.label];
+export function answerLabels(answer: StoredAnswer): unknown[] {
+  return [answer.label ?? []].flat();
 }
 
 // An answer given before its item's question or options changed: by the question it stored, or,
@@ -88,6 +79,17 @@ export function isStaleAnswer(
     typeof answer.label === "string" &&
     question.currentOptionLabel !== answer.label
   );
+}
+
+export function isControlChecked(
+  control: AnswerControl,
+  answer: StoredAnswer | null,
+  stale: boolean,
+): boolean {
+  if (!answer || stale) return false;
+  if (control.kind === "option") return pickedKeys(answer).includes(control.value);
+  if (control.kind === "stance") return answer.stance === control.value;
+  return Boolean(answer[control.kind]);
 }
 
 export function optionSummary(answer: StoredAnswer, currentOptionLabel?: string): string {
@@ -110,8 +112,7 @@ export function answerSummary(answer: StoredAnswer, currentOptionLabel?: string)
 export function staleAnswerDetail(answer: StoredAnswer): string {
   if (answer.option) {
     const quoted = answerLabels(answer)
-      .filter((name): name is string => typeof name === "string" && Boolean(name))
-      .map((name) => `“${name}”`)
+      .map((name) => `“${String(name)}”`)
       .join(", ");
     return `You picked ${quoted || answer.option}`;
   }
@@ -126,35 +127,40 @@ export function rowMarkMode(answer: StoredAnswer, stale: boolean): "later" | "st
   return "current";
 }
 
-export function describeRowMark(answer: StoredAnswer | null, ctx: RowMarkContext): RowMarkView {
-  if (!answer)
-    return {
-      markText: "",
-      isError: false,
-      showReset: false,
-      savedText: "",
-      showStaleNotice: false,
-      staleText: "",
-    };
-  const sent = !ctx.stale && !answer.later && answer.at <= ctx.copiedAt;
+export function isAnswerCopied(
+  answer: StoredAnswer | null,
+  stale: boolean,
+  copiedAt: string,
+): boolean {
+  return Boolean(answer) && !stale && !answer!.later && answer!.at <= copiedAt;
+}
+
+export function rowMarkText(
+  answer: StoredAnswer | null,
+  stale: boolean,
+  currentOptionLabel?: string,
+): string {
+  if (!answer) return "";
   const markByMode = {
     later: () => "later",
     stale: () => "! answered before the question changed",
-    current: () => `✓ ${answerSummary(answer, ctx.currentOptionLabel)}`,
+    current: () => `✓ ${answerSummary(answer, currentOptionLabel)}`,
   };
-  const markText = markByMode[rowMarkMode(answer, ctx.stale)]() + (sent ? " · copied" : "");
-  const copiedPart = sent ? `, copied ${clockTime(ctx.copiedAt)}` : "";
-  const staleText = ctx.stale
-    ? `${staleAnswerDetail(answer)} on ${shortDateTime(answer.at)}. The question or its options changed since: read them again and answer again.`
-    : "";
-  return {
-    markText,
-    isError: ctx.stale,
-    showReset: true,
-    savedText: `saved ${clockTime(answer.at)}${copiedPart}`,
-    showStaleNotice: ctx.stale,
-    staleText,
-  };
+  return markByMode[rowMarkMode(answer, stale)]();
+}
+
+export function savedLineText(
+  answer: StoredAnswer | null,
+  copiedAt: string,
+  sent: boolean,
+): string {
+  if (!answer) return "";
+  return `saved ${clockTime(answer.at)}${sent ? `, copied ${clockTime(copiedAt)}` : ""}`;
+}
+
+export function staleNoticeText(answer: StoredAnswer | null, stale: boolean): string {
+  if (!answer || !stale) return "";
+  return `${staleAnswerDetail(answer)} on ${shortDateTime(answer.at)}. The question or its options changed since: read them again and answer again.`;
 }
 
 export function buildAnswer(draft: AnswerDraft, nowIso: string): StoredAnswer | null {
@@ -242,14 +248,17 @@ export function formatAnswerChoice(
   return pickedKeys(answer)
     .map((key, index) => {
       const name = names[index] ?? lookupLabel(key);
-      return name ? `${key} (${name})` : key;
+      return name ? `${key} (${String(name)})` : key;
     })
     .join(", ");
 }
 
 export function formatCopyLine(key: string, answer: StoredAnswer, choice: string): string {
-  const note = typeof answer.note === "string" ? answer.note.replace(/\s+/g, " ") : "";
-  const said = [answer.stance, choice || (answer.done ? "done" : ""), note];
+  const said = [
+    answer.stance,
+    choice || (answer.done ? "done" : ""),
+    (answer.note || "").replace(/\s+/g, " "),
+  ];
   return `${key}: ${said.filter(Boolean).join(", ")}`;
 }
 
