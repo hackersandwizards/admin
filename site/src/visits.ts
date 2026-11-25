@@ -155,7 +155,8 @@ export function recordVisit(
   if (!before) return empty;
   let updatedSince = 0;
   const changes = page.rows.map((row) => {
-    const previous = typeof before[row.key] === "string" ? before[row.key] : "";
+    const raw = before[row.key];
+    const previous = typeof raw === "string" ? raw : "";
     const result = rowChangeNotice(row, previous, since);
     if (result.changed) updatedSince = since;
     versions[row.key] = `${row.version} ${row.asked}`;
