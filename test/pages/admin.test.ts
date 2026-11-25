@@ -1090,7 +1090,9 @@ describe("admin.js", () => {
     ["a numeric stored note loads as written", 42, "42"],
   ])("%s", (_label, note, expected) => {
     const page = open("spoke/decisions", {
+      "admin-answers:seen": String(Date.now()),
       "admin-answers:spoke:check-the-copy": JSON.stringify({
+        later: true,
         note,
         at: "2026-01-01T12:00:00.000Z",
       }),
