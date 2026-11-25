@@ -476,15 +476,20 @@ describe("readRepoConfig", () => {
     }).toEqual(expected);
   });
 
-  test("combines package metadata and standalone admin.json", () => {
+  test("combines package metadata and standalone admin.json into finished config", () => {
     const files: Record<string, string> = {
-      "docs/agent-work/admin.json": JSON.stringify({ label: "Sample repo" }),
+      "docs/agent-work/admin.json": JSON.stringify({
+        label: "Sample repo",
+        products: [{ label: "Docs", href: "docs/index.html" }],
+        links: [{ label: "Home", href: "https://example.invalid/" }],
+      }),
       "package.json": JSON.stringify({
         name: "sample",
         version: "1.2.3",
         scripts: { check: "lint && test" },
         dependencies: { a: "1.0.0" },
         devDependencies: { b: "2.0.0" },
+        bin: "./cli.ts",
       }),
     };
     const config = readRepoConfig("/r/sample", {
@@ -492,26 +497,20 @@ describe("readRepoConfig", () => {
       read: (p) => files[p],
     });
     expect(config).toEqual({
+      key: "sample",
+      label: "Sample repo",
       pkg: {
-        name: "sample",
-        version: "1.2.3",
-        scripts: { check: "lint && test" },
-        dependencies: { a: "1.0.0" },
-        devDependencies: { b: "2.0.0" },
-      },
-      pkgFields: {
         name: "sample",
         version: "1.2.3",
         dependencies: { a: "1.0.0", b: "2.0.0" },
         scripts: { check: "lint && test" },
+        bin: { sample: "./cli.ts" },
       },
-      admin: { label: "Sample repo" },
-      from: "docs/agent-work/admin.json: ",
-      key: "sample",
-      label: "Sample repo",
-      scripts: { check: "lint && test" },
       designSystem: undefined,
       designSystemDev: undefined,
+      products: [{ label: "Docs", href: "file:///r/sample/docs/index.html" }],
+      links: [{ label: "Home", href: "https://example.invalid/" }],
+      checkSteps: ["lint", "test"],
       defects: [],
     });
   });

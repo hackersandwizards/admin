@@ -146,11 +146,15 @@ export function sanitizeMarkup(html: string): string {
     .transform(html);
 }
 
+const MERMAID_BLOCK = /<pre><code class="language-mermaid">([^<]*)<\/code><\/pre>/;
+const MERMAID_BLOCKS = new RegExp(MERMAID_BLOCK.source, "g");
+
+export const hasMermaidBlock = (html: string) => MERMAID_BLOCK.test(html);
+
 export function renderMermaidBlocks(html: string, documentId: string): string {
   let index = 0;
-  return html.replace(
-    /<pre><code class="language-mermaid">([^<]*)<\/code><\/pre>/g,
-    (_, source: string) => diagram(source, `mermaid-${documentId}-${++index}-`),
+  return html.replace(MERMAID_BLOCKS, (_, source: string) =>
+    diagram(source, `mermaid-${documentId}-${++index}-`),
   );
 }
 
@@ -189,7 +193,7 @@ export function finishRenderedHtml(rendered: string, dir: string, documentId: st
 
 export function renderDocMarkdown(repo: string, path: string, text: string): string {
   const rendered = Bun.markdown.html(stripFrontmatter(text), { headings: { ids: true } });
-  const documentId = rendered.includes('class="language-mermaid"')
+  const documentId = hasMermaidBlock(rendered)
     ? Bun.hash(JSON.stringify([repo, path, text])).toString(36)
     : "";
   return finishRenderedHtml(rendered, join(repo, path, ".."), documentId);
@@ -199,7 +203,7 @@ export function renderDocMarkdown(repo: string, path: string, text: string): str
 // and an address in angle brackets is linked by the pages.
 export function renderItemMarkdown(repo: string, path: string, text: string): string {
   const rendered = Bun.markdown.html(text, { noHtmlSpans: true, noHtmlBlocks: true });
-  const documentId = rendered.includes('class="language-mermaid"')
+  const documentId = hasMermaidBlock(rendered)
     ? Bun.hash(JSON.stringify([repo, path, text])).toString(36)
     : "";
   return finishRenderedHtml(rendered, join(repo, path, ".."), documentId);

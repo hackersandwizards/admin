@@ -6,10 +6,7 @@ import { extractTitle, renderDocMarkdown } from "./markdown.ts";
 import {
   ADMIN_FILE,
   ASTRO_CONFIG,
-  readCheckSteps,
-  readPackageBin,
   readRepoConfig,
-  resolveLinkedEntries,
   type Link,
   type Product,
 } from "./repo-config.ts";
@@ -201,9 +198,6 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
   const reported = new Set(reports.map((r) => r.path));
   const docs = readDocs(repo, src, reported);
   const scripts = readScriptFiles(src);
-  const bin = readPackageBin(config.pkg);
-  const products = resolveLinkedEntries(repo, config.admin.products, `${config.from}products`);
-  const links = resolveLinkedEntries(repo, config.admin.links, `${config.from}links`);
   const agents = readAgentNames(src);
   return {
     key: config.key,
@@ -213,24 +207,18 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     behind: gitMeta.behind,
     fetched: gitMeta.fetched,
     items: withChange,
-    defects: [
-      ...itemDefects,
-      ...config.defects,
-      ...bin.defects,
-      ...products.defects,
-      ...links.defects,
-    ],
+    defects: [...itemDefects, ...config.defects],
     reports,
     reviews: readReviews(src.paths, reported),
     docs,
     workFiles: src.paths.filter((p) => p.startsWith(`${WORK_DIR}/`)),
-    pkg: { ...config.pkgFields, bin: bin.value },
+    pkg: config.pkg,
     designSystem: config.designSystem,
     designSystemDev: config.designSystemDev,
-    products: products.entries,
-    links: links.entries,
+    products: config.products,
+    links: config.links,
     agents,
-    checkSteps: readCheckSteps(config.scripts),
+    checkSteps: config.checkSteps,
     scripts,
     trackingLog: gitMeta.trackingLog,
     log: gitMeta.log,

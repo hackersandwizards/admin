@@ -239,21 +239,24 @@ export function readRepoConfig(repo: string, src: Source) {
   const dev = findAstrobookDev(src, scripts.value);
   const dsHref = resolveDesignSystemHref(repo, admin.designSystem, from);
   const { designSystem, designSystemDev } = selectDesignSystem(dsHref.href, dev);
+  const bin = readPackageBin(pkg);
+  const products = resolveLinkedEntries(repo, admin.products, `${from}products`);
+  const links = resolveLinkedEntries(repo, admin.links, `${from}links`);
   return {
-    pkg,
-    pkgFields: {
+    key: key.key,
+    label: label.label,
+    pkg: {
       name: typeof pkg.name === "string" ? pkg.name : undefined,
       version: typeof pkg.version === "string" ? pkg.version : undefined,
       dependencies: { ...deps.value, ...devDeps.value },
       scripts: scripts.value,
+      bin: bin.value,
     },
-    admin,
-    from,
-    key: key.key,
-    label: label.label,
-    scripts: scripts.value,
     designSystem,
     designSystemDev,
+    products: products.entries,
+    links: links.entries,
+    checkSteps: readCheckSteps(scripts.value),
     defects: [
       ...pkgDefects,
       ...adminDefects,
@@ -263,6 +266,9 @@ export function readRepoConfig(repo: string, src: Source) {
       ...deps.defects,
       ...devDeps.defects,
       ...dsHref.defects,
+      ...bin.defects,
+      ...products.defects,
+      ...links.defects,
     ],
   };
 }

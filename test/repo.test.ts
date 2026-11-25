@@ -1,6 +1,9 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { rejection } from "@hackersandwizards/scaffolding/rejection";
 import type { Item } from "../src/items.ts";
+import { commit, scratch, sh } from "./admin-fixtures.ts";
 import {
   agentDescription,
   attachItemChanges,
@@ -218,6 +221,51 @@ describe("readRepo evaluation and key order", () => {
     ]);
     expect(Object.keys(repo.docs[0]!)).toEqual(["path", "title", "titleId", "html"]);
     expect(Object.keys(repo.docs[1]!)).toEqual(["path", "title", "html"]);
+  });
+
+  test("preserves Item, Review, ScriptFile, and Commit property order", async () => {
+    const dir = scratch();
+    sh(dir, "git", "init", "-q", "-b", "main");
+    mkdirSync(join(dir, "docs/agent-work/items"), { recursive: true });
+    mkdirSync(join(dir, "docs/agent-work/2026-01-15-shot"), { recursive: true });
+    mkdirSync(join(dir, "scripts"), { recursive: true });
+    writeFileSync(
+      join(dir, "docs/agent-work/items/goal.md"),
+      "---\nkind: goal\nstatus: open\n---\n# Goal\n\nBody\n",
+    );
+    writeFileSync(join(dir, "docs/agent-work/2026-01-15-shot/a.png"), "");
+    writeFileSync(join(dir, "scripts/run.ts"), "// Runs\n");
+    sh(dir, "git", "add", "docs", "scripts");
+    commit(dir, "initial");
+
+    const repo = await readRepo(dir);
+    expect(Object.keys(repo.items[0]!)).toEqual([
+      "kind",
+      "status",
+      "id",
+      "title",
+      "body",
+      "area",
+      "owner",
+      "assumption",
+      "decision",
+      "by",
+      "quote",
+      "evidence",
+      "priority",
+      "order",
+      "due",
+      "topic",
+      "needs",
+      "recommended",
+      "options",
+      "images",
+      "changed",
+      "version",
+    ]);
+    expect(Object.keys(repo.reviews[0]!)).toEqual(["dir", "images", "report"]);
+    expect(Object.keys(repo.scripts[0]!)).toEqual(["path", "comment"]);
+    expect(Object.keys(repo.log[0]!)).toEqual(["hash", "time", "subject"]);
   });
 });
 

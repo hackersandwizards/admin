@@ -3,6 +3,7 @@ import {
   decodeLinkPath,
   extractTitle,
   finishRenderedHtml,
+  hasMermaidBlock,
   isUnsafeLink,
   renderDocMarkdown,
   renderItemMarkdown,
@@ -93,6 +94,11 @@ describe("withElements", () => {
       '<ul>\n<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>Pay $1 and $&</li></ul>',
       '<ul>\n<li class="task-list-item"><label><input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly disabled>Pay $1 and $&</label></li></ul>',
     ],
+    [
+      "bare pre code stays distinct from inline code",
+      "<pre><code>block</code></pre><p><code>inline</code></p>",
+      '<pre class="hw-code not-prose"><code>block</code></pre><p><code class="hw-inline-code">inline</code></p>',
+    ],
   ])("formats %s", (_label, html, expected) => {
     expect(withElements(html)).toBe(expected);
   });
@@ -169,6 +175,16 @@ describe("sanitizeMarkup", () => {
   });
 });
 
+describe("hasMermaidBlock", () => {
+  test.each([
+    ["mermaid fence block", '<pre><code class="language-mermaid">flowchart LR</code></pre>', true],
+    ["raw html element carrying the class", '<span class="language-mermaid">note</span>', false],
+    ["non-mermaid fenced block", '<pre><code class="language-ts">const x = 1;</code></pre>', false],
+  ])("detects %s", (_label, html, expected) => {
+    expect(hasMermaidBlock(html)).toBe(expected);
+  });
+});
+
 describe("renderMermaidBlocks", () => {
   test("renders mermaid fences with distinct per-block prefixes and leaves other code alone", () => {
     const html =
@@ -223,17 +239,31 @@ describe("rewriteRelativeUrls", () => {
 });
 
 describe("finishRenderedHtml", () => {
-  test("sanitizes before rendering diagrams, styles before stripping unsafe links, and strips unsafe links before rewriting relative URLs", () => {
-    const rendered =
-      '<h2 id="copy" data-x="1">Copy</h2>\n' +
-      '<p><a href="javascript&colon;x">drop</a> <a href="guide.md">keep</a></p>\n' +
-      '<pre><code data-x="1" class="language-mermaid">pie bad</code></pre>';
-    expect(finishRenderedHtml(rendered, "/r/docs", "doc1")).toBe(
-      '<h2 id="section-copy">Copy</h2>\n' +
-        '<p>drop <a class="hw-link" href="file:///r/docs/guide.md">keep</a></p>\n' +
-        '<pre class="hw-code not-prose"><code class="language-mermaid">pie bad</code></pre>' +
+  test.each([
+    [
+      "sanitizeMarkup runs before renderMermaidBlocks",
+      '<pre><code data-x="1" class="language-mermaid">pie bad</code></pre>',
+      '<pre class="hw-code not-prose"><code class="language-mermaid">pie bad</code></pre>' +
         "<p>This diagram did not render: Invalid mermaid header: &quot;pie bad&quot;. Expected &quot;graph TD&quot;, &quot;flowchart LR&quot;, &quot;stateDiagram-v2&quot;, etc.</p>",
-    );
+    ],
+    [
+      "renderMermaidBlocks runs before withElements",
+      '<pre><code class="language-mermaid">pie bad</code></pre>',
+      '<pre class="hw-code not-prose"><code class="language-mermaid">pie bad</code></pre>' +
+        "<p>This diagram did not render: Invalid mermaid header: &quot;pie bad&quot;. Expected &quot;graph TD&quot;, &quot;flowchart LR&quot;, &quot;stateDiagram-v2&quot;, etc.</p>",
+    ],
+    [
+      "withElements runs before stripUnsafeLinks",
+      '<pre><a href="javascript:x"><code>x</code></a></pre>',
+      '<pre class="hw-code not-prose"><code class="hw-inline-code">x</code></pre>',
+    ],
+    [
+      "stripUnsafeLinks runs before rewriteRelativeUrls",
+      '<p><a href="guide.md">keep</a></p>',
+      '<p><a class="hw-link" href="file:///r/docs/guide.md">keep</a></p>',
+    ],
+  ])("%s", (_label, rendered, expected) => {
+    expect(finishRenderedHtml(rendered, "/r/docs", "doc1")).toBe(expected);
   });
 });
 
@@ -254,12 +284,16 @@ describe("renderDocMarkdown and renderItemMarkdown", () => {
     expect(html).toContain("&lt;tag&gt;");
   });
 
-  test("does not serialize the source when Markdown contains no Mermaid block", () => {
+  test("does not serialize the source when Markdown has no Mermaid block even with matching raw HTML class", () => {
     const stringify = vi.spyOn(JSON, "stringify");
     try {
-      expect(renderDocMarkdown("/r", "docs/a.md", "# Plain\n\nBody.\n")).toBe(
-        '<h1 id="plain">Plain</h1>\n<p>Body.</p>\n',
-      );
+      expect(
+        renderDocMarkdown(
+          "/r",
+          "docs/a.md",
+          '# Plain\n\n<span class="language-mermaid">x</span>\n',
+        ),
+      ).toBe('<h1 id="plain">Plain</h1>\n<p><span class="language-mermaid">x</span></p>\n');
       expect(renderItemMarkdown("/r", "docs/agent-work/items/a.md", "Plain body.\n")).toBe(
         "<p>Plain body.</p>\n",
       );

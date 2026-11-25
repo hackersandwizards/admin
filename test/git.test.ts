@@ -18,6 +18,18 @@ import {
 import { wantsRepoFile } from "../src/repo.ts";
 import { commit, scratch, sh } from "./admin-fixtures.ts";
 
+const commitAt = (repo: string, iso: string, message: string) => {
+  const r = Bun.spawnSync(
+    ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", message],
+    {
+      cwd: repo,
+      stderr: "pipe",
+      env: { ...gitEnv, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso },
+    },
+  );
+  if (r.exitCode !== 0) throw new Error(`git commit: ${r.stderr.toString()}`);
+};
+
 describe("cleanGitEnv", () => {
   test("strips every GIT_ environment variable while keeping other keys", () => {
     expect(
@@ -27,16 +39,22 @@ describe("cleanGitEnv", () => {
 });
 
 describe("parseTreeBlobs", () => {
-  test("parses blobs and paths with newlines while skipping submodules", () => {
-    const input = Buffer.from(
-      "100644 blob aaa111\tdocs/line\nbreak.md\0" +
-        "160000 commit bbb222\tdocs/sub.md\0" +
-        "100755 blob ccc333\tscripts/run.sh\0",
-    );
-    expect(parseTreeBlobs(input)).toEqual([
-      { path: "docs/line\nbreak.md", oid: "aaa111" },
-      { path: "scripts/run.sh", oid: "ccc333" },
-    ]);
+  test.each([
+    ["empty tree", Buffer.alloc(0), []],
+    [
+      "blobs and paths with newlines while skipping submodules",
+      Buffer.from(
+        "100644 blob aaa111\tdocs/line\nbreak.md\0" +
+          "160000 commit bbb222\tdocs/sub.md\0" +
+          "100755 blob ccc333\tscripts/run.sh\0",
+      ),
+      [
+        { path: "docs/line\nbreak.md", oid: "aaa111" },
+        { path: "scripts/run.sh", oid: "ccc333" },
+      ],
+    ],
+  ])("parses %s", (_label, input, expected) => {
+    expect(parseTreeBlobs(input)).toEqual(expected);
   });
 });
 
@@ -113,26 +131,12 @@ describe("git commands and sources", () => {
     const repo = scratch();
     sh(repo, "git", "init", "-q", "-b", "main");
     mkdirSync(join(repo, "docs"));
-    const commitAt = (iso: string, file: string, message: string) => {
-      writeFileSync(join(repo, file), `# ${file}\n`);
-      sh(repo, "git", "add", file);
-      const r = Bun.spawnSync(
-        [
-          "git",
-          "-c",
-          "user.name=t",
-          "-c",
-          "user.email=t@example.invalid",
-          "commit",
-          "-qm",
-          message,
-        ],
-        { cwd: repo, env: { ...gitEnv, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso } },
-      );
-      expect(r.exitCode).toBe(0);
-    };
-    commitAt("2026-01-14T10:00:00Z", "docs/a.md", "First\tnote");
-    commitAt("2026-01-14T11:00:00Z", "README.md", "Second");
+    writeFileSync(join(repo, "docs/a.md"), "# docs/a.md\n");
+    sh(repo, "git", "add", "docs/a.md");
+    commitAt(repo, "2026-01-14T10:00:00Z", "First\tnote");
+    writeFileSync(join(repo, "README.md"), "# README.md\n");
+    sh(repo, "git", "add", "README.md");
+    commitAt(repo, "2026-01-14T11:00:00Z", "Second");
     const secondHash = git(repo, "rev-parse", "--short", "HEAD").trim();
     const firstHash = git(repo, "rev-parse", "--short", "HEAD~1").trim();
 
@@ -151,27 +155,23 @@ describe("git commands and sources", () => {
     mkdirSync(join(repo, "docs/agent-work"), { recursive: true });
     writeFileSync(join(repo, "docs/agent-work/note.md"), "# Note\n");
     sh(repo, "git", "add", "docs");
-    const r = Bun.spawnSync(
-      ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "Track"],
-      {
-        cwd: repo,
-        env: {
-          ...gitEnv,
-          GIT_AUTHOR_DATE: "2026-01-14T10:00:00Z",
-          GIT_COMMITTER_DATE: "2026-01-14T10:00:00Z",
-        },
-      },
-    );
-    expect(r.exitCode).toBe(0);
+    commitAt(repo, "2026-01-14T10:00:00Z", "Track");
+    writeFileSync(join(repo, "README.md"), "# Readme\n");
+    sh(repo, "git", "add", "README.md");
+    commitAt(repo, "2026-01-14T11:00:00Z", "Outside");
     const head = git(repo, "rev-parse", "--short", "HEAD").trim();
+    const trackHash = git(repo, "rev-parse", "--short", "HEAD~1").trim();
 
     const meta = await readGitMetadata(repo, "docs/agent-work");
     expect(meta).toEqual({
       workLog: "@1768384800\0\ndocs/agent-work/note.md\0",
       head,
       behind: undefined,
-      trackingLog: [{ hash: head, time: 1768384800, subject: "Track" }],
-      log: [{ hash: head, time: 1768384800, subject: "Track" }],
+      trackingLog: [{ hash: trackHash, time: 1768384800, subject: "Track" }],
+      log: [
+        { hash: head, time: 1768388400, subject: "Outside" },
+        { hash: trackHash, time: 1768384800, subject: "Track" },
+      ],
       fetched: undefined,
     });
   });
