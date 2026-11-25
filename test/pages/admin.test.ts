@@ -1433,14 +1433,42 @@ describe("admin.js", () => {
           ...stored(stage.page),
           "admin-answers:seen": String(Date.now() - 2 * 36e5),
         });
-        expect(Object.keys(stored(back)).sort()).toEqual([
+        const bookkeeping = new Set([
           "admin-answers:before",
           "admin-answers:seen",
-          "admin-answers:spoke:cache-folder",
-          "admin-answers:spoke:pick-a-variant",
           "admin-answers:versions",
           "admin-answers:visit",
         ]);
+        const answers = Object.fromEntries(
+          Object.entries(stored(back))
+            .filter(([key]) => !bookkeeping.has(key))
+            .map(([key, value]) => {
+              const { at: _at, ...answer } = JSON.parse(value) as Record<string, unknown>;
+              return [key, answer];
+            }),
+        );
+        assert(stage.variant.dataset.asked, "variant row must carry data-asked");
+        assert(stage.cache.dataset.asked, "cache row must carry data-asked");
+        expect(answers).toEqual({
+          "admin-answers:spoke:pick-a-variant": {
+            later: false,
+            stance: "",
+            option: "a",
+            label: ["Variant A"],
+            asked: stage.variant.dataset.asked,
+            done: false,
+            note: "",
+          },
+          "admin-answers:spoke:cache-folder": {
+            later: false,
+            stance: "veto",
+            option: "",
+            label: [],
+            asked: stage.cache.dataset.asked,
+            done: false,
+            note: "keep a line",
+          },
+        });
       });
     });
 
@@ -1452,9 +1480,13 @@ describe("admin.js", () => {
 
       test("keeps earlier answers in the copy while leaving the deferred note out", () => {
         // A note written before a question is put off is its answer on the next visit.
-        const copyText = (stage.page.document.getElementById("copy") as DomElement).dataset.hwCopy;
-        expect(copyText).toContain("spoke:pick-a-variant: a (Variant A)");
-        expect(copyText).not.toContain("check-the-copy");
+        expect((stage.page.document.getElementById("copy") as DomElement).dataset.hwCopy).toBe(
+          [
+            "Answers from the admin pages:",
+            "spoke:pick-a-variant: a (Variant A)",
+            "spoke:cache-folder: veto, keep a line",
+          ].join("\n"),
+        );
       });
 
       test("copies the deferred note on the next visit", () => {
