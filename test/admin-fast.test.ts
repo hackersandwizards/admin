@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { Window, type Element as DomEl, type Node as DomNode } from "happy-dom";
 import { describe, expect, test } from "vitest";
 import { tableScroll as brandTableScroll } from "@hackersandwizards/brand/elements/table.ts";
+import { siteData } from "../src/build.ts";
 import {
   compareItems,
   DUE_SOON_DAYS,
@@ -24,7 +25,7 @@ import {
   when,
 } from "../src/repo.ts";
 import { dueOf, inline, prerequisiteLabels, withLinks } from "../site/src/data.ts";
-import { commit, repoFrom, sh } from "./admin-fixtures.ts";
+import { commit, fromFiles, repoFrom, sh } from "./admin-fixtures.ts";
 
 const FIX = join(import.meta.dirname, "fixtures");
 // Runs a check in another time zone, then restores the process's own, unset included.
@@ -425,6 +426,36 @@ describe("Mermaid in Markdown", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  test("items with the same body have distinct diagram ids", async () => {
+    const body = `---\nkind: work\nstatus: open\npriority: 1\n---\n# Archive samples\n\n${flow}`;
+    const repo = await fromFiles({
+      "docs/agent-work/items/draft.md": body,
+      "docs/agent-work/items/archive.md": body,
+    });
+    const ids = siteData([repo]).repos[0]!.items.map(
+      ({ html }) => html.match(/<svg id="([^"]+)"/)?.[1],
+    );
+    expect(ids).toEqual([expect.any(String), expect.any(String)]);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  test("an item links paths and URLs in prose and leaves SVG labels as text", async () => {
+    const path = "docs/agent-work/guide.md";
+    const url = "https://example.invalid/guide";
+    const body = `${path}\n\n${url}\n\n${fence(`flowchart LR\n  a["${path}"] --> b["${url}"]`)}`;
+    const repo = await fromFiles({
+      [path]: "# Guide",
+      "docs/agent-work/items/archive.md": `---\nkind: work\nstatus: open\npriority: 1\n---\n# Archive samples\n\n${body}`,
+    });
+    const html = withLinks(siteData([repo]).repos[0]!.items[0]!.html);
+    const svg = html.match(/<svg\b[\s\S]*?<\/svg>/)?.[0];
+    expect(svg).toContain(`>${path}</text>`);
+    expect(svg).toContain(`>${url}</text>`);
+    expect(svg).not.toContain("<a ");
+    expect(html).toContain(`href="file:///nonexistent/x/${path}">${path}</a>`);
+    expect(html).toContain(`href="${url}">${url}</a>`);
+  });
+
   test("drops flowchart styling and directives", () => {
     const html = render(
       fence(
@@ -436,6 +467,7 @@ describe("Mermaid in Markdown", () => {
           "a --> b",
           "classDef tinted fill:#ff00ff",
           "class a tinted",
+          "class b tinted;",
           "style b fill:#00ffff",
           "linkStyle 0 stroke:#ff0000",
           "&#115;tyle a fill:#00ff00",
@@ -444,6 +476,7 @@ describe("Mermaid in Markdown", () => {
     );
     expect(html).toContain("<svg");
     expect(html).not.toMatch(/forest|#ff00ff|#00ffff|#ff0000|#00ff00/);
+    expect(html).not.toContain('data-id="class"');
   });
 
   test("keeps declarations in a class diagram", () => {
@@ -471,6 +504,7 @@ describe("Mermaid in Markdown", () => {
     );
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toMatch(/<script|<a\b|href=|\son\w+=|callback|example\.invalid/);
+    expect(html).not.toContain('data-id="click"');
   });
 });
 
@@ -567,6 +601,12 @@ describe("admin-check", () => {
     expect(wrapped).toContain("</strong></a> end</label>");
     const fence = renderMarkdown("/r", "docs/a.md", "- [ ] run\n  ```\n  x\n  ```\n");
     expect(fence).toContain(`<label>${box} disabled>run</label>\n<pre`);
+    const mermaid = renderMarkdown(
+      "/r",
+      "docs/a.md",
+      "- [ ] check diagram\n  ```mermaid\n  flowchart LR\n    a --> b\n  ```\n",
+    );
+    expect(mermaid).toContain(`<label>${box} disabled>check diagram</label>\n<figure`);
   });
 });
 

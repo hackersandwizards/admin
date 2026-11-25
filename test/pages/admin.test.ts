@@ -480,8 +480,12 @@ describe("pages", () => {
     "Mermaid fits its labels, follows the page theme, and causes no CSP violations",
     async () => {
       const repo = await readRepo(repoFrom("spoke"));
+      const classes = await fromFiles({
+        "docs/classes.md":
+          "# Sample classes\n\n```mermaid\nclassDiagram\n  class Sample {\n    +archive()\n  }\n```",
+      });
       const out = join(scratch(), "out");
-      await buildSite(siteData([repo]), out);
+      await buildSite(siteData([repo, classes]), out);
       const executablePath = await chromeBinaryAsync();
       if (!executablePath) throw new Error(INSTALL_HINT);
       const browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
@@ -548,6 +552,21 @@ describe("pages", () => {
         expect(
           await page.$eval('[id="spoke:work-wire-the-gate"] > summary', (row) => row.textContent),
         ).toContain("Waiting on check-the-copy, goal, pick-a-variant");
+        expect(violations).toEqual([]);
+        await page.goto(`file://${out}/x/doc/docs/classes.html`);
+        const [member, mono, sans] = await page.$eval(".admin-diagram text.mono", (label) => {
+          const reference = document.createElement("span");
+          reference.style.fontFamily = "var(--font-mono)";
+          label.closest("figure")!.append(reference);
+          const title = label.closest("svg")!.querySelector("text:not(.mono)")!;
+          return [
+            getComputedStyle(label).fontFamily,
+            getComputedStyle(reference).fontFamily,
+            getComputedStyle(title).fontFamily,
+          ];
+        });
+        expect(member).toBe(mono);
+        expect(member).not.toBe(sans);
         expect(violations).toEqual([]);
       } finally {
         await browser.close();

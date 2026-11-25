@@ -10,8 +10,7 @@ import { peerDependencies } from "../package.json";
 import { stylesheet } from "../src/build.ts";
 import { createHub } from "../src/serve.ts";
 
-// Stop with what to pin on a peer missing or outside its range: bun does not check a Git pin's
-// range, and every peer is optional.
+// Bun does not check a Git pin's range.
 const missing = Object.entries(peerDependencies).filter(([p, range]) => {
   try {
     const manifest: unknown = createRequire(import.meta.url)(`${p}/package.json`);
@@ -22,8 +21,13 @@ const missing = Object.entries(peerDependencies).filter(([p, range]) => {
       typeof manifest.version === "string" &&
       Bun.semver.satisfies(manifest.version, range)
     );
-  } catch {
-    return true;
+  } catch (error) {
+    return !(
+      p === "beautiful-mermaid" &&
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "MODULE_NOT_FOUND"
+    );
   }
 });
 if (missing.length) {

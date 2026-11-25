@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, join, resolve } from "node:path";
@@ -234,7 +233,7 @@ export const withElements = (html: string) =>
     .replace(/<a href=/g, '<a class="hw-link" href=')
     .replace(/<ul>(?!\s*<li class="task-list-item")/g, '<ul class="hw-marker-list">')
     .replace(
-      /<input type="checkbox" class="task-list-item-checkbox"([^<>]*)>(\n<p>)?((?:(?!<input)[\s\S])*?)(?=<\/p>|\n<(?:[uo]l|blockquote|pre|table|hr|div|h[1-6]|p)\b|<\/li>|<input)/g,
+      /<input type="checkbox" class="task-list-item-checkbox"([^<>]*)>(\n<p>)?((?:(?!<input)[\s\S])*?)(?=<\/p>|\n<(?:[uo]l|blockquote|pre|table|figure|hr|div|h[1-6]|p)\b|<\/li>|<input)/g,
       (_, attrs: string, p = "", text: string) =>
         `${p}<label><input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly${attrs}>${text}</label>`,
     )
@@ -291,11 +290,8 @@ function diagram(source: string, prefix: string) {
     const svg = renderDiagram(Bun.escapeHTML(body.join("\n")), {
       bg: "var(--background)",
       fg: "var(--foreground)",
-      border: "var(--border)",
       transparent: true,
     })
-      // A custom property cannot refer to itself. The SVG can inherit the page's border directly.
-      .replace(";--border:var(--border)", "")
       .replace(/<style>([\s\S]*?)<\/style>/g, (_, css: string) => {
         const scoped = css
           .replace(/^[ \t]*@import url\([^\n]*fonts\.googleapis\.com[^\n]*\);\n/gm, "")
@@ -375,10 +371,7 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
       .replace(
         /<pre><code class="language-mermaid">([^<]*)<\/code><\/pre>/g,
         (_, source: string) => {
-          documentId ??= createHash("sha256")
-            .update(JSON.stringify([repo, path, text]))
-            .digest("hex")
-            .slice(0, 16);
+          documentId ??= Bun.hash(JSON.stringify([repo, path, text])).toString(36);
           return diagram(source, `mermaid-${documentId}-${++index}-`);
         },
       ),
