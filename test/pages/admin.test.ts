@@ -1310,118 +1310,192 @@ describe("admin.js", () => {
     const second = list.querySelectorAll("input[data-option]")[1] as DomInput;
     second.checked = true;
     list.dispatchEvent(new page.Event("change"));
-    (list.querySelector("[data-option-row]") as DomElement).hidden = true;
+    const search = page.document.getElementById("admin-search") as DomInput;
+    search.value = "Ben Sample";
+    search.dispatchEvent(new page.Event("input"));
+    expect((list.querySelector("[data-option-row]") as DomElement).hidden).toBe(true);
     (list.querySelector(".clear") as DomElement).click();
     expect(page.document.activeElement === second).toBe(true);
   });
 
-  const answerDecisionJourney = () => {
-    const page = open("spoke/decisions", {});
-    const row = (k: string) => page.document.getElementById(k) as unknown as DomElement;
-    const variant = row("spoke:pick-a-variant");
-    (variant.querySelector("summary + div .pick") as DomElement).click();
-    const cache = row("spoke:cache-folder");
-    const veto = cache.querySelector("input[data-stance][value=veto]") as DomInput;
-    veto.checked = true;
-    cache.dispatchEvent(new page.Event("change"));
-    (cache.querySelector("textarea") as unknown as HTMLTextAreaElement).value = "keep a line";
-    cache.querySelector("textarea")!.dispatchEvent(new page.Event("input"));
-    const logo = row("spoke:pick-a-logo");
-    (logo.querySelector(".pick") as DomElement).click();
-    const later = logo.querySelector("input[data-later]") as DomInput;
-    later.checked = true;
-    later.dispatchEvent(new page.Event("change", { bubbles: true }));
-    return { page, variant, cache, logo, later };
-  };
+  describe("answering, vetoing, and deferring on Decisions", () => {
+    const afterPickingRecommendation = () => {
+      const page = open("spoke/decisions", {});
+      const row = (k: string) => page.document.getElementById(k) as unknown as DomElement;
+      const variant = row("spoke:pick-a-variant");
+      (variant.querySelector("summary + div .pick") as DomElement).click();
+      return { page, row, variant };
+    };
 
-  test("after picking a recommendation, vetoing an assumption, and putting a question off, the copy holds only the answers", () => {
-    const { page, variant, cache } = answerDecisionJourney();
-    expect(variant.querySelector(".mark")!.textContent).toBe("✓ Variant A");
-    expect(cache.querySelector(".mark")!.textContent).toBe("✓ veto");
-    const text = (page.document.getElementById("copy") as DomElement).dataset.hwCopy;
-    expect(text).toContain("spoke:pick-a-variant: a (Variant A)");
-    expect(text).toContain("spoke:cache-folder: veto, keep a line");
-    expect(text).not.toContain("pick-a-logo");
-  });
+    const afterVetoingAssumption = () => {
+      const state = afterPickingRecommendation();
+      const cache = state.row("spoke:cache-folder");
+      const veto = cache.querySelector("input[data-stance][value=veto]") as DomInput;
+      veto.checked = true;
+      cache.dispatchEvent(new state.page.Event("change"));
+      (cache.querySelector("textarea") as unknown as HTMLTextAreaElement).value = "keep a line";
+      cache.querySelector("textarea")!.dispatchEvent(new state.page.Event("input"));
+      return { ...state, cache };
+    };
 
-  test("an assumption has no recommendation button and keeps its task list ticks", () => {
-    const page = open("spoke/decisions", {});
-    // An assumption has no recommendation to pick: Agree and Veto answer it.
-    const cache = page.document.getElementById("spoke:cache-folder") as unknown as DomElement;
-    expect(cache.querySelector(".pick")).toBeNull();
-    const veto = cache.querySelector("input[data-stance][value=veto]") as DomInput;
-    veto.checked = true;
-    cache.dispatchEvent(new page.Event("change"));
-    (cache.querySelector("textarea") as unknown as HTMLTextAreaElement).value = "keep a line";
-    cache.querySelector("textarea")!.dispatchEvent(new page.Event("input"));
-    // The item's own task list keeps its ticks.
-    expect(
-      [...cache.querySelectorAll(".task-list-item-checkbox")].map((b) => (b as DomInput).checked),
-    ).toEqual([true, false]);
-  });
+    const afterDeferringLogo = () => {
+      const state = afterVetoingAssumption();
+      const logo = state.row("spoke:pick-a-logo");
+      (logo.querySelector(".pick") as DomElement).click();
+      const later = logo.querySelector("input[data-later]") as DomInput;
+      later.checked = true;
+      later.dispatchEvent(new state.page.Event("change", { bubbles: true }));
+      return { ...state, logo, later };
+    };
 
-  test("after answering other rows, putting a question off clears its pick and drops only the deferral on the next visit", () => {
-    // Putting a question off clears its pick, and the copy leaves it out.
-    const { page, logo } = answerDecisionJourney();
-    expect(logo.querySelectorAll("input[data-option]:checked").length).toBe(0);
-    expect(logo.querySelector(".mark")!.textContent).toBe("later");
-    // The next visit asks it again; the answers stay.
-    const back = open("spoke/decisions", {
-      ...stored(page),
-      "admin-answers:seen": String(Date.now() - 2 * 36e5),
+    const afterDeferringNotedReview = () => {
+      const state = afterDeferringLogo();
+      const review = state.row("spoke:check-the-copy");
+      (review.querySelector("textarea") as unknown as HTMLTextAreaElement).value = "looks fine";
+      review.querySelector("textarea")!.dispatchEvent(new state.page.Event("input"));
+      const off = review.querySelector("input[data-later]") as DomInput;
+      off.checked = true;
+      off.dispatchEvent(new state.page.Event("change", { bubbles: true }));
+      return { ...state, review, off };
+    };
+
+    const afterPickingLaterKeyedOption = () => {
+      const state = afterDeferringNotedReview();
+      const b = state.variant.querySelector('input[data-option][value="b"]') as DomInput;
+      b.value = "later";
+      b.checked = true;
+      state.variant.dispatchEvent(new state.page.Event("change"));
+      return state;
+    };
+
+    const afterTakingDeferredQuestionUpWithNote = () => {
+      const state = afterPickingLaterKeyedOption();
+      state.later.checked = true;
+      state.later.dispatchEvent(new state.page.Event("change", { bubbles: true }));
+      (state.logo.querySelector("textarea") as unknown as HTMLTextAreaElement).value =
+        "ask the printer";
+      state.logo.querySelector("textarea")!.dispatchEvent(new state.page.Event("input"));
+      return state;
+    };
+
+    describe("after picking a recommendation", () => {
+      let stage!: ReturnType<typeof afterPickingRecommendation>;
+      beforeAll(() => {
+        stage = afterPickingRecommendation();
+      });
+
+      test("marks the picked recommendation on the row", () => {
+        expect(stage.variant.querySelector(".mark")!.textContent).toBe("✓ Variant A");
+      });
+
+      test("shows no recommendation button on an assumption", () => {
+        // An assumption has no recommendation to pick: Agree and Veto answer it.
+        expect(stage.row("spoke:cache-folder").querySelector(".pick")).toBeNull();
+      });
     });
-    expect(back.localStorage.getItem("admin-answers:spoke:pick-a-logo")).toBeNull();
-    expect(back.localStorage.getItem("admin-answers:spoke:cache-folder")).not.toBeNull();
-  });
 
-  test("a note written before a question is put off stays out of the copy until the next visit", () => {
-    const { page } = answerDecisionJourney();
-    // A note written before a question is put off is its answer on the next visit.
-    const review = page.document.getElementById("spoke:check-the-copy") as unknown as DomElement;
-    (review.querySelector("textarea") as unknown as HTMLTextAreaElement).value = "looks fine";
-    review.querySelector("textarea")!.dispatchEvent(new page.Event("input"));
-    const off = review.querySelector("input[data-later]") as DomInput;
-    off.checked = true;
-    off.dispatchEvent(new page.Event("change", { bubbles: true }));
-    const copyText = (page.document.getElementById("copy") as DomElement).dataset.hwCopy!;
-    assert(
-      copyText.includes("spoke:pick-a-variant: a (Variant A)"),
-      "other answers must be in copy",
-    );
-    expect(copyText).not.toContain("check-the-copy");
-    const next = open("spoke/decisions", {
-      ...stored(page),
-      "admin-answers:seen": String(Date.now() - 2 * 36e5),
+    describe("after vetoing an assumption with a note", () => {
+      let stage!: ReturnType<typeof afterVetoingAssumption>;
+      beforeAll(() => {
+        stage = afterVetoingAssumption();
+      });
+
+      test("marks the assumption vetoed and keeps its task list ticks", () => {
+        expect(stage.cache.querySelector(".mark")!.textContent).toBe("✓ veto");
+        // The item's own task list keeps its ticks.
+        expect(
+          [...stage.cache.querySelectorAll(".task-list-item-checkbox")].map(
+            (b) => (b as DomInput).checked,
+          ),
+        ).toEqual([true, false]);
+      });
     });
-    expect((next.document.getElementById("copy") as DomElement).dataset.hwCopy).toContain(
-      "spoke:check-the-copy: looks fine",
-    );
-  });
 
-  test("an option whose key is later stores as a pick rather than deferring the question", () => {
-    const page = open("spoke/decisions", {});
-    const variant = page.document.getElementById("spoke:pick-a-variant") as unknown as DomElement;
-    (variant.querySelector("summary + div .pick") as DomElement).click();
-    // An option whose key is "later" or "done" is a pick like any other.
-    const b = variant.querySelector('input[data-option][value="b"]') as DomInput;
-    b.value = "later";
-    b.checked = true;
-    variant.dispatchEvent(new page.Event("change"));
-    expect(
-      JSON.parse(page.localStorage.getItem("admin-answers:spoke:pick-a-variant")!),
-    ).toMatchObject({ option: "later", later: false });
-  });
+    describe("after putting a question off", () => {
+      let stage!: ReturnType<typeof afterDeferringLogo>;
+      beforeAll(() => {
+        stage = afterDeferringLogo();
+      });
 
-  test("writing a note on a deferred question unchecks Decide later and includes it in the copy", () => {
-    const { page, logo, later } = answerDecisionJourney();
-    // A note is an answer: it takes a question put off up again.
-    assert(later.checked, "deferred question must start checked");
-    (logo.querySelector("textarea") as unknown as HTMLTextAreaElement).value = "ask the printer";
-    logo.querySelector("textarea")!.dispatchEvent(new page.Event("input"));
-    expect(later.checked).toBe(false);
-    expect((page.document.getElementById("copy") as DomElement).dataset.hwCopy).toContain(
-      "spoke:pick-a-logo: ask the printer",
-    );
+      test("clears the pick, marks the row later, and leaves it out of the copy", () => {
+        // Putting a question off clears its pick, and the copy leaves it out.
+        expect(stage.logo.querySelectorAll("input[data-option]:checked").length).toBe(0);
+        expect(stage.logo.querySelector(".mark")!.textContent).toBe("later");
+        const text = (stage.page.document.getElementById("copy") as DomElement).dataset.hwCopy;
+        expect(text).toContain("spoke:pick-a-variant: a (Variant A)");
+        expect(text).toContain("spoke:cache-folder: veto, keep a line");
+        expect(text).not.toContain("pick-a-logo");
+      });
+
+      test("the next visit drops the deferral and keeps every other stored answer", () => {
+        // The next visit asks it again; the answers stay.
+        const back = open("spoke/decisions", {
+          ...stored(stage.page),
+          "admin-answers:seen": String(Date.now() - 2 * 36e5),
+        });
+        expect(Object.keys(stored(back)).sort()).toEqual([
+          "admin-answers:before",
+          "admin-answers:seen",
+          "admin-answers:spoke:cache-folder",
+          "admin-answers:spoke:pick-a-variant",
+          "admin-answers:versions",
+          "admin-answers:visit",
+        ]);
+      });
+    });
+
+    describe("after putting a noted question off", () => {
+      let stage!: ReturnType<typeof afterDeferringNotedReview>;
+      beforeAll(() => {
+        stage = afterDeferringNotedReview();
+      });
+
+      test("keeps earlier answers in the copy while leaving the deferred note out", () => {
+        // A note written before a question is put off is its answer on the next visit.
+        const copyText = (stage.page.document.getElementById("copy") as DomElement).dataset.hwCopy;
+        expect(copyText).toContain("spoke:pick-a-variant: a (Variant A)");
+        expect(copyText).not.toContain("check-the-copy");
+      });
+
+      test("copies the deferred note on the next visit", () => {
+        const next = open("spoke/decisions", {
+          ...stored(stage.page),
+          "admin-answers:seen": String(Date.now() - 2 * 36e5),
+        });
+        expect((next.document.getElementById("copy") as DomElement).dataset.hwCopy).toContain(
+          "spoke:check-the-copy: looks fine",
+        );
+      });
+    });
+
+    describe("after picking an option whose key is later", () => {
+      let stage!: ReturnType<typeof afterPickingLaterKeyedOption>;
+      beforeAll(() => {
+        stage = afterPickingLaterKeyedOption();
+      });
+
+      test("stores the option as a pick rather than deferring the question", () => {
+        // An option whose key is "later" or "done" is a pick like any other.
+        expect(
+          JSON.parse(stage.page.localStorage.getItem("admin-answers:spoke:pick-a-variant")!),
+        ).toMatchObject({ option: "later", later: false });
+      });
+    });
+
+    describe("after writing a note on a deferred question", () => {
+      let stage!: ReturnType<typeof afterTakingDeferredQuestionUpWithNote>;
+      beforeAll(() => {
+        stage = afterTakingDeferredQuestionUpWithNote();
+      });
+
+      test("unchecks Decide later and includes the note in the copy", () => {
+        // A note is an answer: it takes a question put off up again.
+        expect(stage.later.checked).toBe(false);
+        expect((stage.page.document.getElementById("copy") as DomElement).dataset.hwCopy).toContain(
+          "spoke:pick-a-logo: ask the printer",
+        );
+      });
+    });
   });
 
   describe("stored answers when questions or options change", () => {
@@ -1737,6 +1811,10 @@ describe("admin.js", () => {
   describe("hidden repositories", () => {
     const shownRepoRows = (doc: Window["document"]) =>
       [...doc.querySelectorAll("[data-repo]")].filter((r) => !r.closest("[hidden]")).length;
+    const shownRepoKeys = (doc: Window["document"]) =>
+      [...doc.querySelectorAll("[data-repo]")]
+        .filter((r) => !r.closest("[hidden]"))
+        .map((r) => (r as unknown as HTMLElement).dataset.k);
     const hiddenRepoSeed = () => ({
       "admin-answers:repos": '["spoke"]',
       "admin-answers:spoke:check-the-copy": JSON.stringify({
@@ -1810,7 +1888,7 @@ describe("admin.js", () => {
       page.location.hash = "#spoke:pick-a-variant";
       page.dispatchEvent(new page.Event("hashchange"));
       expect(doc.getElementById("spoke:pick-a-variant")!.closest("[hidden]")).toBeNull();
-      expect(shownRepoRows(doc)).toBe(1);
+      expect(shownRepoKeys(doc)).toEqual(["spoke:pick-a-variant"]);
       // Once the address names another row, the row it named before hides with its repository.
       page.location.hash = "";
       page.dispatchEvent(new page.Event("hashchange"));
@@ -1838,16 +1916,18 @@ describe("admin.js", () => {
       // "Hide all" unchecks every box and keeps the choice; with nothing left to hide it steps aside.
       const none = doc.querySelector("[data-repo-none]") as unknown as HTMLButtonElement;
       none.click();
-      expect(shownRepoRows(doc)).toBe(1);
+      expect(shownRepoKeys(doc)).toEqual(["spoke:pick-a-variant"]);
       expect(stored(page)["admin-answers:repos"]).toBe('["spoke"]');
       expect(doc.querySelector("[data-repo-count]")!.textContent).toBe("0 of 1");
       expect(none.hasAttribute("hidden")).toBe(true);
       expect(doc.querySelector("[data-repo-all]")!.hasAttribute("hidden")).toBe(false);
     });
 
-    test("Hide all and Show all each move focus to the repository choice button", () => {
+    test("after opening a row by hash, Hide all and Show all each move focus to the repository choice button", () => {
       const page = open("index", hiddenRepoSeed());
       const doc = page.document;
+      page.location.hash = "#spoke:pick-a-variant";
+      page.dispatchEvent(new page.Event("hashchange"));
       const showAll = doc.querySelector<DomButton>("[data-repo-all]")!;
       const none = doc.querySelector<DomButton>("[data-repo-none]")!;
       showAll.click();
@@ -1875,7 +1955,7 @@ describe("admin.js", () => {
       box.checked = false;
       box.dispatchEvent(new page.Event("change"));
       // All but the row the address names.
-      expect(shownRepoRows(doc)).toBe(1);
+      expect(shownRepoKeys(doc)).toEqual(["spoke:pick-a-variant"]);
       expect(stored(page)["admin-answers:repos"]).toBe('["spoke"]');
     });
 
@@ -1900,6 +1980,8 @@ describe("admin.js", () => {
       const doc = page.document;
       page.localStorage.removeItem("admin-answers:repos");
       page.dispatchEvent(new page.StorageEvent("storage", { key: "admin-answers:repos" }));
+      expect(shownRepoRows(doc)).toBe(9);
+      expect(doc.querySelector('[data-repo-row="spoke"]')!.hasAttribute("hidden")).toBe(false);
       // The word on a repository's "hidden" mark is no text a search finds.
       const search = doc.getElementById("admin-search") as DomInput;
       search.value = "hidden";
@@ -1981,6 +2063,7 @@ describe("admin.js", () => {
     expect(copy.textContent).toBe("Copy 1 answer again");
     (back.document.querySelector('[data-k="' + COMMENT + '"] .clear') as DomElement).click();
     expect(stored(back)[commentKey]).toBeUndefined();
+    expect(commentField(back).value).toBe("");
   });
 
   test("a copied comment stays until the report version changes", () => {
@@ -2210,6 +2293,7 @@ describe("admin.js", () => {
       // The row's mark is short: the line above the lists says since when.
       const mark = page.document.querySelector(`[data-k="${changed}"] [data-updated]`);
       assert(mark, "updated mark must exist on the changed row");
+      expect(mark.hasAttribute("hidden")).toBe(false);
       expect(mark.textContent).toBe(expectedMark);
     });
   });
