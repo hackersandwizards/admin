@@ -88,7 +88,13 @@ describe("isAllowedFetchSite", () => {
 });
 
 describe("parseRequest", () => {
-  test.each([
+  test.each<{
+    label: string;
+    url: string;
+    headers: Record<string, string>;
+    status: number;
+    text: string;
+  }>([
     {
       label: "non-local host",
       url: "http://evil.example/",
