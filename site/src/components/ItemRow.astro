@@ -2,7 +2,17 @@
 // An opened question shows what is asked and its options first, its context below them. Options
 // with images are cards; options without are one dense list, so a long list of candidates stays
 // scannable.
-import { askedOf, data, dueOf, inline, keyOf, withLinks, UPDATED, type ViewItem } from "../data";
+import {
+  askedOf,
+  data,
+  dueOf,
+  inline,
+  keyOf,
+  prerequisiteLabels,
+  withLinks,
+  UPDATED,
+  type ViewItem,
+} from "../data";
 import Choice from "./Choice.astro";
 import Shot from "./Shot.astro";
 
@@ -33,6 +43,7 @@ const meta = [
     : { decision: "to decide", review: "to review", work: "to do" }[i.kind],
   options.length ? `${options.length} options${i.multiple ? ", pick several" : ""}` : "",
   i.owner && i.owner !== data().people[0] ? `for ${i.owner}` : "",
+  ...prerequisiteLabels(i),
 ].filter(Boolean);
 const due = i.due ? dueOf(i.due) : undefined;
 // The body's first paragraph says what the owner does; the rest is context.
@@ -99,7 +110,7 @@ const body = "hw-measure flex flex-col gap-3 [&_ol]:list-decimal [&_ol]:pl-4";
           : i.recommendedLabel && (
               <span class="block text-ui group-open:hidden">Recommended: {i.recommendedLabel}</span>
             )}
-        <span class="block text-ui text-foreground/70">
+        <span class="block text-ui text-foreground/70 wrap-anywhere">
           <span class="text-accent" data-updated hidden>
             {UPDATED} ·
           </span>{" "}

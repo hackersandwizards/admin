@@ -20,6 +20,8 @@ export type ViewItem = Item & {
   optionImages: Record<string, { src: string; caption?: string }[]>;
   recommendedKeys: string[];
   recommendedLabel?: string;
+  waitingOn: string[];
+  waitingCount: number;
 };
 
 export const PAGE_TYPES = [
@@ -99,6 +101,32 @@ function itemHtml(
 
 export const firstWord = (owner = "") => owner.match(/^[\p{L}\p{N}-]+/u)?.[0] ?? owner;
 
+function prerequisiteSummary(items: Item[]) {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const waitingOn = new Map<string, string[]>();
+  const waitingCount = new Map<string, number>();
+  for (const item of items) {
+    if (item.status !== "open" || !item.needs?.length) continue;
+    const seen = new Set([item.id]);
+    const pending = [...item.needs];
+    const open: string[] = [];
+    while (pending.length) {
+      const id = pending.pop()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const target = byId.get(id);
+      if (!target) continue;
+      if (target.needs) pending.push(...target.needs);
+      if (target.status === "open") {
+        open.push(id);
+        waitingCount.set(id, (waitingCount.get(id) ?? 0) + 1);
+      }
+    }
+    waitingOn.set(item.id, open.sort());
+  }
+  return { waitingOn, waitingCount };
+}
+
 // `you` is the hub's user where an item owner names them, else the first person.
 export function siteData(repos: RepoData[], you?: string): SiteData {
   // An owner's first word is an agent's where it is lower-case ("an agent", "claude-code"), an
@@ -167,11 +195,14 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
   const files = new Map(named.map((r) => [r, new Set(r.workFiles)]));
   const out = named.map((r) => {
     const prefix = `${r.key}/`;
+    const { waitingOn, waitingCount } = prerequisiteSummary(r.items);
     const items = [...r.items].sort(compareItems).map((i) => {
       const recommendedKeys = [i.recommended ?? []].flat();
       const { who, as } = ownerOf(i.owner);
       return {
         ...i,
+        waitingOn: waitingOn.get(i.id) ?? [],
+        waitingCount: waitingCount.get(i.id) ?? 0,
         repo: r.key,
         repoLabel: r.label,
         who,

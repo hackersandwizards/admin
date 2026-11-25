@@ -60,6 +60,15 @@ export const UPDATED = "updated";
 
 // An item's row id on a page, which a link to the item names after #.
 export const keyOf = (i: ViewItem) => `${i.repo}:${i.id}`;
+export const prerequisiteLabels = ({ waitingOn, waitingCount }: ViewItem) =>
+  [
+    waitingOn.length ? `Waiting on ${waitingOn.join(", ")}` : "",
+    waitingCount === 1
+      ? "1 open item waits on this"
+      : waitingCount
+        ? `${waitingCount} open items wait on this`
+        : "",
+  ].filter(Boolean);
 // The question an answer answers: its title and options, which admin.js stores with the answer, so
 // an answer given before they changed says so. A new rank, body or status leaves it.
 export const askedOf = (i: ViewItem) =>

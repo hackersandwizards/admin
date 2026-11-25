@@ -3,6 +3,7 @@ kind: review
 status: open
 priority: 2
 owner: Sam
+needs: [pick-a-variant]
 ---
 
 # Check the new copy on the start page

@@ -20,6 +20,7 @@ export type Item = {
   area?: string;
   owner?: string;
   due?: string;
+  needs?: string[];
   recommended?: string | string[];
   multiple?: boolean;
   options?: Option[];
@@ -41,6 +42,7 @@ const FIELDS = [
   "area",
   "owner",
   "due",
+  "needs",
   "recommended",
   "multiple",
   "options",
@@ -112,6 +114,12 @@ export function itemDefects(item: Item, exists: (path: string) => boolean): stri
   if (kind !== "goal" && !item.owner) d.push("lacks owner");
   for (const f of TEXTS) if (item[f] !== undefined && !isText(item[f])) d.push(`${f} is not text`);
   if (item.due !== undefined && !isDay(item.due)) d.push(`due ${item.due} not ISO`);
+  if (item.needs !== undefined && !Array.isArray(item.needs))
+    d.push("needs must be a list. Use a list of item ids");
+  if (Array.isArray(item.needs))
+    item.needs.forEach((id, i) => {
+      if (typeof id !== "string") d.push(`needs entry ${i + 1} must be a string. Use an item id`);
+    });
   if ((kind === "work" || kind === "goal") && status !== "open") d.push(`${kind} is ${status}`);
   const options = item.options ?? [];
   if (!Array.isArray(options)) d.push("options is not a list");
@@ -186,6 +194,9 @@ export function usable(item: Item): Item {
     priority: [1, 2, 3].includes(item.priority as number) ? item.priority : undefined,
     order: typeof item.order === "number" ? item.order : undefined,
     due: isDay(item.due) ? String(item.due) : undefined,
+    needs: Array.isArray(item.needs)
+      ? item.needs.filter((id) => typeof id === "string")
+      : undefined,
     recommended: item.recommended == null ? undefined : [item.recommended].flat().map(String),
     options: Array.isArray(item.options)
       ? item.options

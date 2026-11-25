@@ -16,6 +16,7 @@ import {
   keyOf,
   MISSING,
   openQuestions,
+  prerequisiteLabels,
   repoOf,
   reviewsOf,
   thumbnail,
@@ -387,15 +388,25 @@ const leads: Partial<Record<Page["type"], string>> = {
 
   {page.type === "work" && (
     <>
-      {goals.map((g) => (
-        <details class="hw-disclosure hw-card" id={keyOf(g)} data-row>
-          <summary class="font-mono font-semibold text-ui">{g.title}</summary>
-          <div
-            class="hw-measure mt-3 text-ui [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:mb-2"
-            set:html={g.html}
-          />
-        </details>
-      ))}
+      {goals.map((g) => {
+        const prerequisites = prerequisiteLabels(g).join(" · ");
+        return (
+          <details class="hw-disclosure hw-card" id={keyOf(g)} data-row>
+            <summary class="font-mono font-semibold text-ui">
+              {g.title}
+              {prerequisites && (
+                <span class="block font-normal text-foreground/70 wrap-anywhere">
+                  {prerequisites}
+                </span>
+              )}
+            </summary>
+            <div
+              class="hw-measure mt-3 text-ui [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:mb-2"
+              set:html={g.html}
+            />
+          </details>
+        );
+      })}
       {work.length ? (
         <ItemGroups items={work} openUpTo={3} />
       ) : (

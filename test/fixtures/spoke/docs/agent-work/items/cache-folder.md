@@ -3,6 +3,7 @@ kind: decision
 status: assumed
 priority: 3
 owner: Alex
+needs: [pick-a-variant]
 assumption: The build writes to node_modules/.cache, so no repo needs a new ignore line.
 ---
 

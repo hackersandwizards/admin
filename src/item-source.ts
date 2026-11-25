@@ -47,5 +47,31 @@ export function readItems(src: Source): ReadItems {
   // The folder was renamed: a file left at the old path would vanish from every page unnoticed.
   for (const p of src.paths)
     if (p.startsWith("docs/tracking/")) defects.push(`${p}: legacy folder, move it to ${WORK_DIR}`);
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const checked = new Set<string>();
+  const visiting = new Set<string>();
+  const visit = (item: Item) => {
+    const { id, needs } = item;
+    const file = `${ITEMS_DIR}/${id}.md`;
+    checked.add(id);
+    visiting.add(id);
+    for (const need of new Set(needs)) {
+      const target = byId.get(need);
+      if (!target)
+        defects.push(
+          `${file}: needs unknown item ${JSON.stringify(need)}. Remove this entry once the needed item is done, or correct the id`,
+        );
+      else if (need === id) defects.push(`${file}: needs itself. Remove ${JSON.stringify(need)}`);
+      else if (visiting.has(need)) {
+        const path = [...visiting];
+        const cycle = path.slice(path.indexOf(need)).concat(need).join(" → ");
+        defects.push(
+          `${file}: needs closes a cycle (${cycle}). Remove a prerequisite in this cycle`,
+        );
+      } else if (!checked.has(need)) visit(target);
+    }
+    visiting.delete(id);
+  };
+  for (const item of items) if (!checked.has(item.id)) visit(item);
   return { items, defects };
 }

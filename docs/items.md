@@ -18,6 +18,7 @@ status: open # open | assumed | decided
 priority: 2 # 1 to 3, 1 costs most if missed; not on a goal
 owner: Alex # who answers, or for work who moves next
 area: product # optional, free text
+needs: [check-the-copy] # optional, item ids in this repository
 recommended: a # optional, an option key; a list where multiple is true
 multiple: false # optional, true lets the person pick several options
 options:
@@ -60,6 +61,10 @@ The question's context, in Markdown.
 - An `assumed` item states `assumption` or `recommended`. A `decided` item states `decision` and
   `by`, and may quote the person in `quote`.
 - Work and goals are only ever `open`.
+- `needs` is an optional list of item ids as strings. Every id names an existing item in this
+  repository. An item cannot need itself or close a cycle. Remove a prerequisite from `needs` when
+  you delete its finished item. The hub shows the open prerequisites an open item waits on,
+  directly or through other items, and how many open items wait on it. Only `open` items count.
 - `due` is a calendar day as an ISO date. `order` and `evidence` are optional.
 - A table, such as scores per criterion, goes in the body as Markdown.
 - No `GOAL.md` and no file under `docs/tracking/` remains.

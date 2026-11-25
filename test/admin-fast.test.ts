@@ -56,6 +56,44 @@ const valid: Item = {
 const exists = () => true;
 
 describe("item files", () => {
+  test.each([
+    ["missing", ["ship: [missing]"], 'ship.md: needs unknown item "missing"'],
+    ["itself", ["ship: [ship]"], "ship.md: needs itself"],
+    [
+      "cycle",
+      ["ship: [check]", "check: [draft]", "draft: [ship]"],
+      "draft.md: needs closes a cycle",
+    ],
+    ["non-string", ["ship: [true]"], "ship.md: needs entry 1 must be a string"],
+    ["non-list", ["ship: check"], "ship.md: needs must be a list"],
+  ])("admin-check reports a prerequisite that is %s", (_case, entries, problem) => {
+    const files = new Map(
+      entries.map((entry) => {
+        const [id, needs] = entry.split(": ");
+        return [
+          `docs/agent-work/items/${id}.md`,
+          `---\nkind: goal\nstatus: open\nneeds: ${needs}\n---\n# ${id}`,
+        ];
+      }),
+    );
+    const { defects } = readItems({ paths: [...files.keys()], read: (p) => files.get(p) });
+    expect(defects).toHaveLength(1);
+    expect(defects[0]).toContain(problem);
+    expect(defects[0]).toMatch(/\. (Use|Remove) /);
+  });
+
+  test("admin-check accepts a prerequisite until its tracked item is deleted", () => {
+    const repo = repoFrom("spoke");
+    const args = ["bun", join(import.meta.dirname, "../bin/admin-check.ts"), repo];
+    expect(Bun.spawnSync(args).exitCode).toBe(0);
+    rmSync(join(repo, "docs/agent-work/items/check-the-copy.md"));
+    const result = Bun.spawnSync(args);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain(
+      'work-wire-the-gate.md: needs unknown item "check-the-copy". Remove this entry once the needed item is done',
+    );
+  });
+
   test("a malformed rank does not displace a ranked item", () => {
     const odd = usable(
       parseItem("odd", "---\nkind: decision\nstatus: open\npriority: 2\norder: soon\n---\n# Odd"),

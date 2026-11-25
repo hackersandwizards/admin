@@ -124,6 +124,7 @@ describe("pages", () => {
       const waiting = html.slice(html.indexOf("Waiting on others"), html.indexOf("Agents on it"));
       expect(waiting).toContain('href="spoke/work.html#spoke:ask-the-printer"');
       expect(waiting).toContain('href="spoke/decisions.html#spoke:check-the-copy"');
+      expect(waiting).toContain("Waiting on pick-a-variant");
       expect(html.indexOf("Sort the sample files")).toBeGreaterThan(html.indexOf("Agents on it"));
       const agents = html.slice(html.indexOf("Agents on it"), html.indexOf("Repositories"));
       expect(agents).not.toMatch(/<details[^>]*data-group[^>]* open/);
@@ -160,6 +161,19 @@ describe("pages", () => {
       );
       const pages = readdirSync(join(out, "spoke"), { recursive: true }) as string[];
       expect(pages).toContain("decisions.html");
+      const rendered = new Window().document;
+      rendered.body.innerHTML = readFileSync(join(out, "spoke/decisions.html"), "utf8");
+      const summary = (id: string) =>
+        rendered.getElementById(`spoke:${id}`)?.firstElementChild?.textContent;
+      expect(summary("pick-a-variant")).toContain("2 open items wait on this");
+      expect(summary("check-the-copy")).toContain("1 open item waits on this");
+      expect(summary("cache-folder")).not.toMatch(/Waiting on|waits? on this/);
+      expect(summary("name-the-command")).not.toMatch(/Waiting on|waits? on this/);
+      rendered.body.innerHTML = readFileSync(join(out, "spoke/work.html"), "utf8");
+      expect(summary("goal")).toContain("1 open item waits on this");
+      expect(summary("work-wire-the-gate")).toContain(
+        "Waiting on check-the-copy, goal, pick-a-variant",
+      );
       expect(pages).toContain("products-1.html");
       expect(pages).toContain("doc/docs/agent-work/2026-01-15-sample-topic.html");
       const plainDocs = readFileSync(join(out, "plain/docs.html"), "utf8");
