@@ -133,7 +133,7 @@ export function needsGraphItems(items: ViewItem[]) {
   const connected = new Set<string>();
   for (const item of items)
     for (const id of item.needs ?? [])
-      if (ids.has(id)) {
+      if (id !== item.id && ids.has(id)) {
         connected.add(item.id);
         connected.add(id);
       }
@@ -144,18 +144,19 @@ export function needsGraph(items: ViewItem[]) {
   const nodes = new Map(items.map((item, index) => [item.id, { id: `n${index}`, item }]));
   const source = ["flowchart LR"];
   for (const { id, item } of nodes.values()) {
-    const title = item.title
-      .replaceAll('"', "'")
-      .replace(/[&<\])\\*~]/g, (c) => `&amp;#${c.charCodeAt(0)};`);
+    const title = item.title.replace(
+      /["&<\])\\*~\r\n\u2028\u2029]/g,
+      (c) => `&amp;#${c.charCodeAt(0)};`,
+    );
     const label = `"${title}"`;
     const shape =
       item.status !== "open" ? `(${label})` : item.waitingOn.length ? `[${label}]` : `([${label}])`;
     source.push(id + shape);
   }
   for (const { id, item } of nodes.values())
-    for (const need of item.needs ?? []) {
+    for (const need of new Set(item.needs)) {
       const prerequisite = nodes.get(need);
-      if (!prerequisite) continue;
+      if (need === item.id || !prerequisite) continue;
       const arrow = prerequisite.item.status === "open" ? "-->" : "-.->";
       source.push(`${prerequisite.id} ${arrow} ${id}`);
     }

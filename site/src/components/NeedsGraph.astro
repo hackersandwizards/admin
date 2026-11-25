@@ -7,23 +7,25 @@ const {
   from,
   open = false,
 } = Astro.props as {
-  svg: string;
+  svg?: string;
   items: ViewItem[];
   from: string;
   open?: boolean;
 };
-const linked = svg.replace(
+const linked = svg?.replace(
   /<g class="node" data-id="n(\d+)"[\s\S]*?<\/g>/g,
   (node, index: string) =>
     `<a class="hw-link" href="${Bun.escapeHTML(itemHref(from, items[Number(index)]!))}">${node}</a>`,
 );
 ---
 
-<details class="hw-disclosure hw-card" {open}>
-  <summary class="font-mono font-semibold text-ui">What waits on what</summary>
-  <Fragment set:html={linked} />
-  <p class="text-ui">
-    Ready items have rounded ends. Waiting items have square corners. Settled items have rounded
-    corners. Dotted arrows start at settled items. Select a title to open its row.
-  </p>
-</details>
+{linked && (
+  <details class="hw-disclosure hw-card" {open}>
+    <summary class="font-mono font-semibold text-ui">What waits on what</summary>
+    <Fragment set:html={linked} />
+    <p class="text-ui">
+      Ready items have rounded ends. Waiting items have square corners. Settled items have rounded
+      corners. Dotted arrows start at settled items. Select a title to open its row.
+    </p>
+  </details>
+)}

@@ -143,7 +143,8 @@ describe("needs graph", () => {
 
   test("quoted graph titles show literal punctuation and item ids never become Mermaid syntax", async () => {
     const { items } = await fixture();
-    const title = 'Try " ] ) | < > & # ; ` %% ]) <br> **plain** ~~plain~~ \\n &#93;';
+    const title =
+      'Try " ] ) | < > & # ; ` %% ]) <br> **plain** ~~plain~~ \\n &#93;\u2028A\u2029B\rC\nn7 --> n8\nD';
     const input = [
       { ...items[0]!, id: "try--this", title, status: "open" as const, waitingOn: [], needs: [] },
       {
@@ -159,9 +160,59 @@ describe("needs graph", () => {
     expect(graph.querySelectorAll(".node")).toHaveLength(input.length);
     expect(graph.querySelectorAll(".edge")).toHaveLength(1);
     expect(graph.querySelector('.edge[data-from="n0"][data-to="n1"]')).toBeTruthy();
-    expect([...graph.querySelectorAll(".node text")].map((node) => node.textContent)).toEqual(
-      input.map(() => title.replaceAll('"', "'")),
+    const nodes = [...graph.querySelectorAll(".node")];
+    expect(nodes.map((node) => node.getAttribute("data-shape"))).toEqual([
+      "stadium",
+      "rectangle",
+      "rounded",
+    ]);
+    expect(nodes.map((node) => node.getAttribute("data-label"))).toEqual(input.map(() => title));
+    expect(nodes.map((node) => node.querySelector("text")?.textContent)).toEqual(
+      input.map(() => title),
     );
+  });
+
+  test("site data omits the graph when a need names only an unknown item", async () => {
+    const repo = await fromFiles({
+      "docs/agent-work/items/goal.md":
+        "---\nkind: goal\nstatus: open\nneeds: [absent]\n---\n# Goal",
+    });
+    expect(repo.defects.join("\n")).toContain('needs unknown item "absent"');
+    expect(siteData([repo]).repos[0]).not.toHaveProperty("needsSvg");
+  });
+
+  test("an open item with only settled prerequisites is a stadium", async () => {
+    const repo = await fromFiles({
+      "docs/agent-work/items/draft.md":
+        "---\nkind: work\nstatus: open\npriority: 2\nowner: an agent\nneeds: [check]\n---\n# Draft",
+      "docs/agent-work/items/check.md":
+        "---\nkind: review\nstatus: assumed\npriority: 2\nowner: an agent\nassumption: Proceed\n---\n# Check",
+    });
+    const graph = graphDocument(siteData([repo]).repos[0]!.needsSvg);
+    expect(graph.querySelector('[data-label="Draft"]')?.getAttribute("data-shape")).toBe("stadium");
+  });
+
+  test("the graph drops self-needs and draws duplicate prerequisites once", async () => {
+    const repo = await fromFiles({
+      "docs/agent-work/items/first.md":
+        "---\nkind: goal\nstatus: open\nneeds: [first]\n---\n# First",
+      "docs/agent-work/items/second.md":
+        "---\nkind: work\nstatus: open\npriority: 2\nowner: an agent\nneeds: [first, first]\n---\n# Second",
+      "docs/agent-work/items/isolated.md":
+        "---\nkind: work\nstatus: open\npriority: 2\nowner: an agent\nneeds: [isolated]\n---\n# Isolated",
+    });
+    const graph = graphDocument(siteData([repo]).repos[0]!.needsSvg);
+    expect(graph.querySelectorAll(".node")).toHaveLength(2);
+    const edges = [...graph.querySelectorAll(".edge")];
+    expect(edges).toHaveLength(1);
+    const label = (id: string | null) =>
+      graph.querySelector(`[data-id="${id}"]`)?.getAttribute("data-label");
+    expect(
+      edges.map((edge) => [
+        label(edge.getAttribute("data-from")),
+        label(edge.getAttribute("data-to")),
+      ]),
+    ).toEqual([["First", "Second"]]);
   });
 
   test("site data omits the graph without drawable needs edges or a rendered SVG", async () => {

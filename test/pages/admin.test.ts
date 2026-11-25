@@ -477,6 +477,21 @@ describe("pages", () => {
     testTimeout(60_000),
   );
   test(
+    "a Work page without a needs edge has no graph fold",
+    async () => {
+      const out = join(scratch(), "out");
+      const repo = await fromFiles({
+        "docs/agent-work/items/goal.md": "---\nkind: goal\nstatus: open\n---\n# A sample goal",
+      });
+      await buildSite(siteData([repo]), out);
+      const work = readFileSync(join(out, repo.key, "work.html"), "utf8");
+      expect(work).toContain("A sample goal");
+      expect(work).not.toContain("What waits on what");
+    },
+    testTimeout(60_000),
+  );
+
+  test(
     "every needs graph node link names a row that exists and opens it in Chrome",
     async () => {
       const out = join(scratch(), "out");
