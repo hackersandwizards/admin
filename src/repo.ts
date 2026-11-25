@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { basename, join, resolve } from "node:path";
 import { ITEMS_DIR, WORK_DIR, type Item } from "./items.ts";
 import { readItems, type Source } from "./item-source.ts";
-import { asKey, fileHref, IMAGE, REPO_KEY, REPORT_PATH } from "./repo-paths.ts";
+import { asKey, fileHref, IMAGE, REPO_KEY } from "./repo-paths.ts";
 
 export { readItems, type ReadItems, type Source } from "./item-source.ts";
 export { asKey, docSlug, encodeFile, encodePath, fileHref } from "./repo-paths.ts";
@@ -354,6 +354,19 @@ const links = new HTMLRewriter()
     },
   });
 
+const ADMIN_ID = /^(?:admin-|copy$|state$|theme-toggle$|(?:sun|moon)-icon$)/;
+const ADMIN_DATA = new Set(
+  `data-admin-catalog data-admin-theme data-alt data-answers data-asked data-assumed
+   data-assumed-count data-changed data-comment data-count data-dev data-dev-state data-done
+   data-group data-hw-copy data-hw-night data-k data-kind data-kind-button data-kind-count
+   data-label data-later data-option data-option-row data-repo data-repo-all data-repo-box
+   data-repo-count data-repo-none data-repo-off data-repo-row data-repo-said data-report
+   data-row data-stale data-stance data-status data-theme data-updated data-updated-count
+   data-v data-version data-who data-who-button data-who-count data-who-group data-zoom`.split(
+    /\s+/,
+  ),
+);
+
 // Front matter is a leading YAML mapping between --- lines; a leading rule renders, since "---"
 // above a paragraph is no mapping. An item's body has no front matter and no HTML: a placeholder
 // such as <id> shows as written, and an address in angle brackets is linked by the pages.
@@ -369,18 +382,28 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
       })
     : text;
   const used = new Set<string>();
-  const headings = new HTMLRewriter().on("h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]", {
-    element(el) {
-      const slug = entities(el.getAttribute("id")!) || "section";
-      const base = /^(?:admin-|copy$|state$|theme-toggle$|(?:sun|moon)-icon$)/.test(slug)
-        ? `section-${slug}`
-        : slug;
-      let id = base;
-      for (let n = 1; used.has(id); n++) id = `${base}-${n}`;
-      used.add(id);
-      el.setAttribute("id", Bun.escapeHTML(id));
-    },
-  });
+  const markup = new HTMLRewriter()
+    .on("*", {
+      element(el) {
+        for (const [name] of [...el.attributes])
+          if (ADMIN_DATA.has(name.toLowerCase())) el.removeAttribute(name);
+        if (el.getAttribute("popovertarget") === "admin-repo-choice")
+          el.removeAttribute("popovertarget");
+        const id = el.getAttribute("id");
+        if (id && !/^h[1-6]$/.test(el.tagName) && ADMIN_ID.test(entities(id)))
+          el.removeAttribute("id");
+      },
+    })
+    .on("h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]", {
+      element(el) {
+        const slug = entities(el.getAttribute("id")!).replace(/[^\w-]/g, "-") || "section";
+        const base = ADMIN_ID.test(slug) ? `section-${slug}` : slug;
+        let id = base;
+        for (let n = 1; used.has(id); n++) id = `${base}-${n}`;
+        used.add(id);
+        el.setAttribute("id", id);
+      },
+    });
   let index = 0;
   let documentId: string;
   const rendered = Bun.markdown.html(
@@ -388,13 +411,15 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
     item ? { noHtmlSpans: true, noHtmlBlocks: true } : { headings: { ids: true } },
   );
   const html = withElements(
-    (item ? rendered : headings.transform(rendered)).replace(
-      /<pre><code class="language-mermaid">([^<]*)<\/code><\/pre>/g,
-      (_, source: string) => {
-        documentId ??= Bun.hash(JSON.stringify([repo, path, text])).toString(36);
-        return diagram(source, `mermaid-${documentId}-${++index}-`);
-      },
-    ),
+    markup
+      .transform(rendered)
+      .replace(
+        /<pre><code class="language-mermaid">([^<]*)<\/code><\/pre>/g,
+        (_, source: string) => {
+          documentId ??= Bun.hash(JSON.stringify([repo, path, text])).toString(36);
+          return diagram(source, `mermaid-${documentId}-${++index}-`);
+        },
+      ),
   );
   return links
     .transform(html)
@@ -422,13 +447,22 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
 function titled(repo: string, path: string, text: string, fallback: string) {
   const html = renderMarkdown(repo, path, text);
   // From the first <h1 on: an unanchored search would scan to the end once per <h1.
-  const h1 = html.slice(Math.max(html.indexOf("<h1"), 0)).match(/^<h1[^>]*>([\s\S]*?)<\/h1>\n?/);
+  const h1 = html
+    .slice(Math.max(html.indexOf("<h1"), 0))
+    .match(/^<h1(?=[\s>])(?:[^"'<>]|"[^"]*"|'[^']*')*>([\s\S]*?)<\/h1>\n?/);
   // Bun's renderer decodes every other entity itself.
   const title = h1?.[1] && entities(plain(h1[1]));
   // An h1 without text, such as a lone image, stays in the article.
   if (!h1 || !title) return { path, title: fallback, html };
-  const titleId = h1[0].match(/^<h1[^>]*?\sid="([^"]*)"/)?.[1];
-  return { path, title, titleId: titleId && entities(titleId), html: html.replace(h1[0], "") };
+  let titleId: string | undefined;
+  new HTMLRewriter()
+    .on("h1", {
+      element(el) {
+        titleId ??= el.getAttribute("id") ?? undefined;
+      },
+    })
+    .transform(h1[0]);
+  return { path, title, titleId, html: html.replace(h1[0], "") };
 }
 
 function firstComment(text: string) {
@@ -606,7 +640,7 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     (p) => p.startsWith(`${WORK_DIR}/`) && !p.startsWith(`${ITEMS_DIR}/`),
   );
   const reports = tracking
-    .filter((p) => REPORT_PATH.test(p))
+    .filter((p) => /^docs\/agent-work\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/.test(p))
     .map((p) => {
       const text = src.read(p) ?? "";
       const stem = basename(p, ".md");

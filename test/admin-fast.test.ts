@@ -672,18 +672,40 @@ describe("Mermaid in Markdown", () => {
 
 describe("admin-check", () => {
   test.each([
-    ["2026-01-15-missing", "topic report docs/agent-work/2026-01-15-missing.md not found"],
-    ["draft", "topic must be text in YYYY-MM-DD-<topic> form"],
-    ["[2026-01-15-sample-topic]", "topic must be text in YYYY-MM-DD-<topic> form"],
-  ])("admin-check refuses topic %s", (topic, problem) => {
+    ["draft", "draft"],
+    ["[2026-01-15-sample-topic]", "2026-01-15-sample-topic"],
+    ["2026-01-15-notes.html", "2026-01-15-notes.html"],
+    ['"2026-01-15-hash#note"', "2026-01-15-hash#note"],
+    ["2026-01-15-question?", "2026-01-15-question?"],
+    ["2026-01-15-First draft", "2026-01-15-First draft"],
+    [String.raw`"2026-01-15-two\nlines"`, "2026-01-15-two\nlines"],
+  ])("admin-check refuses non-plain topic %s even when its file exists", (topic, stem) => {
     const path = "docs/agent-work/items/draft.md";
-    const text = `---\nkind: work\nstatus: open\npriority: 1\nowner: an agent\ntopic: ${topic}\n---\n# Draft\n`;
-    const { defects } = readItems({ paths: [path], read: () => text });
-    expect(defects.join("\n")).toContain(`${path}: ${problem}`);
+    const files: Record<string, string> = {
+      [path]: `---\nkind: work\nstatus: open\npriority: 1\nowner: an agent\ntopic: ${topic}\n---\n# Draft\n`,
+      [`docs/agent-work/${stem}.md`]: "# Sample report\n",
+    };
+    const { defects, items } = readItems({
+      paths: Object.keys(files),
+      read: (file) => files[file],
+    });
+    expect(defects.join("\n")).toContain(`${path}: topic must be a plain report name`);
+    expect(defects.join("\n")).toContain("Rename the report or correct the field");
+    expect(items[0]?.topic).toBeUndefined();
   });
 
-  test("admin-check accepts the exact name of a dated report in the same repository", () => {
-    const topic = "2026-01-15-First draft";
+  test("admin-check refuses a plain topic with no report", () => {
+    const path = "docs/agent-work/items/draft.md";
+    const text =
+      "---\nkind: work\nstatus: open\npriority: 1\nowner: an agent\ntopic: 2026-01-15-missing\n---\n# Draft\n";
+    const { defects } = readItems({ paths: [path], read: () => text });
+    expect(defects.join("\n")).toContain(
+      `${path}: topic report docs/agent-work/2026-01-15-missing.md not found`,
+    );
+  });
+
+  test("admin-check accepts the exact name of a plain dated report in the same repository", () => {
+    const topic = "2026-01-15-first-draft";
     const path = "docs/agent-work/items/draft.md";
     const files: Record<string, string> = {
       [path]: `---\nkind: work\nstatus: open\npriority: 1\nowner: an agent\ntopic: ${topic}\n---\n# Draft\n`,
@@ -703,6 +725,15 @@ describe("admin-check", () => {
       [...renderMarkdown("/r", "docs/a.md", text, item).matchAll(/id="([^"]*)"/g)].map((m) => m[1]);
     expect(ids(false)).toEqual(["section-copy", "same", "same-1", "same-1-1"]);
     expect(ids(true)).toEqual([]);
+  });
+
+  test("a raw h1 keeps its id when an earlier attribute contains a greater-than sign", async () => {
+    const repo = await fromFiles({
+      "docs/title.md": '<h1 title="2 > 1" id="named">Sample title</h1>\n\nBody.\n',
+    });
+    expect(repo.docs).toEqual([
+      { path: "docs/title.md", title: "Sample title", titleId: "named", html: "<p>Body.</p>\n" },
+    ]);
   });
 
   test("the spoke fixture is clean", () => {
@@ -932,6 +963,9 @@ describe("repository data", () => {
     try {
       git("init", "-q");
       const work = "docs/agent-work/items/ship.md";
+      const report = "docs/agent-work/2026-01-14-first draft.md";
+      const reportText = "# First draft\n";
+      await Bun.write(join(repo, report), reportText);
       await Bun.write(
         join(repo, work),
         "---\nkind: work\nstatus: open\npriority: 1\nowner: Alex\n---\n# Ship the samples",
@@ -962,6 +996,7 @@ describe("repository data", () => {
       const tree = treeSource(repo);
       expect(tree.paths.toSorted()).toEqual([
         ".gitignore",
+        report,
         "docs/agent-work/items/ship.md",
         "docs/draft.md",
         "docs/note.md",
@@ -977,6 +1012,9 @@ describe("repository data", () => {
       expect(committed.head).toMatch(/^[a-f0-9]{7,}$/);
       expect(committed.log).toEqual([{ hash: committed.head, time, subject: "Write notes" }]);
       expect(committed.trackingLog).toEqual(committed.log);
+      expect(committed.reports).toMatchObject([
+        { path: report, changed: time, version: Bun.hash(reportText).toString(36) },
+      ]);
       expect(committed.items).toMatchObject([
         { id: "ship", title: "Ship the samples", changed: time },
       ]);

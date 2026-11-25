@@ -7,7 +7,7 @@ import WhoFilter from "../components/WhoFilter.astro";
 import Waiting from "../components/Waiting.astro";
 import { needsGraphItems, SHELL } from "../../../src/build";
 import { reportBody, reportKey } from "../report";
-import { compareItems, imagesOf } from "../../../src/items.ts";
+import { compareItems, imagesOf, isPlainReportName } from "../../../src/items.ts";
 import {
   data,
   day,
@@ -105,7 +105,10 @@ const answersAll = page.type === "decisions" || page.type === "hub";
 // A folder of docs this small opens; a larger one waits closed.
 const FOLDER_OPEN = 10;
 // Every page with answerable rows hands its answers over from where they were given.
-const answerable = answersAll || !!report || ["dashboard", "work", "reviews"].includes(page.type);
+const answerable =
+  answersAll ||
+  isPlainReportName(report?.stem) ||
+  ["dashboard", "work", "reviews"].includes(page.type);
 const leads: Partial<Record<Page["type"], string>> = {
   hub: "What waits on you across every repository, most urgent first; then what other people and agents carry, and what is settled.",
   "hub-architecture": "Which version of each h&w package every repository pins.",
@@ -562,7 +565,7 @@ const leads: Partial<Record<Page["type"], string>> = {
           <ItemGroups items={topicQuestions} />
         </section>
       )}
-      <NeedsGraph svg={page.topicGraph} items={topic} from={page.path} open />
+      <NeedsGraph svg={page.topicGraph} items={topic} from={page.path} />
       <ItemGroups items={topic.filter((i) => i.status !== "open")} title="Assumed and decided" />
       <article
         class="prose hw-prose [&_img]:rounded-brand"

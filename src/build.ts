@@ -303,6 +303,8 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
   return { version, people, others, repos: out, pages };
 }
 
+// Only topic reports are built as individual doc pages. The hub fills every other doc on
+// request from its repository's shell, built once per folder depth so its relative links work.
 export const SHELL = {
   name: "admin-shell-name",
   path: "admin-shell-path",

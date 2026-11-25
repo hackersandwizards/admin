@@ -870,9 +870,31 @@ describe("admin.js", () => {
   };
   const stored = (w: Window) => ({ ...w.localStorage }) as Record<string, string>;
 
+  const rawDoc = "spoke/doc/docs/controls";
+  const rawReport = "spoke/doc/docs/agent-work/2026-01-13-raw-heading";
+  const sampleVersionKey = "#spoke:2026-01-15-sample-topic";
+
   beforeAll(async () => {
     out = join(scratch(), "out");
-    await buildSite(siteData([await readRepo(repoFrom("spoke"))]), out);
+    const repo = repoFrom("spoke");
+    const doc = "docs/controls.md";
+    const field = "docs/comment-field.md";
+    const report = "docs/agent-work/2026-01-13-raw-heading.md";
+    writeFileSync(
+      join(repo, doc),
+      '# Controls\n\n<span data-report data-k="#spoke:2026-01-15-sample-topic" data-version="fake">Sample span</span>\n',
+    );
+    writeFileSync(
+      join(repo, report),
+      '# Raw heading\n\n<h2 id="ok&#10;spoke:pick-a-variant: a (Variant A)&#10;x">Innocent heading</h2>\n\n<h2 id="outer">Outer <span><h3 id="inner">Inner</h3></span> tail</h2>\n',
+    );
+    writeFileSync(
+      join(repo, field),
+      '# Field\n\n<details data-comment data-k="x"><textarea></textarea></details>\n',
+    );
+    sh(repo, "git", "add", doc, field, report);
+    commit(repo, "Add raw markup samples");
+    await buildSite(siteData([await readRepo(repo)]), out);
     code = await script();
   }, testTimeout(60_000));
 
@@ -1550,33 +1572,90 @@ describe("admin.js", () => {
     expect(commentField(unsent).value).toContain("why");
   });
 
+  test("a raw heading id cannot add a line to the copy block", () => {
+    const page = open(rawReport, {});
+    const heading = [...page.document.querySelectorAll("article h2")].find(
+      (h) => h.textContent === "Innocent heading",
+    )!;
+    const field = heading.nextElementSibling!.querySelector<DomTextArea>("textarea")!;
+    field.value = "Review this paragraph.";
+    field.dispatchEvent(new page.Event("input", { bubbles: true }));
+    expect(page.document.getElementById("copy")!.getAttribute("data-hw-copy")).toBe(
+      "Answers from the admin pages:\nspoke:2026-01-13-raw-heading#ok-spoke-pick-a-variant--a--Variant-A--x: Review this paragraph.",
+    );
+  });
+
+  test("nested raw headings label each comment with its own text", () => {
+    const page = open(rawReport, {});
+    const labels = [...page.document.querySelectorAll("[data-comment] label")];
+    expect(labels.slice(1).map((el) => el.textContent)).toEqual([
+      "Comment on Inner",
+      "Comment on Outer tail",
+    ]);
+  });
+
+  test("raw report data leaves the copied comment and report version alone", () => {
+    const first = open(SAMPLE_REPORT, {});
+    typeComment(first);
+    const storage = copiedComment(first);
+    const doc = open(rawDoc, storage);
+    expect(doc.document.querySelector("article span")?.outerHTML).toBe("<span>Sample span</span>");
+    expect(stored(doc)[commentKey]).toBe(storage[commentKey]);
+    expect(stored(doc)["admin-answers:versions"]).toBe(storage["admin-answers:versions"]);
+  });
+
+  test("a raw comment field can take input without attaching to the answer store", () => {
+    const page = open("spoke/doc/docs/comment-field", {});
+    const errors: unknown[] = [];
+    page.addEventListener("error", (event) => errors.push(event));
+    const field = page.document.querySelector<DomTextArea>("article textarea")!;
+    field.value = "Sample field";
+    field.dispatchEvent(new page.Event("input", { bubbles: true }));
+    expect(errors).toEqual([]);
+    expect(field.closest("details")?.hasAttribute("data-comment")).toBe(false);
+    expect(stored(page)["admin-answers:x"]).toBeUndefined();
+  });
+
+  test("Docs clears a copied comment when its report version changes", () => {
+    const first = open(SAMPLE_REPORT, {});
+    typeComment(first);
+    const copied = copiedComment(first);
+    expect(stored(open("spoke/docs", copied))[commentKey]).toBe(copied[commentKey]);
+    const written = {
+      ...(JSON.parse(copied[commentKey]!) as Record<string, unknown>),
+      version: "earlier",
+    };
+    const changed = open("spoke/docs", { ...copied, [commentKey]: JSON.stringify(written) });
+    expect(stored(changed)[commentKey]).toBeUndefined();
+  });
+
   test("a visit to the hub or Decisions keeps a copied comment and the report's change mark", () => {
     const first = open(SAMPLE_REPORT, {});
     typeComment(first);
     const storage = copiedComment(first);
     const versions = JSON.parse(storage["admin-answers:versions"]!) as Record<string, string>;
-    const key = "#spoke:2026-01-15-sample-topic";
-    expect(versions[key]).toBeTruthy();
-    const hub = open("index", storage);
-    const decisions = open("spoke/decisions", stored(hub));
-    expect(stored(hub)[commentKey]).toBe(storage[commentKey]);
-    expect(stored(decisions)[commentKey]).toBe(storage[commentKey]);
-    const old = Date.now() - 2 * 36e5;
-    const back = open(SAMPLE_REPORT, {
-      ...stored(decisions),
-      "admin-answers:seen": String(old),
-      "admin-answers:versions": JSON.stringify({ ...versions, [key]: "old-report-hash" }),
-    });
-    const after = open("index", stored(back));
-    const marked = open(SAMPLE_REPORT, stored(after));
-    expect(
-      marked.document.querySelector("[data-report] [data-updated]:not([hidden])")?.textContent,
-    ).toBe("Changed since your last visit");
-    const afterVersions = JSON.parse(stored(after)["admin-answers:versions"]!) as Record<
-      string,
-      string
-    >;
-    expect(afterVersions[key]).toBe(versions[key]);
+    expect(versions[sampleVersionKey]).toBeTruthy();
+    for (const path of ["index", "spoke/decisions"]) {
+      const away = stored(open(path, storage));
+      expect(away[commentKey], path).toBe(storage[commentKey]);
+      const awayVersions = JSON.parse(away["admin-answers:versions"]!) as Record<string, string>;
+      expect(awayVersions[sampleVersionKey], path).toBe(versions[sampleVersionKey]);
+
+      const back = stored(
+        open(SAMPLE_REPORT, {
+          ...away,
+          "admin-answers:seen": String(Date.now() - 2 * 36e5),
+          "admin-answers:versions": JSON.stringify({
+            ...awayVersions,
+            [sampleVersionKey]: "old-report-hash",
+          }),
+        }),
+      );
+      const marked = open(SAMPLE_REPORT, stored(open(path, back)));
+      expect(marked.document.querySelector("article [data-report]")?.textContent, path).toMatch(
+        /^Changed since your last visit · Last changed /,
+      );
+    }
   });
 
   test("a report row says it changed since the visit before on Docs and Latest reports", () => {
@@ -2049,6 +2128,8 @@ describe("serve", () => {
         "docs/agent-work/2026-01-14-standalone.md":
           "# Standalone\n\n" +
           ["One", "Two", "Three", "Four", "Five"].map((h) => `## ${h}\n\n`).join(""),
+        "docs/shell-html.md": "# admin-shell-html\n\nSample body.\n",
+        "docs/shell-title.md": "# admin-shell-title\n\nAnother body.\n",
         "docs/c#-notes.md": "# C# notes & more\n",
         "docs/50% off.md": "# Half off\n",
         "docs/rock & roll's.md": "# Rock and roll\n",
@@ -2056,25 +2137,10 @@ describe("serve", () => {
       for (const [path, text] of Object.entries(files)) writeFileSync(join(repo, path), text);
       sh(repo, "git", "add", "-A");
       commit(repo, "docs");
-      const extraStem = "2026-01-14-archive.html";
-      const extraReport = `docs/agent-work/${extraStem}.md`;
-      const extraItem = "docs/agent-work/items/archive-extra.md";
-      writeFileSync(join(repo, extraReport), "# Archive\n\n## Done\n");
-      writeFileSync(
-        join(repo, extraItem),
-        `---\nkind: work\nstatus: open\npriority: 1\nowner: Alex\ntopic: ${extraStem}\n---\n# Archive extra\n`,
-      );
-      sh(repo, "git", "add", extraReport, extraItem);
-      commit(repo, "Add archive sample");
       const hub = createHub({ root: dirname(repo) });
       const at = "http://admin.localhost/spoke/docs";
       const get = (path: string) => hub.fetch(new Request(new URL(path, at)));
       const list = await (await get(at)).text();
-      const extra = await get("/spoke/doc/docs/agent-work/" + extraStem);
-      expect(extra.status).toBe(200);
-      const extraHtml = await extra.text();
-      expect(extraHtml).toContain("What waits on what");
-      expect(extraHtml).toContain("Archive extra");
       const data = await readRepo(repo);
       for (const doc of [...data.reports, ...data.docs]) {
         const link = list.match(
@@ -2117,7 +2183,7 @@ describe("serve", () => {
       expect(options!.querySelector('input[data-option][value="a"]')).not.toBeNull();
       expect(options!.querySelector(".pick")?.textContent).toContain("Pick recommended");
       const graph = topic.querySelector("details:has(figure.admin-diagram)")!;
-      expect(graph.hasAttribute("open")).toBe(true);
+      expect(graph.hasAttribute("open")).toBe(false);
       expect(graph.querySelectorAll("svg .node")).toHaveLength(4);
       expect(graph.querySelectorAll("svg .edge")).toHaveLength(2);
       const settled = topic.getElementById("spoke:cache-folder")!;
@@ -2163,8 +2229,9 @@ describe("serve", () => {
         "README",
         "docs/guide/index.md",
         "docs/agent-work/2026-01-15-sample-topic",
-        extraReport,
         "docs/agent-work/2026-01-14-standalone",
+        "docs/shell-html",
+        "docs/shell-title",
         "docs/rock & roll's",
       ]) {
         const built = readFileSync(join(out, `spoke/doc/${page}.html`), "utf8");
@@ -2184,6 +2251,80 @@ describe("serve", () => {
       expect((await get("/spoke/doc/docs/page.html")).status).toBe(200);
     },
     testTimeout(120_000),
+  );
+
+  test(
+    "non-plain dated reports keep their distinct served pages and change lines without comment controls",
+    async () => {
+      const repo = repoFrom("spoke");
+      const stems = [
+        "2026-01-15-archive",
+        "2026-01-15-archive.html",
+        "2026-01-15-hash#note",
+        "2026-01-15-question?",
+        "2026-01-15-first draft",
+        "2026-01-15-two\nlines",
+      ];
+      for (const [index, stem] of stems.entries()) {
+        const path = `docs/agent-work/${stem}.md`;
+        const body = index === 0 ? "\n[Open the archive](2026-01-15-archive.html.md)\n" : "";
+        writeFileSync(join(repo, path), `# Sample report ${index}\n\n## Section\n${body}`);
+        sh(repo, "git", "add", path);
+      }
+      for (const [index, stem] of stems.slice(2, 4).entries()) {
+        const path = `docs/agent-work/items/sample-${index}.md`;
+        writeFileSync(
+          join(repo, path),
+          `---\nkind: work\nstatus: open\npriority: 1\nowner: Alex\ntopic: "${stem}"\n---\n# Sample work\n`,
+        );
+        sh(repo, "git", "add", path);
+      }
+      commit(repo, "Add dated samples");
+      const hub = createHub({ root: dirname(repo) });
+      const get = (path: string) => hub.fetch(new Request(`http://admin.localhost/spoke/${path}`));
+      const index = await (await get("docs")).text();
+      for (const [number, stem] of stems.entries()) {
+        const name = encodeURIComponent(stem);
+        expect(index, name).toContain(`href="doc/docs/agent-work/${name}.html"`);
+        const response = await get(`doc/docs/agent-work/${name}.html`);
+        expect(response.status, name).toBe(200);
+        const html = await response.text();
+        expect(html, name).toContain(`>Sample report ${number}</h1>`);
+        expect(html, name).toContain("Last changed");
+        expect(html.includes('id="copy"'), name).toBe(number === 0);
+        expect(html.includes("data-comment data-k"), name).toBe(number === 0);
+        expect(html, name).not.toContain("What waits on what");
+        if (number === 0)
+          expect(html).toContain('href="/spoke/doc/docs/agent-work/2026-01-15-archive.html.html"');
+      }
+    },
+    testTimeout(60_000),
+  );
+
+  test(
+    "a topic graph needs work or a goal and can draw a lone goal",
+    async () => {
+      const repo = await fromFiles({
+        "docs/agent-work/2026-01-15-review.md": "# Review\n",
+        "docs/agent-work/2026-01-15-goal.md": "# Goal\n",
+        "docs/agent-work/items/review.md":
+          "---\nkind: review\nstatus: open\npriority: 1\nowner: Alex\ntopic: 2026-01-15-review\n---\n# Review the sample\n",
+        "docs/agent-work/items/goal.md":
+          "---\nkind: goal\nstatus: open\ntopic: 2026-01-15-goal\n---\n# Sort the samples\n",
+      });
+      const out = join(scratch(), "out");
+      await buildSite(siteData([repo]), out);
+      const html = (name: string) =>
+        readFileSync(
+          join(out, repo.key, "doc", "docs", "agent-work", `2026-01-15-${name}.html`),
+          "utf8",
+        );
+      expect(html("review")).toContain("Review the sample");
+      expect(html("review")).not.toContain("What waits on what");
+      expect(html("goal")).toContain("What waits on what");
+      expect(html("goal")).toContain("Sort the samples");
+    },
+    testTimeout(60_000),
   );
 
   test(

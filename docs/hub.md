@@ -47,7 +47,7 @@ retired checkout kept there stays out.
 
 A report page shows when the report last changed and lists its level-two headings when there are more than five.
 A report named as an item's topic also shows the open questions, the work graph when there is work
-or a goal, and the settled decisions above the report.
+or a goal, and the assumed and decided items above the report.
 
 Dashboard, Decisions, Work, Reviews (open review requests and open decisions between images, then
 each `docs/agent-work/<date>-<topic>/` folder with its images and report), Docs (reports, the rest of `docs/` and the Markdown files at the root, a fold per folder, open where it holds ten docs or fewer), Catalog, the repository's products,
@@ -107,13 +107,13 @@ the item file resolves from `docs/agent-work/items/`.
 
 ## Answers
 
-Use Comment under a report heading to leave a note. Copy answers includes it as
+Use Comment under a heading in a plainly named report (`YYYY-MM-DD-` plus lower-case letters, digits, and hyphens). Copy answers includes it as
 `<repo>:<report-stem>#<heading-id>: <comment>` on one line, with whitespace collapsed.
 Comments survive reloads, and the browser clears a copied comment when it sees a new version of
 the report.
 
 Answers to decisions stay in the browser as they are typed, across reloads and with no prompt on
-leaving, until "Copy answers", on every page that lists questions, puts them on the clipboard under
+leaving. **Copy answers**, available on question pages and reports with plain names, puts them on the clipboard under
 the line `Answers from the admin pages:`, one line each in the page's order, then the answers to
 items not on the page: `repo:id: stance, choice, note`, each part left out where it is empty. The
 choice is each picked key with its label as answered, `a (Label A), b (Label B)`, a bare key where

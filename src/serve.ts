@@ -17,6 +17,7 @@ import {
 } from "./build.ts";
 import elements from "../brand-elements.json";
 import { findRepos, uniqueKeys } from "./hub.ts";
+import { isPlainReportName } from "./items.ts";
 import { MISSING, NOTICE, policy } from "../site/src/data.ts";
 import { reportBody } from "../site/src/report.ts";
 import {
@@ -113,13 +114,13 @@ async function resized(body: Buffer, [width, height]: readonly [number, number])
 export function linker(repos: RepoData[]) {
   const pageOf = new Map(
     repos.flatMap((r) =>
-      [...r.reports, ...r.docs].map(
-        (d) =>
-          [
-            fileHref(join(r.path, d.path)),
-            `/${encodePath(`${r.key}/${docSlug(d.path)}`)}`,
-          ] as const,
-      ),
+      [...r.reports, ...r.docs].map((d) => {
+        const slug = docSlug(d.path);
+        return [
+          fileHref(join(r.path, d.path)),
+          `/${encodePath(`${r.key}/${slug}`)}${slug.endsWith(".html") ? ".html" : ""}`,
+        ] as const;
+      }),
     ),
   );
   // Longest path first: a repository nested in another keeps its own prefix.
@@ -225,25 +226,26 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const shell = site.shells.get(shellPath(`${repo.key}/`, name.split("/").length))!;
     // As Astro escapes, so a filled page is the page a build renders.
     const escape = (text: string) => Bun.escapeHTML(text).replaceAll("&#x27;", "&#39;");
+    const marks: Record<string, string> = {
+      [` id="${SHELL.titleId}"`]: doc.titleId ? ` id="${escape(doc.titleId)}"` : "",
+      [`/${SHELL.path}"`]: `/${escape(encodeFile(doc.path))}"`,
+      [SHELL.path]: escape(doc.path),
+      [SHELL.title]: escape(doc.title),
+      [`"${SHELL.name}.html"`]: `"${encodeURIComponent(name.split("/").pop()!)}.html"`,
+      [SHELL.html]: links.files(links.pages(report ? reportBody(repo.key, report) : doc.html)),
+    };
     const page = Buffer.from(
       shell
         .replace(
           /<div class="admin-action bg-background" data-shell-action(?:="[^"]*")?>[\s\S]*?<\/div>/,
-          (bar) => (report ? bar.replace(/ data-shell-action(?:="[^"]*")?/, "") : ""),
+          (bar) =>
+            isPlainReportName(report?.stem)
+              ? bar.replace(/ data-shell-action(?:="[^"]*")?/, "")
+              : "",
         )
-        .replace(` id="${SHELL.titleId}"`, () =>
-          doc.titleId ? ` id="${escape(doc.titleId)}"` : "",
-        )
-        // The file link ends in the mark, after the repository's part the shell already holds.
-        .replaceAll(`/${SHELL.path}"`, () => `/${escape(encodeFile(doc.path))}"`)
-        .replaceAll(SHELL.path, () => escape(doc.path))
-        .replaceAll(SHELL.title, () => escape(doc.title))
-        .replaceAll(
-          `"${SHELL.name}.html"`,
-          () => `"${encodeURIComponent(name.split("/").pop()!)}.html"`,
-        )
-        .replace(SHELL.html, () =>
-          links.files(links.pages(report ? reportBody(repo.key, report) : doc.html)),
+        .replace(
+          new RegExp(Object.keys(marks).map(RegExp.escape).join("|"), "g"),
+          (mark) => marks[mark]!,
         ),
     );
     site.filled.set(name, page);
@@ -501,14 +503,10 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
       );
     const { files, docs } = built;
     // A page's asset URLs are relative, so they only resolve from the page's own address.
-    const slash = path.length > 1 && path.endsWith("/");
-    const bare = path.slice(1, slash ? -1 : undefined);
-    const alias = bare.endsWith(".html") && docs.get(`${bare}.md`)?.doc;
-    const canonical =
-      alias && "stem" in alias && alias.path.endsWith(".html.md") ? `${bare}.md` : bare;
-    if (slash && (files.has(`${canonical}.html`) || docs.has(canonical)))
+    const bare = path.slice(1, -1);
+    if (path.length > 1 && path.endsWith("/") && (files.has(`${bare}.html`) || docs.has(bare)))
       return Response.redirect(url.origin + url.pathname.slice(0, -1) + url.search, 302);
-    const name = (slash ? path.slice(1) : canonical) || "index.html";
+    const name = path.slice(1) || "index.html";
     // The 404 page answers only where no page does.
     const at = [name, `${name}.html`].find((n) => n !== "404.html" && files.has(n));
     if (at) {
@@ -516,7 +514,7 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
       return typed(at.endsWith(".html") ? withNotice(stamp(hit, at)) : hit, at);
     }
     // A doc's slug may end in .html itself, as for x.html.md.
-    const doc = docPage(name) ?? docPage(name.replace(/\.html$/, ""));
+    const doc = docPage(name.replace(/\.html$/, "")) ?? docPage(name);
     if (doc) return typed(withNotice(doc), "doc.html");
     // A repository's own address, with or without the slash, opens its dashboard.
     if (files.has(`${path.slice(1).replace(/\/$/, "")}/dashboard.html`))

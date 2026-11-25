@@ -159,7 +159,9 @@ try {
     if (since && (file ? file !== r.dataset.version : Number(r.dataset.changed) * 1000 > since)) {
       if (mark) {
         mark.hidden = false;
-        if (r.hasAttribute("data-report")) mark.textContent = "Changed since your last visit";
+        if (r.hasAttribute("data-report"))
+          mark.textContent =
+            r === report ? "Changed since your last visit ·" : "Changed since your last visit";
         else if (file)
           mark.textContent = `${MARKS[asked && asked !== r.dataset.asked ? "asked" : "edited"]} ·`;
       }

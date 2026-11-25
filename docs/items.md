@@ -46,7 +46,8 @@ The question's context, in Markdown.
 
 `admin-check` enforces:
 
-- A `topic` uses the form `YYYY-MM-DD-<topic>` and names a report in this repository's `docs/agent-work/`.
+- A `topic` names a report in this repository's `docs/agent-work/` without `.md`.
+  It starts with `YYYY-MM-DD-`, then a lower-case letter or digit followed by lower-case letters, digits, or hyphens.
 - `kind`, `status` and, except on a goal, `priority` and `owner` are present and valid. Unknown
   fields and a top-level field written twice are defects.
 - An open decision has at least two options. A request to look at something is `kind: review`.

@@ -97,8 +97,8 @@ const isDay = (v: unknown) => {
     new Date(t).toISOString().startsWith(String(v))
   );
 };
-const isTopic = (value: unknown): value is string =>
-  typeof value === "string" && /^\d{4}-\d{2}-\d{2}-[^/\r\n]+$/.test(value);
+export const isPlainReportName = (value: unknown): value is string =>
+  typeof value === "string" && /^\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$/.test(value);
 // The fields a page prints as text.
 const TEXTS = ["area", "owner", "assumption", "decision", "by", "quote", "evidence"] as const;
 const isText = (v: unknown) => typeof v === "string" || typeof v === "number";
@@ -119,8 +119,10 @@ export function itemDefects(item: Item, exists: (path: string) => boolean): stri
   for (const f of TEXTS) if (item[f] !== undefined && !isText(item[f])) d.push(`${f} is not text`);
   if (item.due !== undefined && !isDay(item.due)) d.push(`due ${item.due} not ISO`);
   if (item.topic !== undefined) {
-    if (!isTopic(item.topic))
-      d.push("topic must be text in YYYY-MM-DD-<topic> form. Use the report's name without .md");
+    if (!isPlainReportName(item.topic))
+      d.push(
+        "topic must be a plain report name: YYYY-MM-DD- followed by lower-case letters, digits and hyphens, without .md. Rename the report or correct the field",
+      );
     else if (!exists(`${WORK_DIR}/${item.topic}.md`))
       d.push(
         `topic report ${WORK_DIR}/${item.topic}.md not found. Add the report or correct topic`,
@@ -211,7 +213,7 @@ export function usable(item: Item): Item {
     priority: [1, 2, 3].includes(item.priority as number) ? item.priority : undefined,
     order: typeof item.order === "number" ? item.order : undefined,
     due: isDay(item.due) ? String(item.due) : undefined,
-    topic: isTopic(item.topic) ? item.topic : undefined,
+    topic: isPlainReportName(item.topic) ? item.topic : undefined,
     needs: Array.isArray(item.needs)
       ? item.needs.filter((id) => typeof id === "string")
       : undefined,

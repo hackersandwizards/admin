@@ -1,3 +1,4 @@
+import { isPlainReportName } from "../../src/items.ts";
 import { entities, when, type Report } from "../../src/repo.ts";
 
 export const reportKey = (repo: string, report: Report) => `#${repo}:${report.stem}`;
@@ -6,7 +7,8 @@ export function reportBody(repo: string, report: Report) {
   const key = reportKey(repo, report);
   const escape = Bun.escapeHTML;
   const headings: string[] = [];
-  let title = "";
+  const commentable = isPlainReportName(report.stem);
+  const active: { text: string }[] = [];
   const body = new HTMLRewriter()
     .on("h2[id], h3[id]", {
       element(el) {
@@ -14,13 +16,16 @@ export function reportBody(repo: string, report: Report) {
         const anchor = escape(`${key.slice(1)}#${id}`);
         const field = `comment-${anchor}`;
         const h2 = el.tagName === "h2";
-        title = "";
+        const heading = { text: "" };
+        active.push(heading);
         el.onEndTag((end) => {
-          const label = escape(entities(title).replace(/\s+/g, " ").trim() || id);
+          active.pop();
+          const label = escape(entities(heading.text).replace(/\s+/g, " ").trim() || id);
           if (h2)
             headings.push(
               `<li><a class="hw-link" href="#${encodeURIComponent(id)}">${label}</a></li>`,
             );
+          if (!commentable) return;
           end.after(
             `<details class="hw-disclosure not-prose text-ui" data-comment data-k="${anchor}">
               <summary>Comment <span class="mark text-accent"></span></summary>
@@ -38,7 +43,8 @@ export function reportBody(repo: string, report: Report) {
         });
       },
       text(chunk) {
-        title += chunk.text;
+        const heading = active.at(-1);
+        if (heading) heading.text += chunk.text;
       },
     })
     .transform(report.html);
