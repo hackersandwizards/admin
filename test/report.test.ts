@@ -80,23 +80,34 @@ describe("reportStatusLine", () => {
 });
 
 describe("reportBody", () => {
+  const sixH2 = [1, 2, 3, 4, 5, 6].map((n) => `<h2 id="s${n}">S${n}</h2>`).join("");
+  const withSixAndSub = reportBody(
+    "spoke",
+    makeReport({ html: `${sixH2}<h3 id="sub">Sub &amp; A</h3>` }),
+  );
+
   test("places status line before Contents and body", () => {
-    const sixH2 = [1, 2, 3, 4, 5, 6].map((n) => `<h2 id="s${n}">S${n}</h2>`).join("");
-    const html = reportBody("spoke", makeReport({ html: sixH2 }));
-    const statusAt = html.indexOf("data-report");
-    const contentsAt = html.indexOf('aria-label="Contents"');
-    const bodyAt = html.indexOf('<h2 id="s1">');
+    const statusAt = withSixAndSub.indexOf("data-report");
+    const contentsAt = withSixAndSub.indexOf('aria-label="Contents"');
+    const bodyAt = withSixAndSub.indexOf('<h2 id="s1">');
     expect(statusAt).toBeGreaterThanOrEqual(0);
     expect(contentsAt).toBeGreaterThan(statusAt);
     expect(bodyAt).toBeGreaterThan(contentsAt);
   });
 
-  test("adds comment disclosure for h3 without listing h3 in Contents", () => {
-    const sixH2 = [1, 2, 3, 4, 5, 6].map((n) => `<h2 id="s${n}">S${n}</h2>`).join("");
-    const html = reportBody("spoke", makeReport({ html: `${sixH2}<h3 id="sub">Sub &amp; A</h3>` }));
-    expect(html).not.toContain('href="#sub"');
-    expect(html).toContain('data-comment data-k="spoke:2026-01-15-notes#sub"');
-    expect(html).toContain("Comment on Sub &amp; A");
+  test("lists only the six h2 headings in Contents while adding a comment disclosure for h3", () => {
+    expect(withSixAndSub).toContain(
+      '<nav class="not-prose" aria-label="Contents"><p class="hw-label">Contents</p><ul class="hw-marker-list">' +
+        '<li><a class="hw-link" href="#s1">S1</a></li>' +
+        '<li><a class="hw-link" href="#s2">S2</a></li>' +
+        '<li><a class="hw-link" href="#s3">S3</a></li>' +
+        '<li><a class="hw-link" href="#s4">S4</a></li>' +
+        '<li><a class="hw-link" href="#s5">S5</a></li>' +
+        '<li><a class="hw-link" href="#s6">S6</a></li></ul></nav>',
+    );
+    expect(withSixAndSub).not.toContain('href="#sub"');
+    expect(withSixAndSub).toContain('data-comment data-k="spoke:2026-01-15-notes#sub"');
+    expect(withSixAndSub).toContain("Comment on Sub &amp; A");
   });
 
   test("falls back to decoded heading id when heading text is whitespace", () => {

@@ -11,6 +11,7 @@ import {
   repoViewItems,
   siteData,
   summarizeOwners,
+  type SiteData,
 } from "../src/site-data.ts";
 
 const makeItem = (overrides: Partial<Item> & { id: string }): Item => ({
@@ -276,46 +277,48 @@ describe("repoViewItems", () => {
 });
 
 describe("repoPages", () => {
+  const repo = makeRepo({
+    designSystem: "http://127.0.0.1:4332/catalog/",
+    products: [{ label: "Web", href: "https://example.invalid/" }],
+    reports: [
+      {
+        path: "docs/agent-work/2026-01-10-decisions-only.md",
+        stem: "2026-01-10-decisions-only",
+        date: "2026-01-10",
+        title: "Decisions Only",
+        version: "1",
+        html: "<p>D</p>",
+      },
+      {
+        path: "docs/agent-work/2026-01-11-with-work.md",
+        stem: "2026-01-11-with-work",
+        date: "2026-01-11",
+        title: "With Work",
+        version: "2",
+        html: "<p>W</p>",
+      },
+      {
+        path: "docs/agent-work/2026-01-12-with-goal.md",
+        stem: "2026-01-12-with-goal",
+        date: "2026-01-12",
+        title: "With Goal",
+        version: "3",
+        html: "<p>G</p>",
+      },
+    ],
+    docs: [{ path: "README.md", title: "Readme", html: "<p>R</p>" }],
+    items: [
+      makeItem({ id: "d1", kind: "decision", topic: "2026-01-10-decisions-only" }),
+      makeItem({ id: "w1", kind: "work", title: "Wire Work", topic: "2026-01-11-with-work" }),
+      makeItem({ id: "g1", kind: "goal", title: "Ship Goal", topic: "2026-01-12-with-goal" }),
+    ],
+  });
+  const pages = repoPages(
+    repo,
+    repoViewItems(repo, createOwnerClassifier([repo]), () => ""),
+  );
+
   test("emits repository pages in order and renders topicGraph only when topic has work or goal", () => {
-    const repo = makeRepo({
-      designSystem: "http://127.0.0.1:4332/catalog/",
-      products: [{ label: "Web", href: "https://example.invalid/" }],
-      reports: [
-        {
-          path: "docs/agent-work/2026-01-10-decisions-only.md",
-          stem: "2026-01-10-decisions-only",
-          date: "2026-01-10",
-          title: "Decisions Only",
-          version: "1",
-          html: "<p>D</p>",
-        },
-        {
-          path: "docs/agent-work/2026-01-11-with-work.md",
-          stem: "2026-01-11-with-work",
-          date: "2026-01-11",
-          title: "With Work",
-          version: "2",
-          html: "<p>W</p>",
-        },
-        {
-          path: "docs/agent-work/2026-01-12-with-goal.md",
-          stem: "2026-01-12-with-goal",
-          date: "2026-01-12",
-          title: "With Goal",
-          version: "3",
-          html: "<p>G</p>",
-        },
-      ],
-      docs: [{ path: "README.md", title: "Readme", html: "<p>R</p>" }],
-      items: [
-        makeItem({ id: "d1", kind: "decision", topic: "2026-01-10-decisions-only" }),
-        makeItem({ id: "w1", kind: "work", title: "Wire Work", topic: "2026-01-11-with-work" }),
-        makeItem({ id: "g1", kind: "goal", title: "Ship Goal", topic: "2026-01-12-with-goal" }),
-      ],
-    });
-    const classify = createOwnerClassifier([repo]);
-    const items = repoViewItems(repo, classify, () => "");
-    const pages = repoPages(repo, items);
     expect(pages.map(({ path, type, topic }) => ({ path, type, topic }))).toEqual([
       { path: "demo/dashboard", type: "dashboard", topic: undefined },
       { path: "demo/decisions", type: "decisions", topic: undefined },
@@ -346,9 +349,26 @@ describe("repoPages", () => {
     expect(readmePage.topicGraph).toBeUndefined();
   });
 
+  test.each([
+    "demo/dashboard",
+    "demo/decisions",
+    "demo/work",
+    "demo/reviews",
+    "demo/docs",
+    "demo/catalog",
+    "demo/products-1",
+    "demo/architecture",
+    "demo/checks",
+    "demo/log",
+  ])("attaches no topicGraph to ordinary route %s", (path) => {
+    const page = pages.find((p) => p.path === path);
+    assert(page, `ordinary page ${path}`);
+    expect(page.topicGraph).toBeUndefined();
+  });
+
   test("omits catalog page when designSystem is absent", () => {
-    const repo = makeRepo({ designSystem: undefined });
-    expect(repoPages(repo, []).map((p) => p.type)).toEqual([
+    const plain = makeRepo({ designSystem: undefined });
+    expect(repoPages(plain, []).map((p) => p.type)).toEqual([
       "dashboard",
       "decisions",
       "work",
@@ -377,7 +397,6 @@ describe("siteData", () => {
         },
       ],
       items: [
-        makeItem({ id: "first", priority: 1, title: "First", body: "First body" }),
         makeItem({
           id: "second",
           priority: 2,
@@ -385,6 +404,18 @@ describe("siteData", () => {
           body: "Second body",
           needs: ["first"],
           topic: "2026-01-12-plan",
+        }),
+        makeItem({
+          id: "first",
+          kind: "decision",
+          priority: 1,
+          title: "First",
+          body: "First body",
+          options: [
+            { key: "a", label: "Alpha" },
+            { key: "b", label: "Beta" },
+          ],
+          recommended: "a",
         }),
       ],
     });
@@ -406,15 +437,17 @@ describe("siteData", () => {
     ]);
   });
 
-  test("preserves key order for SiteData, repository, view item, and topic page", () => {
-    const data = siteData([repoWithTopicAndNeed()]);
-    const repoOut = data.repos[0];
+  test("preserves serialized JSON key order for SiteData, repository, view items, and topic page", () => {
+    const written = JSON.parse(JSON.stringify(siteData([repoWithTopicAndNeed()]))) as SiteData;
+    const repoOut = written.repos[0];
     assert(repoOut, "built repository");
-    const itemOut = repoOut.items[0];
-    assert(itemOut, "first view item");
-    const topicPage = data.pages.find((p) => p.doc === "docs/agent-work/2026-01-12-plan.md");
+    const recommendedItem = repoOut.items[0];
+    const dependentItem = repoOut.items[1];
+    assert(recommendedItem, "recommended view item");
+    assert(dependentItem, "dependent view item");
+    const topicPage = written.pages.find((p) => p.doc === "docs/agent-work/2026-01-12-plan.md");
     assert(topicPage, "topic page");
-    expect(Object.keys(data)).toEqual(["version", "people", "others", "repos", "pages"]);
+    expect(Object.keys(written)).toEqual(["version", "people", "others", "repos", "pages"]);
     expect(Object.keys(repoOut)).toEqual([
       "key",
       "path",
@@ -437,7 +470,7 @@ describe("siteData", () => {
       "dashboard",
       "needsSvg",
     ]);
-    expect(Object.keys(itemOut)).toEqual([
+    expect(Object.keys(recommendedItem)).toEqual([
       "kind",
       "status",
       "priority",
@@ -445,6 +478,8 @@ describe("siteData", () => {
       "title",
       "body",
       "id",
+      "options",
+      "recommended",
       "waitingOn",
       "waitingCount",
       "repo",
@@ -455,6 +490,26 @@ describe("siteData", () => {
       "optionImages",
       "recommendedKeys",
       "recommendedLabel",
+    ]);
+    expect(Object.keys(dependentItem)).toEqual([
+      "kind",
+      "status",
+      "priority",
+      "owner",
+      "title",
+      "body",
+      "id",
+      "needs",
+      "topic",
+      "waitingOn",
+      "waitingCount",
+      "repo",
+      "repoLabel",
+      "who",
+      "html",
+      "agent",
+      "optionImages",
+      "recommendedKeys",
     ]);
     expect(Object.keys(topicPage)).toEqual([
       "path",
@@ -467,7 +522,7 @@ describe("siteData", () => {
     ]);
   });
 
-  test("renders item HTML before topic graphs and the repository needs graph", () => {
+  test("renders ranked item HTML before topic graphs and the repository needs graph", () => {
     const calls: string[] = [];
     const renderItem = vi
       .spyOn(markdown, "renderItemMarkdown")
