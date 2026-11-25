@@ -11,6 +11,7 @@ import {
 const makeReport = (overrides: Partial<Report> = {}): Report => ({
   path: "docs/agent-work/2026-01-15-notes.md",
   stem: "2026-01-15-notes",
+  date: "2026-01-15",
   title: "Notes",
   version: "abc123",
   html: '<h2 id="intro">Intro</h2><p>Body</p>',

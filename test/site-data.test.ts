@@ -25,6 +25,7 @@ const makeRepo = (overrides: Partial<RepoData> = {}): RepoData => ({
   key: "demo",
   path: "/r/demo",
   label: "Demo",
+  head: "abc123",
   items: [],
   reports: [],
   reviews: [],
@@ -36,6 +37,8 @@ const makeRepo = (overrides: Partial<RepoData> = {}): RepoData => ({
   links: [],
   checkSteps: [],
   defects: [],
+  trackingLog: [],
+  log: [],
   pkg: { dependencies: {}, scripts: {}, bin: {} },
   ...overrides,
 });
@@ -284,6 +287,7 @@ describe("repoPages", () => {
         {
           path: "docs/agent-work/2026-01-10-decisions-only.md",
           stem: "2026-01-10-decisions-only",
+          date: "2026-01-10",
           title: "Decisions Only",
           version: "1",
           html: "<p>D</p>",
@@ -291,6 +295,7 @@ describe("repoPages", () => {
         {
           path: "docs/agent-work/2026-01-11-with-work.md",
           stem: "2026-01-11-with-work",
+          date: "2026-01-11",
           title: "With Work",
           version: "2",
           html: "<p>W</p>",
