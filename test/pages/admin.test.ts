@@ -936,42 +936,64 @@ describe("admin.js", () => {
     code = await script();
   }, testTimeout(60_000));
 
-  test("the theme switch turns the page by its own button, and a catalog page without night stays day", async () => {
-    const theme = readFileSync(join(import.meta.dirname, "../../site/src/theme.js"), "utf8");
-    // `catalog` null is the hub; else a catalog page, with or without the shell's data-hw-night.
-    const run = (catalog: null | { night: boolean }) => {
-      const window = new Window({ url: "http://admin.localhost/index" });
-      opened.push(window);
-      window.localStorage.setItem("theme", "dark");
-      // brand's switch in the catalog shell's header, ahead of the page's own under the same id.
-      window.document.write(
-        readForDom(join(out, "index.html"))
-          .replace(/<script[^>]*><\/script>/g, "")
-          .replace(/<body[^>]*>/, '$&<button id="theme-toggle" data-shell></button>'),
-      );
-      const doc = window.document;
-      if (catalog) doc.documentElement.dataset.adminCatalog = "";
-      if (catalog?.night) doc.documentElement.dataset.hwNight = "";
-      evaluate(window, theme);
-      evaluate(window, code);
-      expect(
-        window.localStorage.getItem(catalog ? "admin-catalog:seen" : "admin-answers:seen"),
-      ).not.toBeNull();
-      expect(
-        window.localStorage.getItem(catalog ? "admin-answers:seen" : "admin-catalog:seen"),
-      ).toBeNull();
-      const shell = doc.querySelector("[data-shell]")!;
-      const own = doc.querySelector("[data-admin-theme]") as unknown as HTMLElement;
-      const read = () => [
-        doc.documentElement.dataset.theme,
-        own.getAttribute("aria-pressed"),
-        window.localStorage.getItem("theme"),
-      ];
-      return { doc, own, shell: shell as unknown as HTMLElement, read };
-    };
-    const tick = () => new Promise((r) => setTimeout(r, 0));
-    for (const catalog of [null, { night: true }]) {
-      const page = run(catalog);
+  const themeScript = readFileSync(join(import.meta.dirname, "../../site/src/theme.js"), "utf8");
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const openThemePage = (attributes: readonly string[]) => {
+    const window = new Window({ url: "http://admin.localhost/index" });
+    opened.push(window);
+    window.localStorage.setItem("theme", "dark");
+    // brand's switch in the catalog shell's header, ahead of the page's own under the same id.
+    window.document.write(
+      readForDom(join(out, "index.html"))
+        .replace(/<script[^>]*><\/script>/g, "")
+        .replace(/<body[^>]*>/, '$&<button id="theme-toggle" data-shell></button>'),
+    );
+    const doc = window.document;
+    for (const attribute of attributes) doc.documentElement.setAttribute(attribute, "");
+    evaluate(window, themeScript);
+    evaluate(window, code);
+    const shell = doc.querySelector("[data-shell]") as unknown as HTMLElement;
+    const own = doc.querySelector("[data-admin-theme]") as unknown as HTMLElement;
+    const read = () => [
+      doc.documentElement.dataset.theme,
+      own.getAttribute("aria-pressed"),
+      window.localStorage.getItem("theme"),
+    ];
+    return { window, doc, own, shell, read };
+  };
+
+  test.each([
+    {
+      label: "the hub",
+      attributes: [] as string[],
+      written: "admin-answers:seen",
+      untouched: "admin-catalog:seen",
+    },
+    {
+      label: "a catalog page with night",
+      attributes: ["data-admin-catalog", "data-hw-night"],
+      written: "admin-catalog:seen",
+      untouched: "admin-answers:seen",
+    },
+    {
+      label: "a catalog page without night",
+      attributes: ["data-admin-catalog"],
+      written: "admin-catalog:seen",
+      untouched: "admin-answers:seen",
+    },
+  ])("keeps visit storage separate on $label", ({ attributes, written, untouched }) => {
+    const page = openThemePage(attributes);
+    expect(page.window.localStorage.getItem(written)).not.toBeNull();
+    expect(page.window.localStorage.getItem(untouched)).toBeNull();
+  });
+
+  test.each([
+    ["the hub", []],
+    ["a catalog page with night", ["data-admin-catalog", "data-hw-night"]],
+  ])(
+    "the theme switch turns %s by its own button and ignores the shell switch",
+    async (_label, attributes) => {
+      const page = openThemePage(attributes);
       expect(page.read()).toEqual(["dark", "true", "dark"]);
       page.shell.click();
       expect(page.read()).toEqual(["dark", "true", "dark"]);
@@ -981,12 +1003,25 @@ describe("admin.js", () => {
       page.own.click();
       await tick();
       expect(page.read()).toEqual(["dark", "true", "dark"]);
+    },
+  );
+
+  test.each([
+    ["the hub", []],
+    ["a catalog page with night", ["data-admin-catalog", "data-hw-night"]],
+  ])(
+    "a shell theme flip reaches the own switch on %s without overwriting stored theme",
+    async (_label, attributes) => {
+      const page = openThemePage(attributes);
       // A flip by the shell's switch reaches the page's own.
       page.doc.documentElement.dataset.theme = "light";
       await tick();
       expect(page.read()).toEqual(["light", "false", "dark"]);
-    }
-    const alone = run({ night: false });
+    },
+  );
+
+  test("a catalog page without night stays day even when its own switch is clicked", async () => {
+    const alone = openThemePage(["data-admin-catalog"]);
     expect(alone.read()).toEqual(["light", "false", "dark"]);
     alone.own.click();
     await tick();
@@ -996,11 +1031,10 @@ describe("admin.js", () => {
   test("a browser that blocks site data still filters its rows", () => {
     const doc = open("index", null).document;
     (doc.querySelector('[data-kind-button="decision"]') as unknown as HTMLElement).click();
-    const kinds = [...doc.querySelectorAll("[data-row]")]
+    const kinds = [...doc.querySelectorAll("[data-row][data-kind]")]
       .filter((r) => !r.closest("[hidden]"))
       .map((r) => (r as unknown as HTMLElement).dataset.kind);
-    expect(kinds).toContain("decision");
-    expect(kinds.filter((k) => k && k !== "decision")).toEqual([]);
+    expect(kinds).toEqual(["decision", "decision", "decision", "decision"]);
   });
 
   test("a browser that blocks site data can pick and clear an answer during the visit", () => {
@@ -1149,8 +1183,6 @@ describe("admin.js", () => {
     const row = page.document.getElementById("spoke:pick-a-variant")!;
     const shot = row.querySelector<DomButton>('button[aria-label="light, 600 px: open large"]')!;
     const dialog = page.document.querySelector<DomDialog>("dialog#admin-zoom")!;
-    const errors: unknown[] = [];
-    page.addEventListener("error", (event) => errors.push(event));
     const observer = new page.MutationObserver(() => {});
     observer.observe(dialog, { attributes: true, attributeFilter: ["aria-label", "open"] });
     shot.click();
@@ -1160,9 +1192,22 @@ describe("admin.js", () => {
       "open",
     ]);
     observer.disconnect();
+    const img = dialog.querySelector("img");
+    assert(img, "zoom dialog must contain an image");
     expect(dialog.getAttribute("aria-label")).toBe("light, 600 px");
-    expect(dialog.querySelector("img")?.alt).toBe("light, 600 px");
-    expect(dialog.querySelector("img")?.src).toMatch(/\/pick-a-variant\/variant-b\.svg$/);
+    expect(img.alt).toBe("light, 600 px");
+    expect(img.src).toMatch(/\/pick-a-variant\/variant-b\.svg$/);
+  });
+
+  test("closing the variant image dialog shuts it without errors and keeps its accessible name", () => {
+    const page = open("spoke/decisions", {});
+    const row = page.document.getElementById("spoke:pick-a-variant")!;
+    const shot = row.querySelector<DomButton>('button[aria-label="light, 600 px: open large"]')!;
+    const dialog = page.document.querySelector<DomDialog>("dialog#admin-zoom")!;
+    const errors: unknown[] = [];
+    page.addEventListener("error", (event) => errors.push(event));
+    shot.click();
+    assert(dialog.open, "zoom dialog must open before closing");
     dialog.querySelector<DomButton>('button[aria-label="Close"]')!.click();
     expect(dialog.open).toBe(false);
     expect(dialog.getAttribute("aria-label")).toBe("light, 600 px");
@@ -1239,7 +1284,7 @@ describe("admin.js", () => {
     );
   });
 
-  test("an answer is stored as it is given, and the copy button counts it", () => {
+  test("an answer is stored as it is given, reveals Reset, and the copy button counts it", () => {
     const page = open("spoke/decisions", {});
     const row = page.document.getElementById("spoke:pick-a-variant")!;
     // Reset shows only once there is an answer to take back.
@@ -1252,13 +1297,25 @@ describe("admin.js", () => {
     ).toMatchObject({ option: "b", label: ["Variant B"] });
     expect(row.querySelector(".mark")!.textContent).toBe("✓ Variant B");
     expect(page.document.getElementById("copy")!.textContent).toBe("Copy 1 answer");
+    expect((row.querySelector(".clear") as DomElement).hidden).toBe(false);
+  });
+
+  test("resetting an answer hides Reset and moves focus to the row's first answer", () => {
+    const page = open("spoke/decisions", {});
+    const row = page.document.getElementById("spoke:pick-a-variant")!;
+    const pick = row.querySelector('input[data-option][value="b"]') as DomInput;
+    pick.checked = true;
+    row.dispatchEvent(new page.Event("change"));
     const reset = row.querySelector(".clear") as DomElement;
-    expect(reset.hidden).toBe(false);
     // Pressed, it leaves; focus moves to the row's first answer, not back to the page's top.
     reset.focus();
     reset.click();
     expect(reset.hidden).toBe(true);
     expect(page.document.activeElement === row.querySelector("input[data-option]")).toBe(true);
+  });
+
+  test("resetting an answer moves focus to the first shown option when a search hid the first", () => {
+    const page = open("spoke/decisions", {});
     // Where a search hid the first option, focus goes to the first one shown.
     (page.document.querySelector('[data-who-button="all"]') as DomElement).click();
     const list = page.document.getElementById("spoke:pick-recipients")!;
@@ -1270,14 +1327,20 @@ describe("admin.js", () => {
     expect(page.document.activeElement === second).toBe(true);
   });
 
-  test("an opened row picks its recommendation, an assumption takes agree or veto, and a question put off copies nothing until the next visit", () => {
+  test("an opened row picks its recommendation and copies it", () => {
     const page = open("spoke/decisions", {});
-    const row = (k: string) => page.document.getElementById(k) as unknown as DomElement;
-    const variant = row("spoke:pick-a-variant");
+    const variant = page.document.getElementById("spoke:pick-a-variant") as unknown as DomElement;
     (variant.querySelector("summary + div .pick") as DomElement).click();
     expect(variant.querySelector(".mark")!.textContent).toBe("✓ Variant A");
+    expect((page.document.getElementById("copy") as DomElement).dataset.hwCopy).toContain(
+      "spoke:pick-a-variant: a (Variant A)",
+    );
+  });
+
+  test("an assumption has no recommendation, takes veto and a note, keeps task ticks, and survives the next visit", () => {
+    const page = open("spoke/decisions", {});
     // An assumption has no recommendation to pick: Agree and Veto answer it.
-    const cache = row("spoke:cache-folder");
+    const cache = page.document.getElementById("spoke:cache-folder") as unknown as DomElement;
     expect(cache.querySelector(".pick")).toBeNull();
     const veto = cache.querySelector("input[data-stance][value=veto]") as DomInput;
     veto.checked = true;
@@ -1289,8 +1352,27 @@ describe("admin.js", () => {
     expect(
       [...cache.querySelectorAll(".task-list-item-checkbox")].map((b) => (b as DomInput).checked),
     ).toEqual([true, false]);
+    expect((page.document.getElementById("copy") as DomElement).dataset.hwCopy).toContain(
+      "spoke:cache-folder: veto, keep a line",
+    );
+    // The next visit asks it again; the answers stay.
+    const back = open("spoke/decisions", {
+      ...stored(page),
+      "admin-answers:seen": String(Date.now() - 2 * 36e5),
+    });
+    expect(back.localStorage.getItem("admin-answers:spoke:cache-folder")).not.toBeNull();
+  });
+
+  test("putting a question off clears its pick, leaves it out of the copy, and asks again on the next visit", () => {
+    const page = open("spoke/decisions", {
+      "admin-answers:spoke:pick-a-variant": JSON.stringify({
+        option: "a",
+        label: ["Variant A"],
+        at: "2026-01-01T12:00:00.000Z",
+      }),
+    });
     // Putting a question off clears its pick, and the copy leaves it out.
-    const logo = row("spoke:pick-a-logo");
+    const logo = page.document.getElementById("spoke:pick-a-logo") as unknown as DomElement;
     (logo.querySelector(".pick") as DomElement).click();
     const later = logo.querySelector("input[data-later]") as DomInput;
     later.checked = true;
@@ -1299,7 +1381,6 @@ describe("admin.js", () => {
     expect(logo.querySelector(".mark")!.textContent).toBe("later");
     const text = (page.document.getElementById("copy") as DomElement).dataset.hwCopy;
     expect(text).toContain("spoke:pick-a-variant: a (Variant A)");
-    expect(text).toContain("spoke:cache-folder: veto, keep a line");
     expect(text).not.toContain("pick-a-logo");
     // The next visit asks it again; the answers stay.
     const back = open("spoke/decisions", {
@@ -1307,8 +1388,12 @@ describe("admin.js", () => {
       "admin-answers:seen": String(Date.now() - 2 * 36e5),
     });
     expect(back.localStorage.getItem("admin-answers:spoke:pick-a-logo")).toBeNull();
+  });
+
+  test("a note written before a question is put off stays out of the copy until the next visit", () => {
+    const page = open("spoke/decisions", {});
     // A note written before a question is put off is its answer on the next visit.
-    const review = row("spoke:check-the-copy");
+    const review = page.document.getElementById("spoke:check-the-copy") as unknown as DomElement;
     (review.querySelector("textarea") as unknown as HTMLTextAreaElement).value = "looks fine";
     review.querySelector("textarea")!.dispatchEvent(new page.Event("input"));
     const off = review.querySelector("input[data-later]") as DomInput;
@@ -1324,28 +1409,43 @@ describe("admin.js", () => {
     expect((next.document.getElementById("copy") as DomElement).dataset.hwCopy).toContain(
       "spoke:check-the-copy: looks fine",
     );
+  });
+
+  test("an option whose key is later stores as a pick rather than deferring the question", () => {
+    const page = open("spoke/decisions", {});
     // An option whose key is "later" or "done" is a pick like any other.
-    const variant2 = page.document.getElementById("spoke:pick-a-variant") as unknown as DomElement;
-    const b = variant2.querySelector('input[data-option][value="b"]') as DomInput;
+    const variant = page.document.getElementById("spoke:pick-a-variant") as unknown as DomElement;
+    const b = variant.querySelector('input[data-option][value="b"]') as DomInput;
     b.value = "later";
     b.checked = true;
-    variant2.dispatchEvent(new page.Event("change"));
+    variant.dispatchEvent(new page.Event("change"));
     expect(
       JSON.parse(page.localStorage.getItem("admin-answers:spoke:pick-a-variant")!),
     ).toMatchObject({ option: "later", later: false });
+  });
+
+  test("writing a note takes a deferred question up again and includes it in the copy", () => {
+    const page = open("spoke/decisions", {
+      "admin-answers:seen": String(Date.now()),
+      "admin-answers:spoke:pick-a-logo": JSON.stringify({
+        later: true,
+        note: "",
+        at: "2026-01-01T12:00:00.000Z",
+      }),
+    });
     // A note is an answer: it takes a question put off up again.
-    later.checked = true;
-    later.dispatchEvent(new page.Event("change", { bubbles: true }));
+    const logo = page.document.getElementById("spoke:pick-a-logo") as unknown as DomElement;
+    const later = logo.querySelector("input[data-later]") as DomInput;
+    assert(later.checked, "deferred question must start checked");
     (logo.querySelector("textarea") as unknown as HTMLTextAreaElement).value = "ask the printer";
     logo.querySelector("textarea")!.dispatchEvent(new page.Event("input"));
     expect(later.checked).toBe(false);
     expect((page.document.getElementById("copy") as DomElement).dataset.hwCopy).toContain(
       "spoke:pick-a-logo: ask the printer",
     );
-    expect(back.localStorage.getItem("admin-answers:spoke:cache-folder")).not.toBeNull();
   });
 
-  test("an answer given before its question or options changed is no current pick and copies as given", () => {
+  const openStaleAnswersPage = () => {
     const at = new Date(2026, 0, 1, 9).toISOString();
     const first = open("spoke/decisions", {});
     const asked = (k: string) =>
@@ -1374,24 +1474,64 @@ describe("admin.js", () => {
         at,
       }),
     });
-    const row = (k: string) => page.document.getElementById(k)!;
-    const checked = (k: string) =>
-      [...row(k).querySelectorAll("input[data-option]:checked")].map((i) => (i as DomInput).value);
-    expect(checked("spoke:pick-a-variant")).toEqual([]);
-    expect(checked("spoke:name-the-command")).toEqual([]);
-    expect(checked("spoke:pick-a-logo")).toEqual(["v02"]);
-    expect(checked("spoke:pick-recipients").sort()).toEqual(["ada-example", "ben-sample"]);
-    expect(row("spoke:pick-a-variant").querySelector(".mark")!.textContent).toBe(
-      "! answered before the question changed",
-    );
-    expect(row("spoke:pick-recipients").querySelector(".mark")!.textContent).toBe("✓ 2 picked");
-    const notice = row("spoke:pick-a-variant").querySelector("[data-stale]")!;
+    return { page, asked };
+  };
+
+  test.each([
+    {
+      label: "a changed question hash",
+      id: "spoke:pick-a-variant",
+      expectedChecked: [] as string[],
+      expectedMark: "! answered before the question changed",
+      staleHidden: false,
+    },
+    {
+      label: "a legacy answer whose label changed",
+      id: "spoke:name-the-command",
+      expectedChecked: [] as string[],
+      expectedMark: "! answered before the question changed",
+      staleHidden: false,
+    },
+    {
+      label: "a legacy answer whose label still matches",
+      id: "spoke:pick-a-logo",
+      expectedChecked: ["v02"],
+      expectedMark: "✓ Variant 2",
+      staleHidden: true,
+    },
+    {
+      label: "multiple current picks",
+      id: "spoke:pick-recipients",
+      expectedChecked: ["ada-example", "ben-sample"],
+      expectedMark: "✓ 2 picked",
+      staleHidden: true,
+    },
+  ])(
+    "loads stored answers according to whether their question changed ($label)",
+    ({ id, expectedChecked, expectedMark, staleHidden }) => {
+      const { page } = openStaleAnswersPage();
+      const row = page.document.getElementById(id)!;
+      const checked = [...row.querySelectorAll("input[data-option]:checked")]
+        .map((i) => (i as DomInput).value)
+        .sort();
+      expect(checked).toEqual(expectedChecked);
+      expect(row.querySelector(".mark")!.textContent).toBe(expectedMark);
+      expect(row.querySelector("[data-stale]")!.hasAttribute("hidden")).toBe(staleHidden);
+    },
+  );
+
+  test("a stale answer's notice quotes the old label and when it was answered", () => {
+    const { page } = openStaleAnswersPage();
+    const notice = page.document
+      .getElementById("spoke:pick-a-variant")!
+      .querySelector("[data-stale]")!;
     expect(notice.hasAttribute("hidden")).toBe(false);
     expect(notice.textContent).toContain("The old label");
     expect(notice.textContent).toMatch(/1 Jan.*09:00/);
-    expect(row("spoke:pick-a-logo").querySelector("[data-stale]")!.hasAttribute("hidden")).toBe(
-      true,
-    );
+  });
+
+  test("the copy block formats stale and multi-pick answers in page order", () => {
+    const { page } = openStaleAnswersPage();
     const block = (page.document.getElementById("copy") as DomElement).dataset.hwCopy!;
     expect(block).toContain("spoke:pick-a-variant: a (The old label), go; answered ");
     expect(block).toMatch(/spoke:name-the-command: short \(A short name\); answered .*changed/);
@@ -1399,24 +1539,28 @@ describe("admin.js", () => {
       "spoke:pick-recipients: ben-sample (Ben Sample), ada-example (Ada Example)\n",
     );
     // Lines follow the page.
-    const order = [...block.matchAll(/^spoke:([\w-]+):/gm)].map((m) => m[1]);
-    const onPage = [...page.document.querySelectorAll("details.item[data-k]")]
-      .map((d) => (d as unknown as HTMLElement).dataset.k!.slice("spoke:".length))
-      .filter((k) => order.includes(k));
-    expect(order).toEqual(onPage);
+    expect([...block.matchAll(/^spoke:([\w-]+):/gm)].map((m) => m[1])).toEqual([
+      "pick-a-variant",
+      "pick-a-logo",
+      "pick-recipients",
+      "name-the-command",
+    ]);
+  });
+
+  test("picking again on a stale row records the current question and clears its notice", () => {
+    const { page, asked } = openStaleAnswersPage();
+    const row = page.document.getElementById("spoke:pick-a-variant")!;
     // Picking again is the answer to the question as it stands now.
-    const pick = row("spoke:pick-a-variant").querySelector('input[value="b"]') as DomInput;
+    const pick = row.querySelector('input[value="b"]') as DomInput;
     pick.checked = true;
-    row("spoke:pick-a-variant").dispatchEvent(new page.Event("change"));
+    row.dispatchEvent(new page.Event("change"));
     expect(
       JSON.parse(page.localStorage.getItem("admin-answers:spoke:pick-a-variant")!),
     ).toMatchObject({ option: "b", label: ["Variant B"], asked: asked("spoke:pick-a-variant") });
-    expect(row("spoke:pick-a-variant").querySelector("[data-stale]")!.hasAttribute("hidden")).toBe(
-      true,
-    );
+    expect(row.querySelector("[data-stale]")!.hasAttribute("hidden")).toBe(true);
   });
 
-  test("a copy holds what was not copied yet, and everything again once nothing is new", () => {
+  test("a copy holds only answers not copied yet and shows saved and copied times", () => {
     const at = (h: number) => new Date(2026, 0, 1, h).toISOString();
     const page = open("spoke/decisions", {
       "admin-answers:copied": at(12),
@@ -1435,7 +1579,19 @@ describe("admin.js", () => {
     expect(
       page.document.getElementById("spoke:pick-a-logo")!.querySelector(".saved")!.textContent,
     ).toBe("saved 10:00, copied 12:00");
-    const done = open("spoke/decisions", { ...stored(page), "admin-answers:copied": at(14) });
+  });
+
+  test("once every answer is copied, the button copies all of them again and marks rows copied", () => {
+    const at = (h: number) => new Date(2026, 0, 1, h).toISOString();
+    const done = open("spoke/decisions", {
+      "admin-answers:copied": at(14),
+      "admin-answers:spoke:pick-a-logo": JSON.stringify({
+        option: "v02",
+        label: "Variant 2",
+        at: at(10),
+      }),
+      "admin-answers:spoke:check-the-copy": JSON.stringify({ note: "fine", at: at(13) }),
+    });
     const again = done.document.getElementById("copy") as DomElement;
     expect(again.dataset.hwCopy).toContain("pick-a-logo");
     expect(again.dataset.hwCopy).toContain("check-the-copy");
@@ -1444,6 +1600,14 @@ describe("admin.js", () => {
     expect(
       done.document.getElementById("spoke:pick-a-logo")!.querySelector(".mark")!.textContent,
     ).toContain("copied");
+  });
+
+  test("a copy made in another tab marks uncopied rows here as copied", () => {
+    const at = (h: number) => new Date(2026, 0, 1, h).toISOString();
+    const page = open("spoke/decisions", {
+      "admin-answers:copied": at(12),
+      "admin-answers:spoke:check-the-copy": JSON.stringify({ note: "fine", at: at(13) }),
+    });
     // A copy made in another tab marks the rows here too.
     const mark = () =>
       page.document.getElementById("spoke:check-the-copy")!.querySelector(".mark")!.textContent;
@@ -1458,10 +1622,17 @@ describe("admin.js", () => {
     async () => {
       const spoke = await readRepo(repoFrom("spoke"));
       // Alex, the hub's user, has only work in Priority 1 and every question in Priority 2.
-      const items = spoke.items.map((i) => (i.id === "pick-a-variant" ? { ...i, priority: 2 } : i));
-      const task = items.find((i) => i.id === "ask-the-printer")!;
+      const variant = spoke.items.find((i) => i.id === "pick-a-variant");
+      assert(variant, "spoke fixture must include pick-a-variant");
+      const task = spoke.items.find((i) => i.id === "ask-the-printer");
+      assert(task, "spoke fixture must include ask-the-printer");
+      const items = [
+        ...spoke.items.filter((i) => i.id !== "pick-a-variant"),
+        { ...variant, priority: 2 },
+        { ...task, id: "alex-task", owner: "Alex" },
+      ];
       const dir = join(scratch(), "out");
-      const repos = [{ ...spoke, items: [...items, { ...task, id: "alex-task", owner: "Alex" }] }];
+      const repos = [{ ...spoke, items }];
       await buildSite(siteData(repos), dir);
       const window = new Window({ url: "http://admin.localhost/index" });
       opened.push(window);
@@ -1479,106 +1650,127 @@ describe("admin.js", () => {
     testTimeout(60_000),
   );
 
-  test("the filters: kinds counted per person, own rows once, the first fold opens, a search finds what a row says", () => {
-    const page = open("index", {});
-    const doc = page.document;
+  test("the hub counts open rows per person and per kind for the selected person", () => {
+    const doc = open("index", {}).document;
     const button = (attr: string, v: string) =>
       doc.querySelector(`[${attr}="${v}"]`) as unknown as HTMLButtonElement;
     const count = (k: string) =>
-      button("data-kind-button", k).querySelector("[data-kind-count]")!.textContent;
-    const visible = () =>
-      [...doc.querySelectorAll("[data-row]")].filter(
-        (r) => !r.closest("[hidden]"),
-      ) as unknown as HTMLElement[];
-    const openRows = [
-      ...doc.querySelectorAll("details.item[data-status=open]"),
-    ] as unknown as HTMLElement[];
-    const first = (doc.querySelector("[data-who-button]") as unknown as HTMLElement).dataset
-      .whoButton!;
-    const mine = openRows.filter((r) => !r.dataset.who || r.dataset.who === first);
-    expect(Number(count("all"))).toBe(mine.length);
-    // Each person's button counts their open rows, All every one, which the rail's count names.
+      Number(button("data-kind-button", k).querySelector("[data-kind-count]")!.textContent);
     const people = (p: string) =>
       Number(button("data-who-button", p).querySelector("[data-who-count]")!.textContent);
-    expect(people(first)).toBe(mine.length);
-    expect(people("all")).toBe(openRows.length);
-    expect(people("all")).toBeGreaterThan(people(first));
-    expect(Number(count("decision"))).toBe(
-      mine.filter((r) => r.dataset.kind === "decision").length,
-    );
+    expect(count("all")).toBe(3);
+    // Each person's button counts their open rows, All every one, which the rail's count names.
+    expect(people("Alex")).toBe(3);
+    expect(people("all")).toBe(6);
+    expect(people("all")).toBeGreaterThan(people("Alex"));
+    expect(count("decision")).toBe(2);
+  });
+
+  test("choosing a kind hides rows of other kinds", () => {
+    const doc = open("index", {}).document;
     // A kind filters the rows.
-    button("data-kind-button", "decision").click();
-    expect(visible().filter((r) => r.dataset.kind && r.dataset.kind !== "decision")).toEqual([]);
-    button("data-kind-button", "all").click();
+    (doc.querySelector('[data-kind-button="decision"]') as unknown as HTMLButtonElement).click();
+    const visibleKinds = [...doc.querySelectorAll("[data-row][data-kind]")]
+      .filter((r) => !r.closest("[hidden]"))
+      .map((r) => (r as unknown as HTMLElement).dataset.kind);
+    expect(visibleKinds).toEqual(["decision", "decision", "decision", "decision"]);
+  });
+
+  test("selecting another person shows their rows under Needs you once and opens a fold with rows", () => {
+    const doc = open("index", {}).document;
     // Kim's rows show under "Needs you", not a second time under "Waiting on others".
-    button("data-who-button", "Kim").click();
+    (doc.querySelector('[data-who-button="Kim"]') as unknown as HTMLButtonElement).click();
     const kim = doc.querySelector('[data-who-group="Kim"]')!;
     expect(kim.closest("[hidden]")).not.toBeNull();
-    expect(Number(count("all"))).toBeGreaterThan(0);
+    expect(
+      Number(doc.querySelector('[data-kind-button="all"] [data-kind-count]')!.textContent),
+    ).toBe(1);
     // Kim has no Priority 2 or 3 row open by default: a fold with rows opens.
     const needs = doc.querySelector("[data-who-button]")!.closest("section")!;
-    expect(
-      [...needs.querySelectorAll("details[data-group]")].some(
-        (g) => !g.closest("[hidden]") && (g as unknown as HTMLDetailsElement).open,
-      ),
-    ).toBe(true);
-    button("data-who-button", "all").click();
+    const visibleFolds = [...needs.querySelectorAll("details[data-group]")].filter(
+      (g) => !g.closest("[hidden]"),
+    );
+    expect(visibleFolds.map((g) => (g as unknown as HTMLDetailsElement).open)).toEqual([true]);
+  });
+
+  test("searching for text in the hidden updated mark finds nothing, hides empty sections, and clearing restores them", () => {
+    const page = open("index", {});
+    const doc = page.document;
+    (doc.querySelector('[data-who-button="all"]') as unknown as HTMLButtonElement).click();
     // The hidden "updated" mark is no text a search finds.
     const search = doc.getElementById("admin-search") as DomInput;
-    search.value = "updated since";
+    search.value = "updated";
     search.dispatchEvent(new page.Event("input"));
-    expect(visible()).toEqual([]);
+    const visible = [...doc.querySelectorAll("[data-row]")].filter((r) => !r.closest("[hidden]"));
+    expect(visible).toEqual([]);
     expect(doc.getElementById("admin-nohit")!.hasAttribute("hidden")).toBe(false);
-    expect(doc.getElementById("admin-nohit")!.textContent).toContain("“updated since”");
+    expect(doc.getElementById("admin-nohit")!.textContent).toContain("“updated”");
     // Every section without a row to show steps aside, but the one holding the filters.
-    const filters = button("data-who-button", "all").closest("section");
+    const filters = doc.querySelector('[data-who-button="all"]')!.closest("section");
     const left = [...doc.querySelectorAll("main section")].filter((x) => !x.hasAttribute("hidden"));
-    expect(left.length === 1 && (left[0] as unknown) === filters).toBe(true);
+    expect(left).toEqual([filters]);
     search.value = "";
     search.dispatchEvent(new page.Event("input"));
     expect(
       [...doc.querySelectorAll("main section")].filter((x) => x.hasAttribute("hidden")).length,
     ).toBe(0);
+  });
+
+  test("a search for another person's row on the hub shows it under Waiting on others", () => {
+    const page = open("index", {});
+    const doc = page.document;
     // Another person's row the search finds shows under "Waiting on others".
-    button("data-who-button", first).click();
+    const search = doc.getElementById("admin-search") as DomInput;
     search.value = "printer";
     search.dispatchEvent(new page.Event("input"));
-    expect(visible().length).toBeGreaterThan(0);
+    const visibleKeys = [...doc.querySelectorAll("[data-row]")]
+      .filter((r) => !r.closest("[hidden]"))
+      .map((r) => (r as unknown as HTMLElement).dataset.k);
+    expect(visibleKeys).toEqual(["spoke:ask-the-printer"]);
     expect(doc.getElementById("admin-nohit")!.hasAttribute("hidden")).toBe(true);
+  });
+
+  test("a search matching only another person's row on Decisions says so", () => {
     // Where no other list shows it, a row of another person the search finds is named.
-    const decisions = open("spoke/decisions", { "admin-answers:who": first });
+    const decisions = open("spoke/decisions", { "admin-answers:who": "Alex" });
     const find = decisions.document.getElementById("admin-search") as DomInput;
     find.value = "monthly";
     find.dispatchEvent(new decisions.Event("input"));
     expect(decisions.document.getElementById("admin-nohit")!.textContent).toContain(
       "1 row of other people does",
     );
-    // A link followed on the page shows its row whatever person the filter is on.
-    search.value = "";
-    search.dispatchEvent(new page.Event("input"));
-    const other = openRows.find((r) => r.dataset.who && r.dataset.who !== first)!;
-    page.location.hash = `#${other.id}`;
-    page.dispatchEvent(new page.Event("hashchange"));
-    expect(!!other.closest("[hidden]")).toBe(false);
   });
 
-  test("hidden repositories: their rows leave the hub, the counts follow, the hub says so, a link still opens", () => {
-    const answer = JSON.stringify({ note: "fine", at: new Date().toISOString() });
-    const kept = {
-      "admin-answers:repos": '["spoke"]',
-      "admin-answers:spoke:check-the-copy": answer,
-    };
-    const page = open("index", kept);
-    const doc = page.document;
-    const shown = () =>
-      [...doc.querySelectorAll("[data-repo]")].filter((r) => !r.closest("[hidden]")).length;
-    expect(shown()).toBe(0);
+  test("following a hash link shows its row whatever person the filter is on", () => {
+    const page = open("index", {});
+    // A link followed on the page shows its row whatever person the filter is on.
+    const other = page.document.getElementById("spoke:ask-the-printer");
+    assert(other, "spoke:ask-the-printer row must exist on the hub");
+    assert(other.closest("[hidden]"), "another person's row must start hidden");
+    page.location.hash = "#spoke:ask-the-printer";
+    page.dispatchEvent(new page.Event("hashchange"));
+    expect(other.closest("[hidden]")).toBeNull();
+  });
+
+  const shownRepoRows = (doc: Window["document"]) =>
+    [...doc.querySelectorAll("[data-repo]")].filter((r) => !r.closest("[hidden]")).length;
+
+  test("hiding a repository removes its rows from the hub, zeros counts, announces it, and marks its table row", () => {
+    const doc = open("index", { "admin-answers:repos": '["spoke"]' }).document;
+    expect(shownRepoRows(doc)).toBe(0);
     expect(doc.querySelector('[data-kind-button="all"] [data-kind-count]')!.textContent).toBe("0");
     expect(doc.querySelector("[data-repo-count]")!.textContent).toBe("0 of 1");
-    // The fixture's admin.label names it wherever a person reads it; the key stays its address.
     expect(doc.querySelector("[data-repo-said]")!.textContent).toBe(
       "1 repository hidden: Sample spoke.",
     );
+    expect(
+      doc.querySelector('[data-repo-row="spoke"] [data-repo-off]')!.hasAttribute("hidden"),
+    ).toBe(false);
+  });
+
+  test("a repository's admin.label names it everywhere a person reads it while keeping its key as address", () => {
+    const doc = open("index", { "admin-answers:repos": '["spoke"]' }).document;
+    // The fixture's admin.label names it wherever a person reads it; the key stays its address.
     expect(
       doc.querySelector('[data-repo-box][value="spoke"]')!.closest("label")!.textContent,
     ).toMatch(/^\s*Sample spoke\s+spoke\s*$/);
@@ -1588,68 +1780,124 @@ describe("admin.js", () => {
     expect(
       open("spoke/decisions", null).document.querySelector(".hw-nav-group")!.textContent!.trim(),
     ).toBe("Sample spoke");
-    expect(
-      doc.querySelector('[data-repo-row="spoke"] [data-repo-off]')!.hasAttribute("hidden"),
-    ).toBe(false);
+  });
+
+  test("hiding a repository is not an answer and leaves the copy block with real answers alone", () => {
+    const answer = JSON.stringify({ note: "fine", at: new Date().toISOString() });
+    const doc = open("index", {
+      "admin-answers:repos": '["spoke"]',
+      "admin-answers:spoke:check-the-copy": answer,
+    }).document;
     // The choice is no answer: the copy holds the one answer alone.
     const copy = (doc.getElementById("copy") as DomElement).dataset.hwCopy!;
     expect(copy).toBe("Answers from the admin pages:\nspoke:check-the-copy: fine");
+  });
+
+  test("a repository page shows its rows even when that repository is hidden on the hub", () => {
+    // Another page hides nothing by repository.
+    const decisions = open("spoke/decisions", { "admin-answers:repos": '["spoke"]' });
+    expect(decisions.document.querySelector("details.item:not([hidden])")).not.toBeNull();
+  });
+
+  test("searching for a row in a hidden repository names hidden repositories", () => {
+    const page = open("index", { "admin-answers:repos": '["spoke"]' });
+    const doc = page.document;
     // A search finding rows only there says so.
     const search = doc.getElementById("admin-search") as DomInput;
     search.value = "monthly";
     search.dispatchEvent(new page.Event("input"));
     expect(doc.getElementById("admin-nohit")!.textContent).toMatch(/rows? in hidden repositories/);
-    search.value = "";
-    search.dispatchEvent(new page.Event("input"));
+  });
+
+  test("a hash link reveals a row in a hidden repository and clearing the hash hides it again", () => {
+    const page = open("index", { "admin-answers:repos": '["spoke"]' });
+    const doc = page.document;
     // A link to an item there opens it.
     page.location.hash = "#spoke:pick-a-variant";
     page.dispatchEvent(new page.Event("hashchange"));
-    expect(!!doc.getElementById("spoke:pick-a-variant")!.closest("[hidden]")).toBe(false);
-    // Another page hides nothing by repository.
-    const decisions = open("spoke/decisions", kept);
-    expect(decisions.document.querySelector("details.item:not([hidden])")).not.toBeNull();
+    expect(doc.getElementById("spoke:pick-a-variant")!.closest("[hidden]")).toBeNull();
+    expect(shownRepoRows(doc)).toBe(1);
+    // Once the address names another row, the row it named before hides with its repository.
+    page.location.hash = "";
+    page.dispatchEvent(new page.Event("hashchange"));
+    expect(shownRepoRows(doc)).toBe(0);
+  });
+
+  test("Show all restores hidden repository rows and forgets the stored choice", () => {
+    const page = open("index", { "admin-answers:repos": '["spoke"]' });
+    const doc = page.document;
     // "Show all" brings every row back and forgets the choice.
     (doc.querySelector("[data-repo-all]") as unknown as HTMLButtonElement).click();
-    expect(shown()).toBeGreaterThan(0);
+    expect(shownRepoRows(doc)).toBe(9);
     expect(stored(page)["admin-answers:repos"]).toBeUndefined();
     expect(doc.querySelector("[data-repo-said]")!.textContent).toBe("");
+  });
+
+  test("Hide all hides every repository row, stores the choice, and swaps Hide all for Show all", () => {
+    const page = open("index", {});
+    const doc = page.document;
     // "Hide all" unchecks every box and keeps the choice; with nothing left to hide it steps aside.
     const none = doc.querySelector("[data-repo-none]") as unknown as HTMLButtonElement;
-    expect(none.hasAttribute("hidden")).toBe(false);
     none.click();
-    expect(shown()).toBe(1);
+    expect(shownRepoRows(doc)).toBe(0);
     expect(stored(page)["admin-answers:repos"]).toBe('["spoke"]');
     expect(doc.querySelector("[data-repo-count]")!.textContent).toBe("0 of 1");
     expect(none.hasAttribute("hidden")).toBe(true);
     expect(doc.querySelector("[data-repo-all]")!.hasAttribute("hidden")).toBe(false);
+  });
+
+  test("Hide all and Show all move focus to the repository choice button", () => {
+    const page = open("index", {});
+    const doc = page.document;
+    const none = doc.querySelector("[data-repo-none]") as unknown as HTMLButtonElement;
+    expect(none.hasAttribute("hidden")).toBe(false);
     // Each steps aside; focus goes to the choice's own button rather than the page's top.
     const choice = doc.querySelector("[popovertarget=admin-repo-choice]");
+    none.click();
     expect(doc.activeElement === choice).toBe(true);
     (doc.querySelector("[data-repo-all]") as unknown as HTMLButtonElement).click();
     expect(doc.activeElement === choice).toBe(true);
+  });
+
+  test("unchecking a repository box hides all its rows except the hash target and stores the choice", () => {
+    const page = open("index", {});
+    const doc = page.document;
+    page.location.hash = "#spoke:pick-a-variant";
+    page.dispatchEvent(new page.Event("hashchange"));
     // Unchecking the box hides it again and keeps the choice.
     const box = doc.querySelector('[data-repo-box][value="spoke"]') as unknown as DomInput;
     box.checked = false;
     box.dispatchEvent(new page.Event("change"));
     // All but the row the address names.
-    expect(shown()).toBe(1);
+    expect(shownRepoRows(doc)).toBe(1);
     expect(stored(page)["admin-answers:repos"]).toBe('["spoke"]');
-    // Once the address names another row, the row it named before hides with its repository.
-    page.location.hash = "";
-    page.dispatchEvent(new page.Event("hashchange"));
-    expect(shown()).toBe(0);
+  });
+
+  test("another tab showing a repository updates the hub while unrelated storage writes leave a typed note alone", () => {
+    const answer = JSON.stringify({ note: "fine", at: new Date().toISOString() });
+    const page = open("index", {
+      "admin-answers:repos": '["spoke"]',
+      "admin-answers:spoke:check-the-copy": answer,
+    });
+    const doc = page.document;
     // Another tab showing it again shows it here, and a write of anything else leaves a note being
     // typed as it is.
     page.localStorage.removeItem("admin-answers:repos");
     page.dispatchEvent(new page.StorageEvent("storage", { key: "admin-answers:repos" }));
-    expect(shown()).toBeGreaterThan(0);
+    expect(shownRepoRows(doc)).toBe(9);
     const note = doc.querySelector(
       '[data-k="spoke:check-the-copy"] textarea',
     ) as unknown as DomInput;
     note.value = "fine ";
     page.dispatchEvent(new page.StorageEvent("storage", { key: "admin-answers:seen" }));
     expect(note.value).toBe("fine ");
+  });
+
+  test("the hidden mark on a repository row is not text a search finds", () => {
+    const page = open("index", {});
+    const doc = page.document;
     // The word on a repository's "hidden" mark is no text a search finds.
+    const search = doc.getElementById("admin-search") as DomInput;
     search.value = "hidden";
     search.dispatchEvent(new page.Event("input"));
     expect(doc.querySelector('[data-repo-row="spoke"]')!.hasAttribute("hidden")).toBe(true);
@@ -1702,23 +1950,30 @@ describe("admin.js", () => {
     "admin-answers:copied": new Date(Date.now() + 1000).toISOString(),
   });
 
-  test("a heading comment copies exactly one line, survives reload, and resets", () => {
+  test("a heading comment starts closed and collapses whitespace into one copy line", () => {
     const first = open(SAMPLE_REPORT, {});
-    expect(first.document.querySelector("#next + [data-comment]")?.hasAttribute("open")).toBe(
-      false,
-    );
+    const fold = first.document.querySelector("#next + [data-comment]");
+    assert(fold, "heading comment fold must exist");
+    expect(fold.hasAttribute("open")).toBe(false);
     typeComment(first);
     const copy = first.document.getElementById("copy")!;
     expect(copy.getAttribute("data-hw-copy")).toBe(
       "Answers from the admin pages:\nspoke:2026-01-15-sample-topic#next: why dotted? Any reason?",
     );
     expect(copy.textContent).toBe("Copy 1 answer");
+  });
+
+  test("a copied heading comment survives reload with its raw text and clears on reset", () => {
+    const first = open(SAMPLE_REPORT, {});
+    typeComment(first);
     const back = open(SAMPLE_REPORT, copiedComment(first));
     expect(commentField(back).value).toBe("why   dotted?\n  Any reason?");
-    expect(back.document.querySelector('[data-k="' + COMMENT + '"] .mark')?.textContent).toBe(
-      "✓ comment · copied",
-    );
-    expect(back.document.getElementById("copy")?.textContent).toBe("Copy 1 answer again");
+    const mark = back.document.querySelector('[data-k="' + COMMENT + '"] .mark');
+    assert(mark, "heading comment mark must exist");
+    expect(mark.textContent).toBe("✓ comment · copied");
+    const copy = back.document.getElementById("copy");
+    assert(copy, "copy button must exist");
+    expect(copy.textContent).toBe("Copy 1 answer again");
     (back.document.querySelector('[data-k="' + COMMENT + '"] .clear') as DomElement).click();
     expect(stored(back)[commentKey]).toBeUndefined();
   });
@@ -1850,17 +2105,22 @@ describe("admin.js", () => {
     }
   });
 
-  test("an item changed since the visit before says so; a first visit marks nothing", () => {
-    const shown = (w: Window) =>
-      w.document.querySelectorAll("[data-row] [data-updated]:not([hidden])").length;
-    expect(shown(open("index", {}))).toBe(0);
+  const markedUpdatedCount = (w: Window) =>
+    w.document.querySelectorAll("[data-row] [data-updated]:not([hidden])").length;
+
+  test("a first visit marks no rows, while a later visit marks changed rows and keeps marks within the hour", () => {
+    expect(markedUpdatedCount(open("index", {}))).toBe(0);
     const hours = (h: number) => String(Date.now() - h * 36e5);
     // Two hours away: every item of the fixture's one commit is newer than the last visit.
     const back = open("index", { "admin-answers:seen": hours(2) });
-    expect(shown(back)).toBeGreaterThan(0);
+    expect(markedUpdatedCount(back)).toBe(12);
     expect(Number(stored(back)["admin-answers:visit"])).toBeLessThan(Date.now() - 36e5);
     // A page view within the hour belongs to the same visit, and keeps its marks.
-    expect(shown(open("spoke/work", stored(back)))).toBeGreaterThan(0);
+    expect(markedUpdatedCount(open("spoke/work", stored(back)))).toBe(3);
+  });
+
+  test("a fold with changed rows counts them and the page banner reports how many changed", () => {
+    const back = open("index", { "admin-answers:seen": String(Date.now() - 2 * 36e5) });
     // Each fold that holds a marked row counts it, and the page says how many changed.
     const fold = back.document.querySelector(
       "details[data-group] [data-updated-count]:not([hidden])",
@@ -1869,9 +2129,12 @@ describe("admin.js", () => {
     expect(back.document.getElementById("admin-since")!.textContent).toContain(
       "changed since your last visit",
     );
+  });
+
+  test("a hidden repository's changed rows count nowhere unless a hash link opens one", () => {
     // A hidden repository's rows count nowhere.
     const away = open("index", {
-      "admin-answers:seen": hours(2),
+      "admin-answers:seen": String(Date.now() - 2 * 36e5),
       "admin-answers:repos": '["spoke"]',
     });
     expect(away.document.querySelector("[data-updated-count]:not([hidden])")).toBeNull();
@@ -1879,27 +2142,26 @@ describe("admin.js", () => {
     // But the row a link opens there.
     away.location.hash = "#spoke:check-the-copy";
     away.dispatchEvent(new away.Event("hashchange"));
-    expect(away.document.getElementById("admin-since")!.textContent?.startsWith("1 item ")).toBe(
-      true,
-    );
+    expect(away.document.getElementById("admin-since")!.textContent).toMatch(/^1 item /);
   });
 
   test("a row shown on the visit before compares its file, not its commit time", () => {
     const first = stored(open("index", {}));
     const saved: unknown = JSON.parse(first["admin-answers:versions"]!);
-    if (
-      !saved ||
-      typeof saved !== "object" ||
-      Array.isArray(saved) ||
-      !Object.values(saved).every((version: unknown) => typeof version === "string")
-    )
-      throw new Error("Expected stored versions to map row keys to strings");
+    assert(saved !== null, "stored versions must not be null");
+    assert(typeof saved === "object", "stored versions must be an object");
+    assert(!Array.isArray(saved), "stored versions must not be an array");
     const versions = saved as Record<string, string>;
-    const [changed] = Object.keys(versions);
+    assert(
+      Object.values(versions).every((version: unknown) => typeof version === "string"),
+      "Expected stored versions to map row keys to strings",
+    );
+    const changed = "spoke:pick-a-variant";
+    const [file] = versions[changed]!.split(" ");
     // Every item's commit is newer than the visit, but only one file differs from what it showed.
     const back = open("index", {
       "admin-answers:seen": String(Date.now() - 2 * 36e5),
-      "admin-answers:versions": JSON.stringify({ ...versions, [changed!]: "older" }),
+      "admin-answers:versions": JSON.stringify({ ...versions, [changed]: "older" }),
     });
     const marked = [...back.document.querySelectorAll("[data-row]")].filter((r) =>
       r.querySelector("[data-updated]:not([hidden])"),
@@ -1907,25 +2169,35 @@ describe("admin.js", () => {
     expect([...new Set(marked.map((r) => (r as unknown as HTMLElement).dataset.k))]).toEqual([
       changed,
     ]);
+    expect(file).toBeTypeOf("string");
+  });
+
+  test.each([
+    [
+      "question or options changed ·",
+      "the stored question hash differs",
+      (_asked: string) => "older older",
+    ],
+    ["edited ·", "only the stored file hash differs", (asked: string) => `older ${asked}`],
+  ])("a changed row marks %s when %s", (expectedMark, _reason, storedVersion) => {
+    const first = stored(open("index", {}));
+    const versions = JSON.parse(first["admin-answers:versions"]!) as Record<string, string>;
+    const changed = "spoke:pick-a-variant";
+    const [file, askedHash] = versions[changed]!.split(" ");
+    assert(file, "stored version must hold a file hash");
+    assert(askedHash, "stored version must hold an asked hash");
     // A stored question that differs says the question changed; the file alone, that it was edited.
-    const [file] = versions[changed!].split(" ");
-    const asked = open("index", {
-      "admin-answers:seen": String(Date.now() - 2 * 36e5),
-      "admin-answers:versions": JSON.stringify({ ...versions, [changed!]: "older older" }),
-    });
-    const mark = (w: Window) =>
-      w.document.querySelector(`[data-k="${changed}"] [data-updated]`)!.textContent;
-    // The row's mark is short: the line above the lists says since when.
-    expect(mark(asked)).toBe("question or options changed ·");
-    const edited = open("index", {
+    const page = open("index", {
       "admin-answers:seen": String(Date.now() - 2 * 36e5),
       "admin-answers:versions": JSON.stringify({
         ...versions,
-        [changed!]: `older ${versions[changed!].split(" ")[1]}`,
+        [changed]: storedVersion(askedHash),
       }),
     });
-    expect(mark(edited)).toBe("edited ·");
-    expect(file).toBeTypeOf("string");
+    // The row's mark is short: the line above the lists says since when.
+    const mark = page.document.querySelector(`[data-k="${changed}"] [data-updated]`);
+    assert(mark, "updated mark must exist on the changed row");
+    expect(mark.textContent).toBe(expectedMark);
   });
 });
 
