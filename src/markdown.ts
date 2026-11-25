@@ -184,29 +184,32 @@ export function rewriteRelativeUrls(html: string, dir: string): string {
   );
 }
 
-export function finishRenderedHtml(rendered: string, dir: string, documentId: string): string {
-  const cleaned = sanitizeMarkup(rendered);
-  const withDiagrams = renderMermaidBlocks(cleaned, documentId);
+export function finishRenderedHtml(html: string, dir: string, documentId: string): string {
+  const withDiagrams = renderMermaidBlocks(html, documentId);
   const styled = withElements(withDiagrams);
   return rewriteRelativeUrls(stripUnsafeLinks(styled), dir);
 }
 
 export function renderDocMarkdown(repo: string, path: string, text: string): string {
-  const rendered = Bun.markdown.html(stripFrontmatter(text), { headings: { ids: true } });
-  const documentId = hasMermaidBlock(rendered)
+  const cleaned = sanitizeMarkup(
+    Bun.markdown.html(stripFrontmatter(text), { headings: { ids: true } }),
+  );
+  const documentId = hasMermaidBlock(cleaned)
     ? Bun.hash(JSON.stringify([repo, path, text])).toString(36)
     : "";
-  return finishRenderedHtml(rendered, join(repo, path, ".."), documentId);
+  return finishRenderedHtml(cleaned, join(repo, path, ".."), documentId);
 }
 
 // An item's body has no front matter and no HTML: a placeholder such as <id> shows as written,
 // and an address in angle brackets is linked by the pages.
 export function renderItemMarkdown(repo: string, path: string, text: string): string {
-  const rendered = Bun.markdown.html(text, { noHtmlSpans: true, noHtmlBlocks: true });
-  const documentId = hasMermaidBlock(rendered)
+  const cleaned = sanitizeMarkup(
+    Bun.markdown.html(text, { noHtmlSpans: true, noHtmlBlocks: true }),
+  );
+  const documentId = hasMermaidBlock(cleaned)
     ? Bun.hash(JSON.stringify([repo, path, text])).toString(36)
     : "";
-  return finishRenderedHtml(rendered, join(repo, path, ".."), documentId);
+  return finishRenderedHtml(cleaned, join(repo, path, ".."), documentId);
 }
 
 // A page's title is its first rendered h1, which leaves the article since the title shows above it.

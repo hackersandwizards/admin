@@ -241,12 +241,6 @@ describe("rewriteRelativeUrls", () => {
 describe("finishRenderedHtml", () => {
   test.each([
     [
-      "sanitizeMarkup runs before renderMermaidBlocks",
-      '<pre><code data-x="1" class="language-mermaid">pie bad</code></pre>',
-      '<pre class="hw-code not-prose"><code class="language-mermaid">pie bad</code></pre>' +
-        "<p>This diagram did not render: Invalid mermaid header: &quot;pie bad&quot;. Expected &quot;graph TD&quot;, &quot;flowchart LR&quot;, &quot;stateDiagram-v2&quot;, etc.</p>",
-    ],
-    [
       "renderMermaidBlocks runs before withElements",
       '<pre><code class="language-mermaid">pie bad</code></pre>',
       '<pre class="hw-code not-prose"><code class="language-mermaid">pie bad</code></pre>' +
@@ -268,13 +262,32 @@ describe("finishRenderedHtml", () => {
 });
 
 describe("renderDocMarkdown and renderItemMarkdown", () => {
-  test("renderDocMarkdown strips frontmatter, adds heading ids, and preserves raw HTML", () => {
-    const html = renderDocMarkdown(
-      "/r",
-      "docs/a.md",
+  test.each([
+    [
+      "strips frontmatter, adds heading ids, and preserves raw HTML",
       "---\ntitle: T\n---\n# Hello\n\n<em>raw</em>\n",
+      '<h1 id="hello">Hello</h1>\n<p><em>raw</em></p>\n',
+    ],
+    [
+      "rewrites a raw reserved heading id and strips data attributes",
+      '<h2 id="copy" data-x="1">Copy</h2>\n',
+      '<h2 id="section-copy">Copy</h2>\n',
+    ],
+  ])("renderDocMarkdown %s", (_label, source, expected) => {
+    expect(renderDocMarkdown("/r", "docs/a.md", source)).toBe(expected);
+  });
+
+  test("renderDocMarkdown hashes a raw Mermaid block after stripping data attributes and isolates ids by document", () => {
+    const raw =
+      '<pre><code data-x="1" class="language-mermaid">flowchart LR\n  A --&gt; B</code></pre>\n';
+    const idsA = [...renderDocMarkdown("/r", "docs/a.md", raw).matchAll(/<svg id="([^"]+)"/g)].map(
+      (m) => m[1],
     );
-    expect(html).toBe('<h1 id="hello">Hello</h1>\n<p><em>raw</em></p>\n');
+    const idsB = [...renderDocMarkdown("/r", "docs/b.md", raw).matchAll(/<svg id="([^"]+)"/g)].map(
+      (m) => m[1],
+    );
+    expect(idsA).toEqual(["mermaid-2mefn120nxmev-1-svg"]);
+    expect(idsB).toEqual(["mermaid-39311q6ks1wc6-1-svg"]);
   });
 
   test("renderItemMarkdown keeps leading rules, omits heading ids, and escapes raw HTML", () => {
