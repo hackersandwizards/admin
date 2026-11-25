@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "astro/config";
 import tailwind from "@tailwindcss/vite";
@@ -8,6 +8,7 @@ import { filesUnder, script, siteData, stylesheet } from "../src/build.ts";
 import { treeSource } from "../src/git.ts";
 import { readRepo } from "../src/repo.ts";
 import { fileHref } from "../src/repo-paths.ts";
+import { rewriteCatalogGraphLinks } from "./fixture-links.ts";
 
 const root = join(import.meta.dirname, "..");
 const cache = join(root, "node_modules/.cache/admin-catalog");
@@ -43,18 +44,14 @@ export default defineConfig({
           for (const f of filesUnder(output).filter((f) => f.endsWith(".html")))
             writeFileSync(
               f,
-              readFileSync(f, "utf8")
-                .replaceAll(`${fileHref(fixture)}/`, `${base}/test/fixtures/spoke/`)
-                .replace(
-                  /href="(work|decisions)\.html(#[^"]+)">(<g class="node")/g,
-                  (_, page: string, hash: string, node: string) => {
-                    const story = relative(
-                      dirname(f),
-                      join(output, "stories/Pages", page, "default"),
-                    );
-                    return `href="${story ? `${story}/` : "./"}${hash}">${node}`;
-                  },
+              rewriteCatalogGraphLinks(
+                readFileSync(f, "utf8").replaceAll(
+                  `${fileHref(fixture)}/`,
+                  `${base}/test/fixtures/spoke/`,
                 ),
+                f,
+                output,
+              ),
             );
         },
       },

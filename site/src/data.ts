@@ -119,13 +119,13 @@ export function dueOf(due: string, now = Date.now()) {
 // body keeps <https://…>, becomes the link without them.
 const URL_CHAR = String.raw`(?:(?!&(?:quot|#x27|#39|lt|gt);)[^\s<>"'])`;
 const LINKED = new RegExp(
-  String.raw`(<(a|code|pre|svg)\b[\s\S]*?<\/\2>|<[^>]*>)|&lt;(https?:\/\/${URL_CHAR}+)&gt;|\bhttps?:\/\/${URL_CHAR}*[^\s<>"'.,;:!?)\]&]`,
+  String.raw`(<(?:a\b[\s\S]*?<\/a>|code\b[\s\S]*?<\/code>|pre\b[\s\S]*?<\/pre>|svg\b[\s\S]*?<\/svg>)|<[^>]*>)|&lt;(https?:\/\/${URL_CHAR}+)&gt;|\bhttps?:\/\/${URL_CHAR}*[^\s<>"'.,;:!?)\]&]`,
   "g",
 );
 export const withLinks = (html: string) =>
   html.replace(
     LINKED,
-    (whole, tag?: string, _name?: string, bracketed?: string) =>
+    (whole, tag?: string, bracketed?: string) =>
       tag ?? `<a class="hw-link" href="${bracketed ?? whole}">${bracketed ?? whole}</a>`,
   );
 
