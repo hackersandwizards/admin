@@ -297,7 +297,12 @@ describe("parseAstroCatalogConfig", () => {
 });
 
 describe("pickCatalogStartScript", () => {
-  test.each([
+  test.each<{
+    label: string;
+    scripts: Record<string, string>;
+    dir: string;
+    expected: string | undefined;
+  }>([
     {
       label: "prefers script containing design for matching subdir",
       scripts: { dev: "astro dev --root ds", "design-system": "astro dev --root ds" },
