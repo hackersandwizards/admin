@@ -158,6 +158,7 @@ describe("pages", () => {
         "Waiting on others",
         "Agents on it",
         "Repositories",
+        "Defects",
         "Settled",
       ]);
       const settledSection = hubHtml.match(
