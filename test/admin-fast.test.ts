@@ -23,7 +23,7 @@ import {
   treeSource,
   when,
 } from "../src/repo.ts";
-import { dueOf, inline, withLinks } from "../site/src/data.ts";
+import { dueOf, inline, prerequisiteLabels, withLinks } from "../site/src/data.ts";
 import { commit, repoFrom, sh } from "./admin-fixtures.ts";
 
 const FIX = join(import.meta.dirname, "fixtures");
@@ -55,9 +55,32 @@ const valid: Item = {
 };
 const exists = () => true;
 
+test("prerequisite labels list open ids and pluralize the count", () => {
+  expect(prerequisiteLabels({ waitingOn: [], waitingCount: 0 })).toEqual([]);
+  expect(prerequisiteLabels({ waitingOn: ["check"], waitingCount: 0 })).toEqual([
+    "Waiting on check",
+  ]);
+  expect(prerequisiteLabels({ waitingOn: [], waitingCount: 1 })).toEqual([
+    "1 open item waits on this",
+  ]);
+  expect(prerequisiteLabels({ waitingOn: ["check", "draft"], waitingCount: 2 })).toEqual([
+    "Waiting on check, draft",
+    "2 open items wait on this",
+  ]);
+});
+
 describe("item files", () => {
   test.each([
-    ["missing", ["ship: [missing]"], 'ship.md: needs unknown item "missing"'],
+    [
+      "missing",
+      ["ship: [missing]"],
+      'ship.md: needs unknown item "missing". Use an id for an item in this repository',
+    ],
+    [
+      "duplicated",
+      ["ship: [check, check]", "check: []"],
+      'ship.md: needs has duplicate item "check". Remove entry 2',
+    ],
     ["itself", ["ship: [ship]"], "ship.md: needs itself"],
     [
       "cycle",
@@ -80,18 +103,6 @@ describe("item files", () => {
     expect(defects).toHaveLength(1);
     expect(defects[0]).toContain(problem);
     expect(defects[0]).toMatch(/\. (Use|Remove) /);
-  });
-
-  test("admin-check accepts a prerequisite until its tracked item is deleted", () => {
-    const repo = repoFrom("spoke");
-    const args = ["bun", join(import.meta.dirname, "../bin/admin-check.ts"), repo];
-    expect(Bun.spawnSync(args).exitCode).toBe(0);
-    rmSync(join(repo, "docs/agent-work/items/check-the-copy.md"));
-    const result = Bun.spawnSync(args);
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr.toString()).toContain(
-      'work-wire-the-gate.md: needs unknown item "check-the-copy". Remove this entry once the needed item is done',
-    );
   });
 
   test("a malformed rank does not displace a ranked item", () => {

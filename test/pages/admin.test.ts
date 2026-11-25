@@ -168,7 +168,9 @@ describe("pages", () => {
       expect(summary("pick-a-variant")).toContain("2 open items wait on this");
       expect(summary("check-the-copy")).toContain("1 open item waits on this");
       expect(summary("cache-folder")).toContain("Waiting on pick-a-variant");
+      expect(summary("cache-folder")).not.toMatch(/waits? on this/);
       expect(summary("name-the-command")).toContain("Waiting on goal");
+      expect(summary("name-the-command")).not.toMatch(/waits? on this/);
       rendered.body.innerHTML = readFileSync(join(out, "spoke/work.html"), "utf8");
       expect(summary("goal")).toContain("1 open item waits on this");
       expect(summary("work-wire-the-gate")).toContain(

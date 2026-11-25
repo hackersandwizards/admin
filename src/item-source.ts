@@ -59,7 +59,7 @@ export function readItems(src: Source): ReadItems {
       const target = byId.get(need);
       if (!target)
         defects.push(
-          `${file}: needs unknown item ${JSON.stringify(need)}. Remove this entry once the needed item is done, or correct the id`,
+          `${file}: needs unknown item ${JSON.stringify(need)}. Use an id for an item in this repository, or remove this entry once the needed item is done`,
         );
       else if (need === id) defects.push(`${file}: needs itself. Remove ${JSON.stringify(need)}`);
       else if (visiting.has(need)) {

@@ -60,7 +60,10 @@ export const UPDATED = "updated";
 
 // An item's row id on a page, which a link to the item names after #.
 export const keyOf = (i: ViewItem) => `${i.repo}:${i.id}`;
-export const prerequisiteLabels = ({ waitingOn, waitingCount }: ViewItem) =>
+export const prerequisiteLabels = ({
+  waitingOn,
+  waitingCount,
+}: Pick<ViewItem, "waitingOn" | "waitingCount">) =>
   [
     waitingOn.length ? `Waiting on ${waitingOn.join(", ")}` : "",
     waitingCount === 1

@@ -27,6 +27,18 @@ import {
 } from "./admin-fixtures.ts";
 
 describe("admin-check", () => {
+  test("admin-check accepts a prerequisite until its tracked item is deleted", () => {
+    const repo = repoFrom("spoke");
+    const args = ["bun", join(import.meta.dirname, "../bin/admin-check.ts"), repo];
+    expect(Bun.spawnSync(args).exitCode).toBe(0);
+    rmSync(join(repo, "docs/agent-work/items/check-the-copy.md"));
+    const result = Bun.spawnSync(args);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain(
+      'work-wire-the-gate.md: needs unknown item "check-the-copy". Use an id for an item in this repository, or remove this entry once the needed item is done',
+    );
+  });
+
   test("legacy files and a broken item fail the check", async () => {
     const dir = join(scratch(), "r");
     cpSync(join(FIX, "spoke"), dir, { recursive: true });

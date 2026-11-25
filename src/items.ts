@@ -116,10 +116,15 @@ export function itemDefects(item: Item, exists: (path: string) => boolean): stri
   if (item.due !== undefined && !isDay(item.due)) d.push(`due ${item.due} not ISO`);
   if (item.needs !== undefined && !Array.isArray(item.needs))
     d.push("needs must be a list. Use a list of item ids");
-  if (Array.isArray(item.needs))
+  if (Array.isArray(item.needs)) {
+    const seen = new Set<string>();
     item.needs.forEach((id, i) => {
       if (typeof id !== "string") d.push(`needs entry ${i + 1} must be a string. Use an item id`);
+      else if (seen.has(id))
+        d.push(`needs has duplicate item ${JSON.stringify(id)}. Remove entry ${i + 1}`);
+      else seen.add(id);
     });
+  }
   if ((kind === "work" || kind === "goal") && status !== "open") d.push(`${kind} is ${status}`);
   const options = item.options ?? [];
   if (!Array.isArray(options)) d.push("options is not a list");

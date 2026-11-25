@@ -61,8 +61,8 @@ The question's context, in Markdown.
 - An `assumed` item states `assumption` or `recommended`. A `decided` item states `decision` and
   `by`, and may quote the person in `quote`.
 - Work and goals are only ever `open`.
-- `needs` is an optional list of item ids as strings. Every id names an existing item in this
-  repository. An item cannot need itself or close a cycle. Remove a prerequisite from `needs` when
+- `needs` is an optional list of item ids as strings. Each id appears once and names an existing
+  item in this repository. An item cannot need itself or close a cycle. Remove a prerequisite from `needs` when
   you delete its finished item. The hub shows which open prerequisites an item waits on,
   directly or through other items. Each open prerequisite shows how many open items wait on it.
 - `due` is a calendar day as an ISO date. `order` and `evidence` are optional.
