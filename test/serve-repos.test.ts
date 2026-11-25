@@ -260,8 +260,9 @@ describe("createRepoCache", () => {
       );
       const firstProbe = await cache.probe(["/r/a", "/r/b"]);
       const firstLoad = await cache.load(firstProbe.states);
+      const readFetched = cache.fetchedTime;
       expect(firstLoad).toEqual({ repos: [dataA], fresh: true });
-      expect(cache.fetchedTime("/r/a")).toBe(500);
+      expect(readFetched("/r/a")).toBe(500);
       expect(cache.unreadNotices()).toEqual([
         { name: "b", message: "b broken", hasLastRead: false },
       ]);

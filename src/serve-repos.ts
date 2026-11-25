@@ -168,9 +168,7 @@ class RepoStore implements RepoCache {
     return buildUnreadNotices(this.#unread, this.#read);
   }
 
-  fetchedTime(repoPath: string): number | undefined {
-    return this.#fetchedNow.get(repoPath);
-  }
+  readonly fetchedTime = (repoPath: string): number | undefined => this.#fetchedNow.get(repoPath);
 }
 
 export function createRepoCache(
