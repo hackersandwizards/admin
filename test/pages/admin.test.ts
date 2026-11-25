@@ -477,6 +477,76 @@ describe("pages", () => {
     testTimeout(60_000),
   );
   test(
+    "every needs graph node link names a row that exists and opens it in Chrome",
+    async () => {
+      const out = join(scratch(), "out");
+      const spoke = await readRepo(repoFrom("spoke"));
+      await buildSite(siteData([spoke]), out);
+      const work = join(out, "spoke/work.html");
+      const doc = new Window().document;
+      doc.body.innerHTML = readForDom(work);
+      const fold = doc.querySelector("details:has(figure.admin-diagram)")!;
+      expect(fold.hasAttribute("open")).toBe(false);
+      const links = [...fold.querySelectorAll("svg a")];
+      expect(links).toHaveLength(6);
+      expect(fold.querySelectorAll("svg .node")).toHaveLength(links.length);
+      const targets = links.map((link) => {
+        expect(link.querySelectorAll(".node")).toHaveLength(1);
+        const [file, id] = link.getAttribute("href")!.split("#") as [string, string];
+        const item = spoke.items.find((item) => id === `${spoke.key}:${item.id}`)!;
+        expect(link.querySelector(".node text")?.textContent).toBe(item.title);
+        const target = new Window().document;
+        target.body.innerHTML = readForDom(join(dirname(work), file));
+        expect(target.getElementById(id)?.hasAttribute("data-row"), `${file}#${id}`).toBe(true);
+        return id;
+      });
+      expect(targets.sort()).toEqual(
+        [
+          "cache-folder",
+          "check-the-copy",
+          "goal",
+          "name-the-command",
+          "pick-a-variant",
+          "work-wire-the-gate",
+        ].map((id) => `spoke:${id}`),
+      );
+
+      const executablePath = await chromeBinaryAsync();
+      if (!executablePath) throw new Error(INSTALL_HINT);
+      const browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
+      try {
+        const page = await browser.newPage();
+        await page.evaluateOnNewDocument(() => {
+          document.addEventListener("securitypolicyviolation", (event) => {
+            console.error("CSP violation:", event.violatedDirective, event.blockedURI);
+          });
+        });
+        const violations: string[] = [];
+        page.on("console", (message) => {
+          if (message.text().startsWith("CSP violation:")) violations.push(message.text());
+        });
+        await page.goto(`file://${work}`);
+        await page.type("#admin-search", "an unmatched search");
+        await page.click("details:has(figure.admin-diagram) > summary");
+        const graph = await page.locator("figure.admin-diagram svg").waitHandle();
+        const box = await graph.boundingBox();
+        expect(box?.width).toBeGreaterThan(0);
+        expect(box?.height).toBeGreaterThan(0);
+        await Promise.all([
+          page.waitForNavigation(),
+          page.click('svg a[href="decisions.html#spoke:pick-a-variant"] text'),
+        ]);
+        expect(new URL(page.url()).hash).toBe("#spoke:pick-a-variant");
+        await page.waitForSelector('details[id="spoke:pick-a-variant"][open]', { visible: true });
+        expect(violations).toEqual([]);
+      } finally {
+        await browser.close();
+      }
+    },
+    testTimeout(60_000),
+  );
+
+  test(
     "Mermaid fits its labels, follows the page theme, and causes no CSP violations",
     async () => {
       const repo = await readRepo(repoFrom("spoke"));
@@ -1910,6 +1980,17 @@ describe("catalog", () => {
       const src = (await story.text()).match(/<img[^>]*src="([^"]+)"/)![1]!;
       expect(src.startsWith("/catalog/test/fixtures/spoke/")).toBe(true);
       expect((await get(src)).headers.get("content-type")).toContain("image/svg");
+      const graphPath = "/catalog/stories/Items/needs-graph/graph/";
+      const graph = await get(graphPath);
+      expect(graph.status).toBe(200);
+      const graphLinks = [...(await graph.text()).matchAll(/href="([^"]+)"><g class="node"/g)];
+      expect(graphLinks).toHaveLength(6);
+      for (const [, href] of graphLinks) {
+        const target = new URL(href!, `http://admin.localhost${graphPath}`);
+        const row = await get(target.pathname);
+        expect(row.status).toBe(200);
+        expect(await row.text()).toContain(`id="${target.hash.slice(1)}"`);
+      }
       expect((await get("/catalog/no-such-page")).status).toBe(404);
     },
     testTimeout(60_000),

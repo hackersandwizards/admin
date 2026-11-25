@@ -2,8 +2,10 @@
 import Layout from "../components/Layout.astro";
 import ItemGroups from "../components/ItemGroups.astro";
 import ItemRow from "../components/ItemRow.astro";
+import NeedsGraph from "../components/NeedsGraph.astro";
 import WhoFilter from "../components/WhoFilter.astro";
 import Waiting from "../components/Waiting.astro";
+import { needsGraphItems } from "../../../src/build";
 import { compareItems, imagesOf } from "../../../src/items.ts";
 import {
   data,
@@ -388,6 +390,9 @@ const leads: Partial<Record<Page["type"], string>> = {
 
   {page.type === "work" && (
     <>
+      {repo?.needsSvg && (
+        <NeedsGraph svg={repo.needsSvg} items={needsGraphItems(items)} from={page.path} />
+      )}
       {goals.map((g) => {
         const prerequisites = prerequisiteLabels(g).join(" · ");
         return (

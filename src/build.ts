@@ -2,7 +2,7 @@ import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync }
 import { dirname, join, relative } from "node:path";
 import { version } from "../package.json";
 import { compareItems, imagesOf, ITEMS_DIR, type Item } from "./items.ts";
-import { docSlug, fileHref, renderMarkdown, type Doc, type RepoData } from "./repo.ts";
+import { diagram, docSlug, fileHref, renderMarkdown, type Doc, type RepoData } from "./repo.ts";
 
 export const PKG = join(import.meta.dirname, "..");
 
@@ -61,6 +61,7 @@ export type SiteData = {
   repos: (Omit<RepoData, "items" | "workFiles" | "label"> & {
     label: string;
     items: ViewItem[];
+    needsSvg?: string;
     prefix: string;
     dashboard: string;
   })[];
@@ -125,6 +126,41 @@ function prerequisiteSummary(items: Item[]) {
     waitingOn.set(item.id, open.sort());
   }
   return { waitingOn, waitingCount };
+}
+
+export function needsGraphItems(items: ViewItem[]) {
+  const ids = new Set(items.map((i) => i.id));
+  const connected = new Set<string>();
+  for (const item of items)
+    for (const id of item.needs ?? [])
+      if (ids.has(id)) {
+        connected.add(item.id);
+        connected.add(id);
+      }
+  return items.filter((i) => connected.has(i.id));
+}
+
+export function needsGraph(items: ViewItem[]) {
+  const nodes = new Map(items.map((item, index) => [item.id, { id: `n${index}`, item }]));
+  const source = ["flowchart LR"];
+  for (const { id, item } of nodes.values()) {
+    const title = item.title
+      .replaceAll('"', "'")
+      .replace(/[&<\])\\*~]/g, (c) => `&amp;#${c.charCodeAt(0)};`);
+    const label = `"${title}"`;
+    const shape =
+      item.status !== "open" ? `(${label})` : item.waitingOn.length ? `[${label}]` : `([${label}])`;
+    source.push(id + shape);
+  }
+  for (const { id, item } of nodes.values())
+    for (const need of item.needs ?? []) {
+      const prerequisite = nodes.get(need);
+      if (!prerequisite) continue;
+      const arrow = prerequisite.item.status === "open" ? "-->" : "-.->";
+      source.push(`${prerequisite.id} ${arrow} ${id}`);
+    }
+  const rendered = diagram(source.join("\n"), "admin-needs-");
+  if (rendered.startsWith("<figure")) return rendered.replace(/&amp;#(\d+);/g, "&#$1;");
 }
 
 // `you` is the hub's user where an item owner names them, else the first person.
@@ -249,7 +285,9 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
         title: d.title,
       });
     const { workFiles: _, ...rest } = r;
-    return { ...rest, items, prefix, dashboard };
+    const connected = needsGraphItems(items);
+    const needsSvg = connected.length ? needsGraph(connected) : undefined;
+    return { ...rest, items, prefix, dashboard, ...(needsSvg && { needsSvg }) };
   });
   return { version, people, others, repos: out, pages };
 }

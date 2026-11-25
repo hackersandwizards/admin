@@ -50,6 +50,8 @@ each `docs/agent-work/<date>-<topic>/` folder with its images and report), Docs 
 Architecture (package, pins, scripts with their first comment line), Checks (the steps of
 `check:all` or `check`) and Log.
 
+On Work, “What waits on what” draws the prerequisites between items and links each item to its row.
+
 Items sort by `priority`. Within a priority, items due within seven days or already overdue come
 first, earliest due date first. Decisions and reviews come before work at the same due rank,
 then `order` ranks the items. Every `due` date appears as a badge, with "was due" in red and

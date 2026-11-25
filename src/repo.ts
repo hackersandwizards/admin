@@ -259,7 +259,7 @@ const entities = (v: string) =>
 
 let renderDiagram: typeof import("beautiful-mermaid").renderMermaidSVG | null | undefined;
 
-function diagram(source: string, prefix: string) {
+export function diagram(source: string, prefix: string) {
   const code = `<pre><code class="language-mermaid">${source}</code></pre>`;
   try {
     if (renderDiagram === undefined) {

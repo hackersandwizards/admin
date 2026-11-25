@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "astro/config";
 import tailwind from "@tailwindcss/vite";
@@ -37,13 +37,22 @@ export default defineConfig({
       name: "admin-fixture-links",
       hooks: {
         "astro:build:done": ({ dir }) => {
-          for (const f of filesUnder(fileURLToPath(dir)).filter((f) => f.endsWith(".html")))
+          const output = fileURLToPath(dir);
+          for (const f of filesUnder(output).filter((f) => f.endsWith(".html")))
             writeFileSync(
               f,
-              readFileSync(f, "utf8").replaceAll(
-                `${fileHref(fixture)}/`,
-                `${base}/test/fixtures/spoke/`,
-              ),
+              readFileSync(f, "utf8")
+                .replaceAll(`${fileHref(fixture)}/`, `${base}/test/fixtures/spoke/`)
+                .replace(
+                  /href="(work|decisions)\.html(#[^"]+)">(<g class="node")/g,
+                  (_, page: string, hash: string, node: string) => {
+                    const story = relative(
+                      dirname(f),
+                      join(output, "stories/Pages", page, "default"),
+                    );
+                    return `href="${story ? `${story}/` : "./"}${hash}">${node}`;
+                  },
+                ),
             );
         },
       },

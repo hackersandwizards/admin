@@ -1,9 +1,10 @@
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Window, type Element as DomEl, type Node as DomNode } from "happy-dom";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { tableScroll as brandTableScroll } from "@hackersandwizards/brand/elements/table.ts";
-import { siteData } from "../src/build.ts";
+import { needsGraph, needsGraphItems, siteData } from "../src/build.ts";
+import * as diagrams from "../src/repo.ts";
 import {
   compareItems,
   DUE_SOON_DAYS,
@@ -68,6 +69,116 @@ test("prerequisite labels list open ids and pluralize the count", () => {
     "Waiting on check, draft",
     "2 open items wait on this",
   ]);
+});
+
+describe("needs graph", () => {
+  const fixture = async () => {
+    const dir = join(FIX, "spoke");
+    return siteData([await readRepo(dir, treeSource(dir))]).repos[0]!;
+  };
+  const graphDocument = (html: string | undefined) => {
+    const doc = new Window().document;
+    doc.body.innerHTML = html!.replace(/<style>[\s\S]*?<\/style>/g, "");
+    return doc;
+  };
+
+  test("the fixture draws every needs edge and distinguishes ready, waiting, and settled items", async () => {
+    const { items, needsSvg } = await fixture();
+    const graph = graphDocument(needsSvg);
+    const connected = needsGraphItems(items);
+    const nodes = [...graph.querySelectorAll(".node")];
+    const edges = [...graph.querySelectorAll(".edge")];
+    const count = items.reduce((sum, item) => sum + (item.needs?.length ?? 0), 0);
+    expect(count).toBe(6);
+    expect(edges).toHaveLength(count);
+    expect(nodes).toHaveLength(connected.length);
+    const nodeId = (id: string) => `n${connected.findIndex((item) => item.id === id)}`;
+    for (const [id, shape] of [
+      ["goal", "stadium"],
+      ["pick-a-variant", "stadium"],
+      ["check-the-copy", "rectangle"],
+      ["work-wire-the-gate", "rectangle"],
+      ["cache-folder", "rounded"],
+      ["name-the-command", "rounded"],
+    ]) {
+      const node = graph.querySelector(`[data-id="${nodeId(id!)}"]`)!;
+      expect(node.getAttribute("data-shape"), id).toBe(shape);
+      const rect = node.querySelector("rect")!;
+      const radius = Number(rect.getAttribute("rx"));
+      const halfHeight = Number(rect.getAttribute("height")) / 2;
+      if (shape === "stadium") expect(radius).toBe(halfHeight);
+      else if (shape === "rectangle") expect(radius).toBe(0);
+      else {
+        expect(radius).toBeGreaterThan(0);
+        expect(radius).toBeLessThan(halfHeight);
+      }
+    }
+    for (const item of connected)
+      for (const need of item.needs ?? []) {
+        const edge = graph.querySelector(
+          `.edge[data-from="${nodeId(need)}"][data-to="${nodeId(item.id)}"]`,
+        )!;
+        const dotted = items.find((i) => i.id === need)!.status !== "open";
+        expect(edge.getAttribute("data-style")).toBe(dotted ? "dotted" : "solid");
+        expect(edge.hasAttribute("stroke-dasharray")).toBe(dotted);
+      }
+  });
+
+  test("the prerequisite stands on the left in the Mermaid source and the SVG", async () => {
+    const { items } = await fixture();
+    const wire = items.find((item) => item.id === "work-wire-the-gate")!;
+    const check = items.find((item) => item.id === "check-the-copy")!;
+    const render = vi.spyOn(diagrams, "diagram");
+    try {
+      const graph = graphDocument(needsGraph([wire, check]));
+      expect(graph.querySelectorAll(".edge")).toHaveLength(1);
+      const x = (id: string) =>
+        Number(graph.querySelector(`[data-id="${id}"] rect`)!.getAttribute("x"));
+      expect(x("n1")).toBeLessThan(x("n0"));
+      expect(render.mock.calls[0]?.[0].split("\n").slice(-1)).toEqual(["n1 --> n0"]);
+    } finally {
+      render.mockRestore();
+    }
+  });
+
+  test("quoted graph titles show literal punctuation and item ids never become Mermaid syntax", async () => {
+    const { items } = await fixture();
+    const title = 'Try " ] ) | < > & # ; ` %% ]) <br> **plain** ~~plain~~ \\n &#93;';
+    const input = [
+      { ...items[0]!, id: "try--this", title, status: "open" as const, waitingOn: [], needs: [] },
+      {
+        ...items[1]!,
+        title,
+        status: "open" as const,
+        waitingOn: ["try--this"],
+        needs: ["try--this"],
+      },
+      { ...items[2]!, title, status: "decided" as const, needs: [] },
+    ];
+    const graph = graphDocument(needsGraph(input));
+    expect(graph.querySelectorAll(".node")).toHaveLength(input.length);
+    expect(graph.querySelectorAll(".edge")).toHaveLength(1);
+    expect(graph.querySelector('.edge[data-from="n0"][data-to="n1"]')).toBeTruthy();
+    expect([...graph.querySelectorAll(".node text")].map((node) => node.textContent)).toEqual(
+      input.map(() => title.replaceAll('"', "'")),
+    );
+  });
+
+  test("site data omits the graph without drawable needs edges or a rendered SVG", async () => {
+    const lone = await fromFiles({
+      "docs/agent-work/items/goal.md": "---\nkind: goal\nstatus: open\n---\n# Goal",
+    });
+    expect(siteData([lone]).repos[0]).not.toHaveProperty("needsSvg");
+    const render = vi
+      .spyOn(diagrams, "diagram")
+      .mockReturnValue('<pre><code class="language-mermaid">flowchart LR</code></pre>');
+    try {
+      expect(await fixture()).not.toHaveProperty("needsSvg");
+      expect(render).toHaveBeenCalledOnce();
+    } finally {
+      render.mockRestore();
+    }
+  });
 });
 
 describe("item files", () => {
