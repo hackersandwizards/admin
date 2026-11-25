@@ -1848,8 +1848,8 @@ describe("admin.js", () => {
     test("Hide all and Show all each move focus to the repository choice button", () => {
       const page = open("index", hiddenRepoSeed());
       const doc = page.document;
-      const showAll = doc.querySelector("[data-repo-all]") as unknown as HTMLButtonElement;
-      const none = doc.querySelector("[data-repo-none]") as unknown as HTMLButtonElement;
+      const showAll = doc.querySelector<DomButton>("[data-repo-all]")!;
+      const none = doc.querySelector<DomButton>("[data-repo-none]")!;
       showAll.click();
       expect(none.hasAttribute("hidden")).toBe(false);
       // Each steps aside; focus goes to the choice's own button rather than the page's top.
