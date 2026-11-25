@@ -86,42 +86,40 @@ describe("needs graph", () => {
     const { items, needsSvg } = await fixture();
     const graph = graphDocument(needsSvg);
     const connected = needsGraphItems(items);
-    const nodes = [...graph.querySelectorAll(".node")];
-    const edges = [...graph.querySelectorAll(".edge")];
-    const count = items.reduce((sum, item) => sum + (item.needs?.length ?? 0), 0);
-    expect(count).toBe(6);
-    expect(edges).toHaveLength(count);
-    expect(nodes).toHaveLength(connected.length);
-    const nodeId = (id: string) => `n${connected.findIndex((item) => item.id === id)}`;
-    for (const [id, shape] of [
-      ["goal", "stadium"],
-      ["pick-a-variant", "stadium"],
-      ["check-the-copy", "rectangle"],
-      ["work-wire-the-gate", "rectangle"],
-      ["cache-folder", "rounded"],
-      ["name-the-command", "rounded"],
-    ]) {
-      const node = graph.querySelector(`[data-id="${nodeId(id!)}"]`)!;
-      expect(node.getAttribute("data-shape"), id).toBe(shape);
+    const idOf = (nodeId: string) => connected[Number(nodeId.slice(1))]!.id;
+    const nodes = [...graph.querySelectorAll(".node")].map((node) => {
       const rect = node.querySelector("rect")!;
-      const radius = Number(rect.getAttribute("rx"));
-      const halfHeight = Number(rect.getAttribute("height")) / 2;
-      if (shape === "stadium") expect(radius).toBe(halfHeight);
-      else if (shape === "rectangle") expect(radius).toBe(0);
-      else {
-        expect(radius).toBeGreaterThan(0);
-        expect(radius).toBeLessThan(halfHeight);
-      }
-    }
-    for (const item of connected)
-      for (const need of item.needs ?? []) {
-        const edge = graph.querySelector(
-          `.edge[data-from="${nodeId(need)}"][data-to="${nodeId(item.id)}"]`,
-        )!;
-        const dotted = items.find((i) => i.id === need)!.status !== "open";
-        expect(edge.getAttribute("data-style")).toBe(dotted ? "dotted" : "solid");
-        expect(edge.hasAttribute("stroke-dasharray")).toBe(dotted);
-      }
+      return {
+        id: idOf(node.getAttribute("data-id")!),
+        shape: node.getAttribute("data-shape"),
+        ratio: Number(rect.getAttribute("rx")) / (Number(rect.getAttribute("height")) / 2),
+      };
+    });
+    expect(nodes).toEqual([
+      { id: "pick-a-variant", shape: "stadium", ratio: 1 },
+      { id: "work-wire-the-gate", shape: "rectangle", ratio: 0 },
+      { id: "check-the-copy", shape: "rectangle", ratio: 0 },
+      { id: "name-the-command", shape: "rounded", ratio: expect.any(Number) },
+      { id: "cache-folder", shape: "rounded", ratio: expect.any(Number) },
+      { id: "goal", shape: "stadium", ratio: 1 },
+    ]);
+    const roundedRatios = [nodes[3]!.ratio, nodes[4]!.ratio];
+    expect(Math.min(...roundedRatios)).toBeGreaterThan(0);
+    expect(Math.max(...roundedRatios)).toBeLessThan(1);
+    const edges = [...graph.querySelectorAll(".edge")].map((edge) => ({
+      from: idOf(edge.getAttribute("data-from")!),
+      to: idOf(edge.getAttribute("data-to")!),
+      style: edge.getAttribute("data-style"),
+      dashed: edge.hasAttribute("stroke-dasharray"),
+    }));
+    expect(edges).toEqual([
+      { from: "check-the-copy", to: "work-wire-the-gate", style: "solid", dashed: false },
+      { from: "cache-folder", to: "work-wire-the-gate", style: "dotted", dashed: true },
+      { from: "name-the-command", to: "work-wire-the-gate", style: "dotted", dashed: true },
+      { from: "pick-a-variant", to: "check-the-copy", style: "solid", dashed: false },
+      { from: "goal", to: "name-the-command", style: "solid", dashed: false },
+      { from: "pick-a-variant", to: "cache-folder", style: "solid", dashed: false },
+    ]);
   });
 
   test("the prerequisite stands on the left in the Mermaid source and the SVG", async () => {

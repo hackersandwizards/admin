@@ -2267,25 +2267,54 @@ describe("serve", () => {
     "non-plain dated reports keep their distinct served pages and change lines without comment controls",
     async () => {
       const repo = repoFrom("spoke");
-      const stems = [
-        "2026-01-15-archive",
-        "2026-01-15-archive.html",
-        "2026-01-15-hash#note",
-        "2026-01-15-question?",
-        "2026-01-15-first draft",
-        "2026-01-15-two\nlines",
+      const reports = [
+        {
+          stem: "2026-01-15-archive",
+          title: "Sample report 0",
+          body: "\n[Open the archive](2026-01-15-archive.html.md)\n",
+          commentable: true,
+        },
+        {
+          stem: "2026-01-15-archive.html",
+          title: "Sample report 1",
+          body: "",
+          commentable: false,
+        },
+        {
+          stem: "2026-01-15-hash#note",
+          title: "Sample report 2",
+          body: "",
+          commentable: false,
+        },
+        {
+          stem: "2026-01-15-question?",
+          title: "Sample report 3",
+          body: "",
+          commentable: false,
+        },
+        {
+          stem: "2026-01-15-first draft",
+          title: "Sample report 4",
+          body: "",
+          commentable: false,
+        },
+        {
+          stem: "2026-01-15-two\nlines",
+          title: "Sample report 5",
+          body: "",
+          commentable: false,
+        },
       ];
-      for (const [index, stem] of stems.entries()) {
-        const path = `docs/agent-work/${stem}.md`;
-        const body = index === 0 ? "\n[Open the archive](2026-01-15-archive.html.md)\n" : "";
-        writeFileSync(join(repo, path), `# Sample report ${index}\n\n## Section\n${body}`);
+      for (const report of reports) {
+        const path = `docs/agent-work/${report.stem}.md`;
+        writeFileSync(join(repo, path), `# ${report.title}\n\n## Section\n${report.body}`);
         sh(repo, "git", "add", path);
       }
-      for (const [index, stem] of stems.slice(2, 4).entries()) {
+      for (const [index, report] of reports.slice(2, 4).entries()) {
         const path = `docs/agent-work/items/sample-${index}.md`;
         writeFileSync(
           join(repo, path),
-          `---\nkind: work\nstatus: open\npriority: 1\nowner: Alex\ntopic: "${stem}"\n---\n# Sample work\n`,
+          `---\nkind: work\nstatus: open\npriority: 1\nowner: Alex\ntopic: "${report.stem}"\n---\n# Sample work\n`,
         );
         sh(repo, "git", "add", path);
       }
@@ -2293,20 +2322,46 @@ describe("serve", () => {
       const hub = createHub({ root: dirname(repo) });
       const get = (path: string) => hub.fetch(new Request(`http://admin.localhost/spoke/${path}`));
       const index = await (await get("docs")).text();
-      for (const [number, stem] of stems.entries()) {
-        const name = encodeURIComponent(stem);
-        expect(index, name).toContain(`href="doc/docs/agent-work/${name}.html"`);
-        const response = await get(`doc/docs/agent-work/${name}.html`);
-        expect(response.status, name).toBe(200);
-        const html = await response.text();
-        expect(html, name).toContain(`>Sample report ${number}</h1>`);
-        expect(html, name).toContain("Last changed");
-        expect(html.includes('id="copy"'), name).toBe(number === 0);
-        expect(html.includes("data-comment data-k"), name).toBe(number === 0);
-        expect(html, name).not.toContain("What waits on what");
-        if (number === 0)
-          expect(html).toContain('href="/spoke/doc/docs/agent-work/2026-01-15-archive.html.html"');
-      }
+      const indexHrefs = [...index.matchAll(/href="(doc\/docs\/agent-work\/[^"]+)"/g)].map(
+        (m) => m[1],
+      );
+      expect(indexHrefs).toEqual(
+        expect.arrayContaining(
+          reports.map(({ stem }) => `doc/docs/agent-work/${encodeURIComponent(stem)}.html`),
+        ),
+      );
+      const served = await Promise.all(
+        reports.map(async ({ stem }) => {
+          const response = await get(`doc/docs/agent-work/${encodeURIComponent(stem)}.html`);
+          const html = await response.text();
+          return {
+            page: {
+              stem,
+              status: response.status,
+              heading: html.match(/<h1[^>]*>([^<]+)<\/h1>/)?.[1],
+              hasChanged: html.includes("Last changed"),
+              hasCopy: html.includes('id="copy"'),
+              hasComment: html.includes("data-comment data-k"),
+              hasTopicGraph: html.includes("What waits on what"),
+            },
+            html,
+          };
+        }),
+      );
+      expect(served.map((entry) => entry.page)).toEqual(
+        reports.map(({ stem, title, commentable }) => ({
+          stem,
+          status: 200,
+          heading: title,
+          hasChanged: true,
+          hasCopy: commentable,
+          hasComment: commentable,
+          hasTopicGraph: false,
+        })),
+      );
+      expect(served[0]!.html).toContain(
+        'href="/spoke/doc/docs/agent-work/2026-01-15-archive.html.html"',
+      );
     },
     testTimeout(60_000),
   );
