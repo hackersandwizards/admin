@@ -5,9 +5,14 @@
 export const REPO_KEY = /^(?!\.+$)[\p{L}\p{M}\p{N}_.-]+$/u;
 export const asKey = (folder: string) => folder.replace(/[^\p{L}\p{M}\p{N}_.-]/gu, "-");
 
-// A page path ending in "index" is its folder's own route to Astro, so index.md keeps its extension.
-export const docSlug = (path: string) =>
-  `doc/${/(^|\/)index\.md$/i.test(path) ? path : path.replace(/\.md$/i, "")}`;
+export const REPORT_PATH = /^docs\/agent-work\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/;
+
+// Astro treats a final "index" as a folder route and strips a final ".html" from dynamic params.
+export const docSlug = (path: string) => {
+  const keep =
+    /(^|\/)index\.md$/i.test(path) || (REPORT_PATH.test(path) && path.endsWith(".html.md"));
+  return `doc/${keep ? path : path.replace(/\.md$/i, "")}`;
+};
 
 // "#" or "?" would end the path, and an "&" or "'" left as is comes out of the pages' attributes
 // escaped, where the hub's link rewriting no longer finds it.

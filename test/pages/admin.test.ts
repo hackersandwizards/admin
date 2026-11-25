@@ -2056,10 +2056,25 @@ describe("serve", () => {
       for (const [path, text] of Object.entries(files)) writeFileSync(join(repo, path), text);
       sh(repo, "git", "add", "-A");
       commit(repo, "docs");
+      const extraStem = "2026-01-14-archive.html";
+      const extraReport = `docs/agent-work/${extraStem}.md`;
+      const extraItem = "docs/agent-work/items/archive-extra.md";
+      writeFileSync(join(repo, extraReport), "# Archive\n\n## Done\n");
+      writeFileSync(
+        join(repo, extraItem),
+        `---\nkind: work\nstatus: open\npriority: 1\nowner: Alex\ntopic: ${extraStem}\n---\n# Archive extra\n`,
+      );
+      sh(repo, "git", "add", extraReport, extraItem);
+      commit(repo, "Add archive sample");
       const hub = createHub({ root: dirname(repo) });
       const at = "http://admin.localhost/spoke/docs";
       const get = (path: string) => hub.fetch(new Request(new URL(path, at)));
       const list = await (await get(at)).text();
+      const extra = await get("/spoke/doc/docs/agent-work/" + extraStem);
+      expect(extra.status).toBe(200);
+      const extraHtml = await extra.text();
+      expect(extraHtml).toContain("What waits on what");
+      expect(extraHtml).toContain("Archive extra");
       const data = await readRepo(repo);
       for (const doc of [...data.reports, ...data.docs]) {
         const link = list.match(
@@ -2148,6 +2163,7 @@ describe("serve", () => {
         "README",
         "docs/guide/index.md",
         "docs/agent-work/2026-01-15-sample-topic",
+        extraReport,
         "docs/agent-work/2026-01-14-standalone",
         "docs/rock & roll's",
       ]) {

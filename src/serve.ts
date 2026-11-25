@@ -501,10 +501,14 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
       );
     const { files, docs } = built;
     // A page's asset URLs are relative, so they only resolve from the page's own address.
-    const bare = path.slice(1, -1);
-    if (path.length > 1 && path.endsWith("/") && (files.has(`${bare}.html`) || docs.has(bare)))
+    const slash = path.length > 1 && path.endsWith("/");
+    const bare = path.slice(1, slash ? -1 : undefined);
+    const alias = bare.endsWith(".html") && docs.get(`${bare}.md`)?.doc;
+    const canonical =
+      alias && "stem" in alias && alias.path.endsWith(".html.md") ? `${bare}.md` : bare;
+    if (slash && (files.has(`${canonical}.html`) || docs.has(canonical)))
       return Response.redirect(url.origin + url.pathname.slice(0, -1) + url.search, 302);
-    const name = path.slice(1) || "index.html";
+    const name = (slash ? path.slice(1) : canonical) || "index.html";
     // The 404 page answers only where no page does.
     const at = [name, `${name}.html`].find((n) => n !== "404.html" && files.has(n));
     if (at) {

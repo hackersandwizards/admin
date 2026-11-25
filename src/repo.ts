@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { basename, join, resolve } from "node:path";
 import { ITEMS_DIR, WORK_DIR, type Item } from "./items.ts";
 import { readItems, type Source } from "./item-source.ts";
-import { asKey, fileHref, IMAGE, REPO_KEY } from "./repo-paths.ts";
+import { asKey, fileHref, IMAGE, REPO_KEY, REPORT_PATH } from "./repo-paths.ts";
 
 export { readItems, type ReadItems, type Source } from "./item-source.ts";
 export { asKey, docSlug, encodeFile, encodePath, fileHref } from "./repo-paths.ts";
@@ -606,7 +606,7 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
     (p) => p.startsWith(`${WORK_DIR}/`) && !p.startsWith(`${ITEMS_DIR}/`),
   );
   const reports = tracking
-    .filter((p) => /^docs\/agent-work\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/.test(p))
+    .filter((p) => REPORT_PATH.test(p))
     .map((p) => {
       const text = src.read(p) ?? "";
       const stem = basename(p, ".md");
