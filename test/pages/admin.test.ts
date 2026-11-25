@@ -152,12 +152,19 @@ describe("pages", () => {
     test("the hub lists open items and puts settled items after Repositories", () => {
       expect(hubHtml).toContain("Which variant ships?");
       // Settled items come last, after the repositories.
-      expect(hubHtml.indexOf(">Settled</h2>")).toBeGreaterThan(
-        hubHtml.indexOf(">Repositories</h2>"),
+      const headings = [...hubHtml.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map((m) => m[1]);
+      expect(headings).toEqual([
+        "Needs you",
+        "Waiting on others",
+        "Agents on it",
+        "Repositories",
+        "Settled",
+      ]);
+      const settledSection = hubHtml.match(
+        /<section[^>]*>\s*<h2[^>]*>Settled<\/h2>[\s\S]*?<\/section>/,
       );
-      expect(hubHtml.indexOf('id="spoke:name-the-command"')).toBeGreaterThan(
-        hubHtml.indexOf(">Settled</h2>"),
-      );
+      expect(settledSection).not.toBeNull();
+      expect(settledSection![0]).toContain('id="spoke:name-the-command"');
     });
 
     test("the hub's Waiting on others section links each person's item to its row and names prerequisites", () => {
@@ -173,19 +180,24 @@ describe("pages", () => {
     });
 
     test("the hub's Agents on it section puts agent items inside a collapsed disclosure", () => {
-      const headingAt = hubHtml.indexOf("Agents on it");
-      expect(headingAt).toBeGreaterThan(0);
-      expect(hubHtml.indexOf("Sort the sample files")).toBeGreaterThan(headingAt);
-      const agents = hubHtml.slice(headingAt, hubHtml.indexOf("Repositories"));
-      expect(agents).toMatch(/<details[^>]*data-group/);
-      expect(agents).not.toMatch(/<details[^>]*data-group[^>]* open/);
+      const agentsSection = hubHtml.match(
+        /<section[^>]*>\s*<h2[^>]*>Agents on it<\/h2>[\s\S]*?<\/section>/,
+      );
+      expect(agentsSection).not.toBeNull();
+      const disclosure = agentsSection![0].match(
+        /<details[^>]*data-group[^>]*>[\s\S]*?<\/details>/,
+      );
+      expect(disclosure).not.toBeNull();
+      expect(disclosure![0]).not.toMatch(/^<details[^>]*\bopen\b/);
+      expect(disclosure![0]).toContain("Sort the sample files");
     });
 
     test("the hub's Agents on it rows link to their work rows without textareas or person attributes", () => {
-      const agents = hubHtml.slice(
-        hubHtml.indexOf("Agents on it"),
-        hubHtml.indexOf("Repositories"),
+      const agentsSection = hubHtml.match(
+        /<section[^>]*>\s*<h2[^>]*>Agents on it<\/h2>[\s\S]*?<\/section>/,
       );
+      expect(agentsSection).not.toBeNull();
+      const agents = agentsSection![0];
       expect(agents).toContain('href="spoke/work.html#spoke:sort-the-samples"');
       expect(agents).not.toContain("<textarea");
       expect(agents).not.toMatch(/<div[^>]*data-row[^>]*data-who/);
@@ -430,7 +442,7 @@ describe("pages", () => {
       };
       out = join(scratch(), "out");
       await buildSite(
-        siteData([{ ...spoke, items: [...spoke.items, late, bare, kims] }, other]),
+        siteData([other, { ...spoke, items: [...spoke.items, late, bare, kims] }]),
         out,
       );
       html = readFileSync(join(out, "index.html"), "utf8");
@@ -438,10 +450,8 @@ describe("pages", () => {
     }, testTimeout(60_000));
 
     test("the hub ranks items across every repository in one order", () => {
-      const earlyAt = html.indexOf('id="other:early"');
-      const lateAt = html.indexOf('id="spoke:late"');
-      expect(earlyAt).toBeGreaterThan(0);
-      expect(earlyAt).toBeLessThan(lateAt);
+      const order = [...html.matchAll(/id="(other:early|spoke:late)"/g)].map((m) => m[1]);
+      expect(order).toEqual(["other:early", "spoke:late"]);
     });
 
     test("each row and item link on the hub names its repository by label", () => {
@@ -456,7 +466,21 @@ describe("pages", () => {
     });
 
     test("the hub's Repositories table includes the Decide P2 column", () => {
-      expect(html).toContain("Decide P2");
+      const repoSection = html.match(
+        /<section[^>]*>\s*<h2[^>]*>Repositories<\/h2>[\s\S]*?<\/section>/,
+      );
+      expect(repoSection).not.toBeNull();
+      const headers = [...repoSection![0].matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map((m) => m[1]);
+      expect(headers).toEqual([
+        "Repo",
+        "Decide P1",
+        "Decide P2",
+        "Decide P3",
+        "Review",
+        "Work for a person",
+        "Assumed",
+        "Most urgent",
+      ]);
     });
 
     test("the Repositories table sorts repositories by label rather than key", () => {
@@ -466,9 +490,19 @@ describe("pages", () => {
     });
 
     test("the Repositories table names each repository's top-ranked item across every owner", () => {
-      const spokeRow = html.match(/<tr data-row data-repo-row="spoke">[\s\S]*?<\/tr>/);
-      expect(spokeRow).not.toBeNull();
-      expect(spokeRow![0]).toContain(`<td class="max-w-md max-sm:hidden">${kimsTitle}</td>`);
+      const repoSection = html.match(
+        /<section[^>]*>\s*<h2[^>]*>Repositories<\/h2>[\s\S]*?<\/section>/,
+      );
+      expect(repoSection).not.toBeNull();
+      const topByRepo = [
+        ...repoSection![0].matchAll(
+          /<tr data-row data-repo-row="([^"]+)">[\s\S]*?<td class="max-w-md max-sm:hidden">([^<]*)<\/td>/g,
+        ),
+      ].map(([, key, title]) => [key, title]);
+      expect(topByRepo).toEqual([
+        ["spoke", kimsTitle],
+        ["other", "Ask the printer for a second proof"],
+      ]);
     });
 
     test.each([
@@ -508,21 +542,35 @@ describe("pages", () => {
       expect(summaries.filter((s) => /<(button|input|textarea|select)\b/.test(s))).toEqual([]);
     });
 
-    test("an opened decision places its radiogroup and Pick recommended button before Context and prints only short option keys", () => {
+    test("an opened decision places Pick recommended and its radiogroup options before Context", () => {
       // An opened decision shows its options before its context.
       const variantMatch = html.match(/id="spoke:pick-a-variant"[\s\S]*?<\/details>/);
-      assert(variantMatch, "hub should render spoke:pick-a-variant");
-      const variant = variantMatch[0];
-      expect(variant.indexOf('value="a"')).toBeLessThan(variant.indexOf(">Context<"));
-      expect(variant.indexOf("Pick recommended")).toBeLessThan(variant.indexOf(">Context<"));
-      // A letter key, which the item's text names an option by, stands before its label; a word key,
-      // which restates the label, stays out.
-      expect(variant).toMatch(/data-option-key[^>]*>a<\/span>\s*<b>Variant A<\/b>/);
-      const recipientsMatch = html.match(/id="spoke:pick-recipients"[\s\S]*?<\/details>/);
-      assert(recipientsMatch, "hub should render spoke:pick-recipients");
-      expect(recipientsMatch[0]).not.toContain("data-option-key");
+      expect(variantMatch).not.toBeNull();
+      const variant = variantMatch![0];
+      const markers = [
+        ...variant.matchAll(
+          /Pick recommended|role="radiogroup" aria-label="[^"]+"|value="a"|>Context</g,
+        ),
+      ].map((m) => m[0]);
+      expect(markers).toEqual([
+        "Pick recommended",
+        'role="radiogroup" aria-label="Which variant ships?"',
+        'value="a"',
+        ">Context<",
+      ]);
       // Its options form one group, named by the question they answer.
       expect(variant).toMatch(/role="radiogroup" aria-label="[^"]+"[^>]*>\s*<label/);
+    });
+
+    test("an opened decision prints short letter option keys and omits word keys", () => {
+      const variantMatch = html.match(/id="spoke:pick-a-variant"[\s\S]*?<\/details>/);
+      expect(variantMatch).not.toBeNull();
+      // A letter key, which the item's text names an option by, stands before its label; a word key,
+      // which restates the label, stays out.
+      expect(variantMatch![0]).toMatch(/data-option-key[^>]*>a<\/span>\s*<b>Variant A<\/b>/);
+      const recipientsMatch = html.match(/id="spoke:pick-recipients"[\s\S]*?<\/details>/);
+      expect(recipientsMatch).not.toBeNull();
+      expect(recipientsMatch![0]).not.toContain("data-option-key");
     });
 
     test("provenance lists checkouts behind their push branch and sits after Settled", () => {
@@ -530,12 +578,14 @@ describe("pages", () => {
       // so the lists come first.
       expect(html).toMatch(/class="admin-provenance[^>]*>[^<]*· as of <span data-stamp>\d/);
       const provenance = html.match(/<p class="admin-provenance[^>]*>([^<]*)/);
-      assert(provenance, "hub should render provenance paragraph");
-      expect(provenance[1]).toContain("1 behind their push branch: other");
+      expect(provenance).not.toBeNull();
+      expect(provenance![1]).toContain("1 behind their push branch: other");
       expect(readFileSync(join(out, "other/dashboard.html"), "utf8")).toContain(
         "2 commits behind the push branch, fetched",
       );
-      expect(html.indexOf("admin-provenance")).toBeGreaterThan(html.indexOf(">Settled</h2>"));
+      expect(
+        [...html.matchAll(/>Settled<\/h2>|class="admin-provenance/g)].map((m) => m[0]),
+      ).toEqual([">Settled</h2>", 'class="admin-provenance']);
     });
   });
 
@@ -587,15 +637,23 @@ describe("pages", () => {
       expect(html.indexOf('id="admin-zoom"')).toBeGreaterThan(html.lastIndexOf("</label>"));
     });
 
-    test("an opened row shows short alphanumeric option keys, breaks long strings inside the row, and hides the closed recommendation line", () => {
+    test("an opened row prints short alphanumeric option keys and omits word keys", () => {
       const row = rowOf("shown");
       expect(row).toMatch(/data-option-key[^>]*>b2<\/span>/);
       expect(row).not.toMatch(/data-option-key[^>]*>ask</);
+    });
+
+    test("an opened row wraps long strings inside the row", () => {
       // A long path or address in an opened row breaks inside the row rather than widening a phone's
       // page.
-      expect(row).toMatch(/<div class="[^"]*\bwrap-anywhere\b[^"]*">\s*<p class="hw-status"/);
+      expect(rowOf("shown")).toMatch(
+        /<div class="[^"]*\bwrap-anywhere\b[^"]*">\s*<p class="hw-status"/,
+      );
+    });
+
+    test("an opened row hides its closed recommendation line", () => {
       // Opened, the row's own recommendation badge says what the closed line said.
-      expect(row).toMatch(/<span class="[^"]*group-open:hidden">Recommended:/);
+      expect(rowOf("shown")).toMatch(/<span class="[^"]*group-open:hidden">Recommended:/);
     });
   });
 
@@ -627,9 +685,7 @@ describe("pages", () => {
       if (browser) await browser.close();
     });
 
-    const openPage = async (
-      owner: { newPage: () => ReturnType<typeof browser.newPage> } = browser,
-    ) => {
+    const openPage = async (owner: Awaited<ReturnType<typeof browser.createBrowserContext>>) => {
       const page = await owner.newPage();
       const violations: string[] = [];
       await page.exposeFunction("__adminCsp", (msg: string) => {
@@ -721,8 +777,9 @@ describe("pages", () => {
       test(
         "the CSP observer records a violation when a built page attempts an unnonced inline script",
         async () => {
-          const { page, violations } = await openPage();
+          const context = await browser.createBrowserContext();
           try {
+            const { page, violations } = await openPage(context);
             await page.goto(`file://${workPath}`);
             await page.evaluate(() => {
               const inline = document.createElement("script");
@@ -732,7 +789,7 @@ describe("pages", () => {
             await new Promise((r) => setTimeout(r, 50));
             expect(violations).toEqual(["CSP violation: script-src-elem inline"]);
           } finally {
-            await page.close();
+            await context.close();
           }
         },
         testTimeout(60_000),
@@ -741,8 +798,9 @@ describe("pages", () => {
       test(
         "clicking a needs graph node opens its target row in Chrome without CSP violations",
         async () => {
-          const { page, violations } = await openPage();
+          const context = await browser.createBrowserContext();
           try {
+            const { page, violations } = await openPage(context);
             await page.goto(`file://${workPath}`);
             await page.type("#admin-search", "an unmatched search");
             await page.click("details:has(figure.admin-diagram) > summary");
@@ -761,7 +819,7 @@ describe("pages", () => {
             });
             expect(violations).toEqual([]);
           } finally {
-            await page.close();
+            await context.close();
           }
         },
         testTimeout(60_000),
@@ -775,8 +833,9 @@ describe("pages", () => {
       ])(
         "the header repository selector does not overlap the theme switch on $rel at $width px",
         async ({ rel, width }) => {
-          const page = await browser.newPage();
+          const context = await browser.createBrowserContext();
           try {
+            const page = await context.newPage();
             await page.setViewport({ width, height: 844 });
             await page.goto(`file://${join(out, rel)}`, { waitUntil: "load" });
             await page.evaluate(() => document.fonts.ready);
@@ -791,7 +850,7 @@ describe("pages", () => {
             });
             expect(gap).toBeGreaterThanOrEqual(0);
           } finally {
-            await page.close();
+            await context.close();
           }
         },
         testTimeout(60_000),
@@ -874,14 +933,11 @@ describe("pages", () => {
             await page.setViewport({ width: 390, height: 844 });
             await page.goto(`file://${out}/index.html`);
             const buttons = await page.evaluate(() => {
-              const shown = [
-                ...document.querySelectorAll(
-                  "[data-who-button]:not([hidden]), [data-kind-button]:not([hidden])",
-                ),
-              ];
+              const all = [...document.querySelectorAll("[data-who-button], [data-kind-button]")];
+              const shown = all.filter((b) => !b.hasAttribute("hidden"));
               return {
                 labels: shown.map((b) => b.textContent!.trim().replace(/\s+/g, " ")),
-                cut: shown
+                cut: all
                   .filter((b) => b.getBoundingClientRect().right > innerWidth)
                   .map((b) => b.textContent!.trim()),
               };
@@ -921,14 +977,11 @@ describe("pages", () => {
             });
             await page.reload();
             const buttons = await page.evaluate(() => {
-              const shown = [
-                ...document.querySelectorAll(
-                  "[data-who-button]:not([hidden]), [data-kind-button]:not([hidden])",
-                ),
-              ];
+              const all = [...document.querySelectorAll("[data-who-button], [data-kind-button]")];
+              const shown = all.filter((b) => !b.hasAttribute("hidden"));
               return {
                 labels: shown.map((b) => b.textContent!.trim().replace(/\s+/g, " ")),
-                cut: shown
+                cut: all
                   .filter((b) => b.getBoundingClientRect().right > innerWidth)
                   .map((b) => b.textContent!.trim()),
               };
@@ -1046,15 +1099,14 @@ describe("pages", () => {
         await page.setViewport({ width: 390, height: 844 });
         const response = await page.goto(new URL(SAMPLE_REPORT, server.url).href);
         await page.click('nav[aria-label="Contents"] a[href="#next"]');
-        await page.waitForFunction(() => location.hash === "#next");
-        await page.waitForFunction(
-          () =>
-            document.getElementById("next")!.getBoundingClientRect().top >=
-            document.querySelector(".admin-action")!.getBoundingClientRect().bottom,
-        );
-        await page.waitForFunction(
-          () => document.getElementById("next")!.getBoundingClientRect().bottom < innerHeight,
-        );
+        await page.waitForFunction(() => {
+          const bar = document.querySelector(".admin-action")!.getBoundingClientRect();
+          const heading = document.getElementById("next")!.getBoundingClientRect();
+          const hashMiss = Number(location.hash !== "#next") * -1e6;
+          return (
+            Math.min(hashMiss, heading.top - bar.bottom, innerHeight - heading.bottom - 1e-6) >= 0
+          );
+        });
         const pos = await page.evaluate(() => {
           const bar = document.querySelector(".admin-action")!.getBoundingClientRect();
           const heading = document.getElementById("next")!.getBoundingClientRect();
@@ -1229,49 +1281,52 @@ describe("pages", () => {
         };
         let violations: string[] = [];
 
+        let context: Awaited<ReturnType<typeof browser.createBrowserContext>> | undefined;
+
+        afterAll(async () => {
+          if (context) await context.close();
+        });
+
         beforeAll(async () => {
-          const opened = await openPage();
-          try {
-            await opened.page.setViewport({ width: 390, height: 844 });
-            await opened.page.goto(
-              `file://${out}/spoke/doc/docs/agent-work/2026-01-15-sample-topic.html`,
-            );
-            const diagram = await opened.page.locator("article .admin-diagram > svg").waitHandle();
-            view = await diagram.evaluate(async (svg) => {
-              await document.fonts.ready;
-              const { width, height } = svg.getBoundingClientRect();
-              const figure = svg.parentElement!;
-              const nodes = [...svg.querySelectorAll(".node")];
-              const measurements = nodes.map((node) => {
-                const label = node.querySelector("text")!;
-                const box = node.querySelector("rect")!;
-                return {
-                  label: label.textContent!,
-                  width: label.getBBox().width,
-                  box: box.getBBox().width,
-                };
-              });
-              const root = document.documentElement;
-              const first = nodes[0]!.querySelector("rect")!;
-              root.dataset.theme = "light";
-              const day = getComputedStyle(first).fill;
-              root.dataset.theme = "dark";
+          context = await browser.createBrowserContext();
+          const opened = await openPage(context);
+          await opened.page.setViewport({ width: 390, height: 844 });
+          await opened.page.goto(
+            `file://${out}/spoke/doc/docs/agent-work/2026-01-15-sample-topic.html`,
+          );
+          const diagram = await opened.page.locator("article .admin-diagram > svg").waitHandle();
+          view = await diagram.evaluate(async (svg) => {
+            await document.fonts.ready;
+            const { width, height } = svg.getBoundingClientRect();
+            const figure = svg.parentElement!;
+            const nodes = [...svg.querySelectorAll(".node")];
+            const measurements = nodes.map((node) => {
+              const label = node.querySelector("text")!;
+              const box = node.querySelector("rect")!;
               return {
-                width,
-                height,
-                scrollWidth: figure.scrollWidth,
-                clientWidth: figure.clientWidth,
-                overflow: getComputedStyle(figure).overflowX,
-                font: getComputedStyle(nodes[0]!.querySelector("text")!).fontFamily,
-                measurements,
-                day,
-                night: getComputedStyle(first).fill,
+                label: label.textContent!,
+                width: label.getBBox().width,
+                box: box.getBBox().width,
               };
             });
-            violations = opened.violations;
-          } finally {
-            await opened.page.close();
-          }
+            const root = document.documentElement;
+            const first = nodes[0]!.querySelector("rect")!;
+            root.dataset.theme = "light";
+            const day = getComputedStyle(first).fill;
+            root.dataset.theme = "dark";
+            return {
+              width,
+              height,
+              scrollWidth: figure.scrollWidth,
+              clientWidth: figure.clientWidth,
+              overflow: getComputedStyle(figure).overflowX,
+              font: getComputedStyle(nodes[0]!.querySelector("text")!).fontFamily,
+              measurements,
+              day,
+              night: getComputedStyle(first).fill,
+            };
+          });
+          violations = opened.violations;
         }, testTimeout(60_000));
 
         test("renders with non-zero size inside a horizontally scrollable container without CSP violations", () => {
@@ -1282,8 +1337,11 @@ describe("pages", () => {
           expect(violations).toEqual([]);
         });
 
-        test("uses Inter for node labels and updates node fills when the page theme switches", () => {
+        test("uses Inter for report flowchart node labels", () => {
           expect(view.font).toContain("Inter");
+        });
+
+        test("updates report flowchart node fills when the page theme switches", () => {
           expect(view.day).not.toBe(view.night);
         });
 
@@ -1307,10 +1365,11 @@ describe("pages", () => {
       });
 
       test(
-        "renders a work item's Mermaid diagram without CSP violations",
+        "renders a work item's Mermaid diagram and prerequisite summary without CSP violations",
         async () => {
-          const { page, violations } = await openPage();
+          const context = await browser.createBrowserContext();
           try {
+            const { page, violations } = await openPage(context);
             await page.setViewport({ width: 390, height: 844 });
             await page.goto(`file://${out}/spoke/work.html#spoke:sort-the-samples`);
             expect(
@@ -1319,9 +1378,15 @@ describe("pages", () => {
                 (svg) => svg.textContent,
               ),
             ).toContain("Dated folders");
+            expect(
+              await page.$eval(
+                '[id="spoke:work-wire-the-gate"] > summary',
+                (row) => row.textContent,
+              ),
+            ).toContain("Waiting on check-the-copy, goal, pick-a-variant");
             expect(violations).toEqual([]);
           } finally {
-            await page.close();
+            await context.close();
           }
         },
         testTimeout(60_000),
@@ -1330,8 +1395,9 @@ describe("pages", () => {
       test(
         "renders class diagram members in the monospace font without CSP violations",
         async () => {
-          const { page, violations } = await openPage();
+          const context = await browser.createBrowserContext();
           try {
+            const { page, violations } = await openPage(context);
             await page.setViewport({ width: 390, height: 844 });
             await page.goto(`file://${out}/x/doc/docs/classes.html`);
             const [member, mono, sans] = await page.$eval(".admin-diagram text.mono", (label) => {
@@ -1349,7 +1415,7 @@ describe("pages", () => {
             expect(member).not.toBe(sans);
             expect(violations).toEqual([]);
           } finally {
-            await page.close();
+            await context.close();
           }
         },
         testTimeout(60_000),
@@ -1489,7 +1555,7 @@ describe("pages", () => {
           expect(initial.title).toBe("X · r · Admin");
         });
 
-        test("darkens x.html to follow the system theme before paint", () => {
+        test("darkens x.html to follow the system theme on load", () => {
           expect(initial.theme).toBe("dark");
         });
 
@@ -3785,6 +3851,14 @@ describe("catalog", () => {
 
   describe("needs-graph story links", () => {
     const graphPath = "/catalog/stories/Items/needs-graph/graph/";
+    const graphHrefsExpected = [
+      "../../../Pages/decisions/default/#spoke:cache-folder",
+      "../../../Pages/decisions/default/#spoke:check-the-copy",
+      "../../../Pages/decisions/default/#spoke:name-the-command",
+      "../../../Pages/decisions/default/#spoke:pick-a-variant",
+      "../../../Pages/work/default/#spoke:goal",
+      "../../../Pages/work/default/#spoke:work-wire-the-gate",
+    ];
     let graphStatus = 0;
     let graphHrefs: string[] = [];
 
@@ -3798,44 +3872,17 @@ describe("catalog", () => {
 
     test("renders links for all six connected items", () => {
       expect(graphStatus).toBe(200);
-      expect([...graphHrefs].sort()).toEqual([
-        "../../../Pages/decisions/default/#spoke:cache-folder",
-        "../../../Pages/decisions/default/#spoke:check-the-copy",
-        "../../../Pages/decisions/default/#spoke:name-the-command",
-        "../../../Pages/decisions/default/#spoke:pick-a-variant",
-        "../../../Pages/work/default/#spoke:goal",
-        "../../../Pages/work/default/#spoke:work-wire-the-gate",
-      ]);
+      expect([...graphHrefs].sort()).toEqual(graphHrefsExpected);
     });
 
-    test.each([
-      {
-        page: "decisions",
-        ids: [
-          "spoke:cache-folder",
-          "spoke:check-the-copy",
-          "spoke:name-the-command",
-          "spoke:pick-a-variant",
-        ],
-      },
-      {
-        page: "work",
-        ids: ["spoke:goal", "spoke:work-wire-the-gate"],
-      },
-    ])(
-      "follows the rendered needs-graph links for $page to a 200 page holding every linked row",
-      async ({ ids }) => {
-        const matched = graphHrefs.filter((href) => ids.includes(href.split("#")[1]!));
-        const pathnames = [
-          ...new Set(
-            matched.map((href) => new URL(href, `http://admin.localhost${graphPath}`).pathname),
-          ),
-        ];
-        expect(pathnames).toHaveLength(1);
-        const row = await get(pathnames[0]!);
+    test.each(graphHrefsExpected)(
+      "fetches rendered link %s and finds its target row",
+      async (href) => {
+        expect(graphHrefs).toContain(href);
+        const target = new URL(href, `http://admin.localhost${graphPath}`);
+        const row = await get(target.pathname);
         expect(row.status).toBe(200);
-        const html = await row.text();
-        expect(ids.filter((id) => !html.includes(`id="${id}"`))).toEqual([]);
+        expect(await row.text()).toContain(`id="${target.hash.slice(1)}"`);
       },
       testTimeout(60_000),
     );
