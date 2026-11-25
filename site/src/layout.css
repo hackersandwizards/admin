@@ -46,7 +46,15 @@
     flex: none;
   }
   .admin-where li:last-child {
+    display: flex;
     flex: 0 1 auto;
+    align-items: center;
+    min-width: 0;
+  }
+  .admin-where li:last-child::before {
+    flex: none;
+  }
+  .admin-where li:last-child > button {
     min-width: 0;
   }
   .admin-main {
@@ -121,6 +129,13 @@
       padding: var(--hw-focus-room) 1rem;
       overflow-x: auto;
       scrollbar-width: none;
+    }
+  }
+  @media (width < 30rem) {
+    /* header.css drops .hw-header-row's 0.25rem gap below 30rem; keep that space between the
+       breadcrumb's bordered button and the theme switch. */
+    .admin-where {
+      margin-inline-end: 0.25rem;
     }
   }
 }

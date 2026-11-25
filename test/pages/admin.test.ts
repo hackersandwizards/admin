@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
+import { afterAll, assert, beforeAll, describe, expect, test, vi } from "vitest";
 import {
   cpSync,
   existsSync,
@@ -834,6 +834,44 @@ describe("pages", () => {
         expect(posts).toEqual([]);
         await page.goto(`file://${out}/r/doc/docs/y.html`, { waitUntil: "load" });
         expect(await page.title()).not.toContain("|file");
+      } finally {
+        await browser.close();
+      }
+    },
+    testTimeout(60_000),
+  );
+
+  test(
+    "the header repository selector and theme switch stay apart at 390 px and 360 px",
+    async () => {
+      const spoke = await readRepo(repoFrom("spoke"));
+      const out = join(scratch(), "out");
+      await buildSite(siteData([spoke]), out);
+      const executablePath = await chromeBinaryAsync();
+      assert(executablePath, INSTALL_HINT);
+      const browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
+      try {
+        const page = await browser.newPage();
+        const gapAt = async (rel: string, width: number) => {
+          await page.setViewport({ width, height: 844 });
+          await page.goto(`file://${join(out, rel)}`, { waitUntil: "load" });
+          await page.evaluate(() => document.fonts.ready);
+          const right = await page.$eval(
+            "[popovertarget=admin-repos]",
+            (el) => el.getBoundingClientRect().right,
+          );
+          const left = await page.$eval(
+            "[data-admin-theme]",
+            (el) => el.getBoundingClientRect().left,
+          );
+          return left - right;
+        };
+        const desktopGap = await gapAt("spoke/dashboard.html", 1280);
+        expect(desktopGap).toBeGreaterThan(0);
+        expect(await gapAt("spoke/dashboard.html", 390)).toBeCloseTo(desktopGap, 1);
+        expect(await gapAt("spoke/dashboard.html", 360)).toBeCloseTo(desktopGap, 1);
+        expect(await gapAt("index.html", 390)).toBeCloseTo(desktopGap, 1);
+        expect(await gapAt("index.html", 360)).toBeCloseTo(desktopGap, 1);
       } finally {
         await browser.close();
       }
