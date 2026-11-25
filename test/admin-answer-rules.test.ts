@@ -12,6 +12,7 @@ import {
   isControlChecked,
   isStaleAnswer,
   optionSummary,
+  orderedAnsweredKeys,
   pendingStatusText,
   pickedKeys,
   rowMarkMode,
@@ -163,11 +164,39 @@ describe("answer helpers", () => {
       expected: true,
     },
     {
+      label: "done checkbox is unchecked without done flag",
+      control: { kind: "done", value: "on" } as AnswerControl,
+      answer: { note: "still thinking", at: atMorning },
+      stale: false,
+      expected: false,
+    },
+    {
+      label: "stale answer unchecks done checkbox",
+      control: { kind: "done", value: "on" } as AnswerControl,
+      answer: { done: true, at: atMorning },
+      stale: true,
+      expected: false,
+    },
+    {
       label: "later checkbox follows later flag",
       control: { kind: "later", value: "on" } as AnswerControl,
       answer: { later: true, at: atMorning },
       stale: false,
       expected: true,
+    },
+    {
+      label: "later checkbox is unchecked without later flag",
+      control: { kind: "later", value: "on" } as AnswerControl,
+      answer: { note: "still thinking", at: atMorning },
+      stale: false,
+      expected: false,
+    },
+    {
+      label: "stale answer unchecks later checkbox",
+      control: { kind: "later", value: "on" } as AnswerControl,
+      answer: { later: true, at: atMorning },
+      stale: true,
+      expected: false,
     },
   ])("isControlChecked: $label", ({ control, answer, stale, expected }) => {
     expect(isControlChecked(control, answer, stale)).toBe(expected);
@@ -450,6 +479,43 @@ describe("buildAnswer", () => {
 });
 
 describe("copy selection and wording", () => {
+  test.each([
+    {
+      label: "page rows come first in page order, followed by other-page answers in storage order",
+      pageKeys: ["alpha:first", "alpha:second", "alpha:first"],
+      stored: new Map<string, StoredAnswer | null>([
+        ["beta:other-1", { done: true, at: atMorning }],
+        ["alpha:second", { option: "a", at: atMorning }],
+        ["alpha:deferred", { later: true, at: atMorning }],
+        ["beta:other-2", { note: "off-page", at: atMorning }],
+        ["alpha:first", { stance: "agree", at: atMorning }],
+        ["alpha:unreadable", null],
+      ]),
+      expected: ["alpha:first", "alpha:second", "beta:other-1", "beta:other-2"],
+    },
+    {
+      label: "deferred answers on this page are excluded while active ones stay ordered",
+      pageKeys: ["alpha:later", "alpha:kept"],
+      stored: new Map<string, StoredAnswer | null>([
+        ["alpha:later", { later: true, note: "hold", at: atMorning }],
+        ["alpha:kept", { done: true, at: atMorning }],
+      ]),
+      expected: ["alpha:kept"],
+    },
+    {
+      label: "page with no local rows preserves storage order for active answers",
+      pageKeys: [],
+      stored: new Map<string, StoredAnswer | null>([
+        ["beta:z", { done: true, at: atMorning }],
+        ["beta:a", { done: true, at: atMorning }],
+        ["beta:later", { later: true, at: atMorning }],
+      ]),
+      expected: ["beta:z", "beta:a"],
+    },
+  ])("orderedAnsweredKeys: $label", ({ pageKeys, stored, expected }) => {
+    expect(orderedAnsweredKeys(pageKeys, stored)).toEqual(expected);
+  });
+
   test.each([
     { count: 0, expected: "0 answers" },
     { count: 1, expected: "1 answer" },

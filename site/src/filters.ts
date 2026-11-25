@@ -3,12 +3,14 @@ import {
   changedSinceText,
   classifyRow,
   countAssumedRows,
+  countChangedItems,
   countOpenForPerson,
   countOpenOfKind,
   decodeHash,
   matchesPerson,
   noMatchSentence,
   type ActiveFilters,
+  type ChangedRowInfo,
   type HiddenMatches,
   type PageRow,
 } from "./filter-rules.ts";
@@ -138,22 +140,16 @@ function updateAssumedCount(doc: Document, count: number): void {
   veto.querySelector("[data-assumed-count]")!.textContent = assumptionsText(count);
 }
 
-function countChangedItems(
-  doc: Document,
-  hiddenRepos: ReadonlySet<string>,
-  target: HTMLElement | null,
-): number {
-  // The page's changed items, but those a hidden repository holds.
-  return new Set(
-    [...doc.querySelectorAll("[data-updated]:not([hidden])")]
-      .map((el) => el.closest<HTMLElement>("[data-k]")!)
-      .filter(
-        (row) =>
-          !row.hasAttribute("data-report") &&
-          !(hiddenRepos.has(row.dataset.repo ?? "") && row !== target),
-      )
-      .map((row) => row.dataset.k),
-  ).size;
+function readChangedRows(doc: Document, target: HTMLElement | null): ChangedRowInfo[] {
+  return [...doc.querySelectorAll("[data-updated]:not([hidden])")].map((el) => {
+    const row = el.closest<HTMLElement>("[data-k]")!;
+    return {
+      key: row.dataset.k ?? "",
+      repo: row.dataset.repo ?? "",
+      isReport: row.hasAttribute("data-report"),
+      isTarget: row === target,
+    };
+  });
 }
 
 function renderChangedSince(doc: Document, text: string): void {
@@ -304,7 +300,7 @@ export class FiltersController {
     );
     updateKindButtons(this.#kinds, openMine, filters.kind);
     updateAssumedCount(this.#doc, countAssumedRows(rows, filters));
-    const marked = countChangedItems(this.#doc, filters.hiddenRepos, this.#target);
+    const marked = countChangedItems(readChangedRows(this.#doc, this.#target), filters.hiddenRepos);
     renderChangedSince(this.#doc, changedSinceText(marked, this.#updatedSince));
     const empty =
       Boolean(filters.term) &&

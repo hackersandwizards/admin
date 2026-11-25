@@ -185,6 +185,18 @@ export function buildAnswer(draft: AnswerDraft, nowIso: string): StoredAnswer | 
   };
 }
 
+export function orderedAnsweredKeys(
+  pageKeys: readonly string[],
+  stored: ReadonlyMap<string, StoredAnswer | null>,
+): string[] {
+  const order = [...new Set(pageKeys)];
+  const indexOf = (key: string) => (order.includes(key) ? order.indexOf(key) : order.length);
+  return [...stored.entries()]
+    .filter(([, answer]) => Boolean(answer) && !answer!.later)
+    .map(([key]) => key)
+    .sort((a, b) => indexOf(a) - indexOf(b));
+}
+
 export function selectAnswersToCopy(
   entries: readonly AnsweredEntry[],
   copiedAt: string,

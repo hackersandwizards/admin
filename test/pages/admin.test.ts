@@ -1027,20 +1027,25 @@ describe("admin.js", () => {
       "admin-answers:seen": (k, v) => backing.setItem(k, v),
       "admin-answers:versions": (k, v) => backing.setItem(k, v),
     };
-    Object.defineProperty(window, "localStorage", {
-      value: {
-        get length() {
-          return backing.length;
-        },
-        getItem: (k: string) => backing.getItem(k),
-        setItem: (k: string, v: string) => {
-          attempted.push(k);
-          writeByKey[k]!(k, v);
-        },
-        removeItem: (k: string) => backing.removeItem(k),
-        key: (i: number) => backing.key(i),
+    const storageProto = {
+      get length() {
+        return backing.length;
       },
+      getItem: (k: string) => backing.getItem(k),
+      setItem: (k: string, v: string) => {
+        attempted.push(k);
+        writeByKey[k]!(k, v);
+      },
+      removeItem: (k: string) => backing.removeItem(k),
+      key: (i: number) => backing.key(i),
+    };
+    const fakeStorage = Object.assign(Object.create(storageProto) as Record<string, string>, {
+      "admin-answers:seen": oldSeen,
+      "admin-answers:who": "Kim",
+      "admin-answers:versions": "{}",
+      "admin-answers:spoke:pick-a-logo": deferred,
     });
+    Object.defineProperty(window, "localStorage", { value: fakeStorage });
     window.document.write(
       readForDom(join(out, "index.html")).replace(/<script[^>]*><\/script>/g, ""),
     );

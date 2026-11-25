@@ -1,3 +1,4 @@
+import { Window } from "happy-dom";
 import { describe, expect, test, vi } from "vitest";
 import {
   MemoryStorage,
@@ -81,18 +82,17 @@ describe("isStorageError and storageKeys", () => {
     expect(keySpy).not.toHaveBeenCalled();
   });
 
-  test("storageKeys enumerates a non-MemoryStorage via length and key(i)", () => {
-    const backing = ["x", "y"];
-    const custom: StorageLike = {
-      get length() {
-        return backing.length;
-      },
-      getItem: () => null,
-      setItem: () => {},
-      removeItem: () => {},
-      key: (i) => backing[i]!,
-    };
-    expect(storageKeys(custom)).toEqual(["x", "y"]);
+  test("storageKeys lists browser Storage keys via Object.keys without calling key(i)", () => {
+    const win = new Window({ url: "http://admin.localhost/" });
+    try {
+      win.localStorage.setItem("x", "1");
+      win.localStorage.setItem("y", "2");
+      const keySpy = vi.spyOn(win.localStorage, "key");
+      expect(storageKeys(win.localStorage)).toEqual(["x", "y"]);
+      expect(keySpy).not.toHaveBeenCalled();
+    } finally {
+      win.close();
+    }
   });
 });
 

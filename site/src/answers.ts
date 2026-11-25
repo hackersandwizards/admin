@@ -7,6 +7,7 @@ import {
   isAnswerCopied,
   isControlChecked,
   isStaleAnswer,
+  orderedAnsweredKeys,
   rowMarkText,
   savedLineText,
   selectAnswersToCopy,
@@ -152,19 +153,11 @@ export class AnswersController {
   }
 
   #answeredKeys(): string[] {
-    const order = [
-      ...new Set(
-        [...this.#doc.querySelectorAll<HTMLElement>("[data-k]")].map((el) => el.dataset.k ?? ""),
-      ),
-    ];
-    const indexOf = (key: string) => (order.includes(key) ? order.indexOf(key) : order.length);
-    return this.#store
-      .answerIds()
-      .filter((key) => {
-        const answer = this.#readAnswer(key);
-        return Boolean(answer) && !answer!.later;
-      })
-      .sort((a, b) => indexOf(a) - indexOf(b));
+    const pageKeys = [...this.#doc.querySelectorAll<HTMLElement>("[data-k]")].map(
+      (el) => el.dataset.k ?? "",
+    );
+    const stored = new Map(this.#store.answerIds().map((key) => [key, this.#readAnswer(key)]));
+    return orderedAnsweredKeys(pageKeys, stored);
   }
 
   #copyLineFor(key: string): string {

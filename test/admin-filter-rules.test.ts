@@ -4,6 +4,7 @@ import {
   changedSinceText,
   classifyRow,
   countAssumedRows,
+  countChangedItems,
   countOpenForPerson,
   countOpenOfKind,
   decodeHash,
@@ -19,6 +20,7 @@ import {
   otherPeopleMatchesClause,
   pluralCount,
   type ActiveFilters,
+  type ChangedRowInfo,
   type PageRow,
   type RowFilterInfo,
 } from "../site/src/filter-rules.ts";
@@ -292,6 +294,43 @@ describe("row visibility classification", () => {
     { label: "unfiltered all", person: null, expected: 2 },
   ])("countAssumedRows: $label", ({ person, expected }) => {
     expect(countAssumedRows(pageRows, { ...baseFilters, person })).toBe(expected);
+  });
+
+  test.each([
+    {
+      label: "counts visible non-report items",
+      rows: [
+        { key: "beta:one", repo: "beta", isReport: false, isTarget: false },
+        { key: "beta:two", repo: "beta", isReport: false, isTarget: false },
+      ] as ChangedRowInfo[],
+      expected: 2,
+    },
+    {
+      label: "excludes changed report rows",
+      rows: [
+        { key: "beta:one", repo: "beta", isReport: false, isTarget: false },
+        { key: "#beta:report", repo: "beta", isReport: true, isTarget: false },
+      ] as ChangedRowInfo[],
+      expected: 1,
+    },
+    {
+      label: "excludes rows in hidden repositories unless targeted",
+      rows: [
+        { key: "alpha:hidden", repo: "alpha", isReport: false, isTarget: false },
+        { key: "alpha:target", repo: "alpha", isReport: false, isTarget: true },
+      ] as ChangedRowInfo[],
+      expected: 1,
+    },
+    {
+      label: "counts duplicate changed marks on the same item key once",
+      rows: [
+        { key: "beta:one", repo: "beta", isReport: false, isTarget: false },
+        { key: "beta:one", repo: "beta", isReport: false, isTarget: false },
+      ] as ChangedRowInfo[],
+      expected: 1,
+    },
+  ])("countChangedItems: $label", ({ rows, expected }) => {
+    expect(countChangedItems(rows, hiddenRepos)).toBe(expected);
   });
 });
 

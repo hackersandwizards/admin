@@ -51,13 +51,7 @@ export function isStorageError(error: unknown): boolean {
 }
 
 export function storageKeys(storage: StorageLike): string[] {
-  if (storage instanceof MemoryStorage) return storage.keys();
-  const keys: string[] = [];
-  for (let i = 0; i < storage.length; i++) {
-    const k = storage.key(i);
-    if (k !== null) keys.push(k);
-  }
-  return keys;
+  return storage instanceof MemoryStorage ? storage.keys() : Object.keys(storage);
 }
 
 export function browserStorage(host: { readonly localStorage: StorageLike } = window): StorageLike {

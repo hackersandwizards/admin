@@ -20,6 +20,13 @@ export interface PageRow extends RowFilterInfo {
   readonly isItem: boolean;
 }
 
+export interface ChangedRowInfo {
+  readonly key: string;
+  readonly repo: string;
+  readonly isReport: boolean;
+  readonly isTarget: boolean;
+}
+
 export interface ActiveFilters {
   readonly person: string | null;
   readonly kind: string;
@@ -109,6 +116,16 @@ export function countAssumedRows(rows: readonly PageRow[], filters: ActiveFilter
   return rows.filter(
     (row) => row.status === "assumed" && matchesPerson(row, filters.person, filters.hiddenRepos),
   ).length;
+}
+
+// The page's changed items, but those a hidden repository holds.
+export function countChangedItems(
+  rows: readonly ChangedRowInfo[],
+  hiddenRepos: ReadonlySet<string>,
+): number {
+  return new Set(
+    rows.filter((row) => !row.isReport && !isRowAway(row, hiddenRepos)).map((row) => row.key),
+  ).size;
 }
 
 export function assumptionsText(count: number): string {

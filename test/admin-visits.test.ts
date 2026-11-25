@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { MemoryStorage, createStore, type StorageLike } from "../site/src/storage.ts";
+import { MemoryStorage, createStore } from "../site/src/storage.ts";
 import {
   isGoneItem,
   isStaleComment,
@@ -12,6 +12,22 @@ import {
   type KeyedRowVersion,
   type RowVersion,
 } from "../site/src/visits.ts";
+
+class FailingWriteStorage extends MemoryStorage {
+  readonly attempted: string[] = [];
+  readonly #onWrite: Record<string, () => void>;
+
+  constructor(initial: Record<string, string>, onWrite: Record<string, () => void>) {
+    super();
+    for (const [key, value] of Object.entries(initial)) super.setItem(key, value);
+    this.#onWrite = onWrite;
+  }
+
+  override setItem(key: string): void {
+    this.attempted.push(key);
+    this.#onWrite[key]!();
+  }
+}
 
 describe("answer pruning predicates", () => {
   const live = new Set(["alpha:item-1"]);
@@ -224,37 +240,29 @@ describe("rolloverDeferredAnswers", () => {
   });
 
   test("stops and returns false when writing the deferred note hits QuotaExceededError", () => {
-    const mem = new MemoryStorage();
-    mem.setItem(
-      "admin-answers:alpha:noted",
-      JSON.stringify({ later: true, note: "check", at: "2026-01-01T08:00:00.000Z" }),
+    const full = new FailingWriteStorage(
+      {
+        "admin-answers:alpha:noted": JSON.stringify({
+          later: true,
+          note: "check",
+          at: "2026-01-01T08:00:00.000Z",
+        }),
+        "admin-answers:alpha:bare": JSON.stringify({
+          later: true,
+          note: "",
+          at: "2026-01-01T08:00:00.000Z",
+        }),
+      },
+      {
+        "admin-answers:alpha:noted": () => {
+          throw new DOMException("full", "QuotaExceededError");
+        },
+      },
     );
-    mem.setItem(
-      "admin-answers:alpha:bare",
-      JSON.stringify({ later: true, note: "", at: "2026-01-01T08:00:00.000Z" }),
-    );
-    const attempted: string[] = [];
-    const writeByKey: Record<string, () => void> = {
-      "admin-answers:alpha:noted": () => {
-        throw new DOMException("full", "QuotaExceededError");
-      },
-    };
-    const full: StorageLike = {
-      get length() {
-        return mem.length;
-      },
-      getItem: (k) => mem.getItem(k),
-      setItem: (k) => {
-        attempted.push(k);
-        writeByKey[k]!();
-      },
-      removeItem: (k) => mem.removeItem(k),
-      key: (i) => mem.key(i),
-    };
     const store = createStore(full, "admin-answers:");
     expect(rolloverDeferredAnswers(store, Date.UTC(2026, 0, 2, 10, 0))).toBe(false);
-    expect(attempted).toEqual(["admin-answers:alpha:noted"]);
-    expect(mem.getItem("admin-answers:alpha:bare")).not.toBeNull();
+    expect(full.attempted).toEqual(["admin-answers:alpha:noted"]);
+    expect(full.getItem("admin-answers:alpha:bare")).not.toBeNull();
   });
 });
 
@@ -301,29 +309,19 @@ describe("recordVisit", () => {
   });
 
   test("stops before modifying before, who, or seen when saving visit hits QuotaExceededError", () => {
-    const mem = new MemoryStorage();
     const prev = Date.UTC(2026, 0, 2, 8, 0);
-    mem.setItem("admin-answers:seen", String(prev));
-    mem.setItem("admin-answers:who", "Kim");
-    mem.setItem("admin-answers:versions", JSON.stringify({ "alpha:item-1": "v1 q1" }));
-    const attempted: string[] = [];
-    const writeByKey: Record<string, () => void> = {
-      "admin-answers:visit": () => {
-        throw new DOMException("full", "QuotaExceededError");
+    const full = new FailingWriteStorage(
+      {
+        "admin-answers:seen": String(prev),
+        "admin-answers:who": "Kim",
+        "admin-answers:versions": JSON.stringify({ "alpha:item-1": "v1 q1" }),
       },
-    };
-    const full: StorageLike = {
-      get length() {
-        return mem.length;
+      {
+        "admin-answers:visit": () => {
+          throw new DOMException("full", "QuotaExceededError");
+        },
       },
-      getItem: (k) => mem.getItem(k),
-      setItem: (k) => {
-        attempted.push(k);
-        writeByKey[k]!();
-      },
-      removeItem: (k) => mem.removeItem(k),
-      key: (i) => mem.key(i),
-    };
+    );
     const store = createStore(full, "admin-answers:");
 
     const outcome = recordVisit(
@@ -333,36 +331,26 @@ describe("recordVisit", () => {
     );
 
     expect(outcome).toEqual({ updatedSince: 0, changes: [] });
-    expect(attempted).toEqual(["admin-answers:visit"]);
-    expect(mem.getItem("admin-answers:who")).toBe("Kim");
-    expect(mem.getItem("admin-answers:seen")).toBe(String(prev));
+    expect(full.attempted).toEqual(["admin-answers:visit"]);
+    expect(full.getItem("admin-answers:who")).toBe("Kim");
+    expect(full.getItem("admin-answers:seen")).toBe(String(prev));
   });
 
   test("stops before marking rows when saving seen hits QuotaExceededError during same visit", () => {
-    const mem = new MemoryStorage();
     const prev = Date.UTC(2026, 0, 2, 9, 30);
-    mem.setItem("admin-answers:seen", String(prev));
-    mem.setItem("admin-answers:visit", String(Date.UTC(2026, 0, 2, 7, 0)));
-    mem.setItem("admin-answers:before", JSON.stringify({ "alpha:item-1": "v1 q1" }));
-    mem.setItem("admin-answers:versions", JSON.stringify({ "alpha:item-1": "v1 q1" }));
-    const attempted: string[] = [];
-    const writeByKey: Record<string, () => void> = {
-      "admin-answers:seen": () => {
-        throw new DOMException("full", "QuotaExceededError");
+    const full = new FailingWriteStorage(
+      {
+        "admin-answers:seen": String(prev),
+        "admin-answers:visit": String(Date.UTC(2026, 0, 2, 7, 0)),
+        "admin-answers:before": JSON.stringify({ "alpha:item-1": "v1 q1" }),
+        "admin-answers:versions": JSON.stringify({ "alpha:item-1": "v1 q1" }),
       },
-    };
-    const full: StorageLike = {
-      get length() {
-        return mem.length;
+      {
+        "admin-answers:seen": () => {
+          throw new DOMException("full", "QuotaExceededError");
+        },
       },
-      getItem: (k) => mem.getItem(k),
-      setItem: (k) => {
-        attempted.push(k);
-        writeByKey[k]!();
-      },
-      removeItem: (k) => mem.removeItem(k),
-      key: (i) => mem.key(i),
-    };
+    );
     const store = createStore(full, "admin-answers:");
 
     const outcome = recordVisit(
@@ -372,8 +360,10 @@ describe("recordVisit", () => {
     );
 
     expect(outcome).toEqual({ updatedSince: 0, changes: [] });
-    expect(attempted).toEqual(["admin-answers:seen"]);
-    expect(mem.getItem("admin-answers:versions")).toBe(JSON.stringify({ "alpha:item-1": "v1 q1" }));
+    expect(full.attempted).toEqual(["admin-answers:seen"]);
+    expect(full.getItem("admin-answers:versions")).toBe(
+      JSON.stringify({ "alpha:item-1": "v1 q1" }),
+    );
   });
 
   test("stops without marking rows or overwriting versions when before holds invalid JSON", () => {
