@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   cleanMermaidSource,
+  createMermaidLoader,
   diagram,
   resolveMermaidRenderer,
   scopeLocalUrls,
@@ -46,6 +47,43 @@ describe("resolveMermaidRenderer", () => {
         },
       ),
     ).toThrow("permission denied");
+  });
+});
+
+describe("createMermaidLoader", () => {
+  test("looks up an installed renderer only once", () => {
+    const fakeRenderer = (() => "<svg></svg>") as unknown as MermaidRenderer;
+    let resolves = 0;
+    let loads = 0;
+    const getRenderer = createMermaidLoader(
+      () => {
+        loads++;
+        return { renderMermaidSVG: fakeRenderer };
+      },
+      () => {
+        resolves++;
+        return "/pkg/mermaid.js";
+      },
+    );
+    expect(getRenderer()).toBe(fakeRenderer);
+    expect(getRenderer()).toBe(fakeRenderer);
+    expect(resolves).toBe(1);
+    expect(loads).toBe(1);
+  });
+
+  test("caches a missing package lookup so resolve runs only once", () => {
+    const missing = Object.assign(new Error("Cannot find module"), { code: "MODULE_NOT_FOUND" });
+    let resolves = 0;
+    const getRenderer = createMermaidLoader(
+      () => ({}),
+      () => {
+        resolves++;
+        throw missing;
+      },
+    );
+    expect(getRenderer()).toBeNull();
+    expect(getRenderer()).toBeNull();
+    expect(resolves).toBe(1);
   });
 });
 
@@ -198,11 +236,10 @@ describe("diagram", () => {
     expect(html).toContain('data-to="b"');
   });
 
-  test("falls back to code and escaped error message when Mermaid rejects the diagram", () => {
-    const html = diagram("pie &lt;b&gt;bad&lt;/b&gt;", "doc1-");
-    expect(html).toContain(
-      '<pre><code class="language-mermaid">pie &lt;b&gt;bad&lt;/b&gt;</code></pre>',
+  test("falls back to code and escapes angle brackets, ampersands, and quotes in error text", () => {
+    expect(diagram("pie &lt;b&gt;a &amp; &quot;b&quot;&lt;/b&gt;", "doc1-")).toBe(
+      '<pre><code class="language-mermaid">pie &lt;b&gt;a &amp; &quot;b&quot;&lt;/b&gt;</code></pre>' +
+        "<p>This diagram did not render: Invalid mermaid header: &quot;pie &lt;b&gt;a &amp; &quot;b&quot;&lt;/b&gt;&quot;. Expected &quot;graph TD&quot;, &quot;flowchart LR&quot;, &quot;stateDiagram-v2&quot;, etc.</p>",
     );
-    expect(html).toContain("<p>This diagram did not render:");
   });
 });

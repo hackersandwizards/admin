@@ -7,7 +7,7 @@ import { asKey, fileHref, REPO_KEY, SCHEME } from "./repo-paths.ts";
 export type Link = { label: string; href?: string };
 export type Product = { label: string; href?: string; description?: string };
 
-export type AdminConfig = {
+type AdminConfig = {
   name?: string;
   label?: string;
   designSystem?: string;
@@ -15,15 +15,15 @@ export type AdminConfig = {
   links?: Link[];
 };
 
-export type AstroCatalogConfig = { url: string; port: number; preset: boolean };
-export type AstroCatalogDev = { url: string; port: number; start?: string };
+type AstroCatalogConfig = { url: string; port: number; preset: boolean };
+type AstroCatalogDev = { url: string; port: number; start?: string };
 
 // What a repository whose package.json cannot carry admin, having none or another party owning it,
 // sets there instead.
 export const ADMIN_FILE = `${WORK_DIR}/admin.json`;
 export const ASTRO_CONFIG = /^([^/]+\/)?astro\.config\.(ts|mjs|js)$/;
 
-export const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 
 export function parsePackageJson(text: string | undefined): {
@@ -239,24 +239,21 @@ export function readRepoConfig(repo: string, src: Source) {
   const dev = findAstrobookDev(src, scripts.value);
   const dsHref = resolveDesignSystemHref(repo, admin.designSystem, from);
   const { designSystem, designSystemDev } = selectDesignSystem(dsHref.href, dev);
-  const bin = readPackageBin(pkg);
-  const products = resolveLinkedEntries(repo, admin.products, `${from}products`);
-  const links = resolveLinkedEntries(repo, admin.links, `${from}links`);
   return {
-    key: key.key,
-    label: label.label,
-    pkg: {
+    pkg,
+    pkgFields: {
       name: typeof pkg.name === "string" ? pkg.name : undefined,
       version: typeof pkg.version === "string" ? pkg.version : undefined,
       dependencies: { ...deps.value, ...devDeps.value },
       scripts: scripts.value,
-      bin: bin.value,
     },
+    admin,
+    from,
+    key: key.key,
+    label: label.label,
+    scripts: scripts.value,
     designSystem,
     designSystemDev,
-    products: products.entries,
-    links: links.entries,
-    checkSteps: readCheckSteps(scripts.value),
     defects: [
       ...pkgDefects,
       ...adminDefects,
@@ -266,9 +263,6 @@ export function readRepoConfig(repo: string, src: Source) {
       ...deps.defects,
       ...devDeps.defects,
       ...dsHref.defects,
-      ...bin.defects,
-      ...products.defects,
-      ...links.defects,
     ],
   };
 }

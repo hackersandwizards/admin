@@ -287,6 +287,16 @@ describe("parseAstroCatalogConfig", () => {
       { url: "http://127.0.0.1:4555/app/ui/", port: 4555, preset: false },
     ],
     [
+      "astrobook with single-quoted subpath only",
+      "astrobook({ subpath: '/ui' });\nserver: { port: 4555 }",
+      { url: "http://127.0.0.1:4555/ui/", port: 4555, preset: false },
+    ],
+    [
+      "astrobook with base only ignores prefixed key name",
+      'import "astrobook"; mybase: "/wrong"; base: "/app"; server: { port: 4555 }',
+      { url: "http://127.0.0.1:4555/app/", port: 4555, preset: false },
+    ],
+    [
       "astrobook without base or subpath",
       'import "astrobook"; server: { port: 4555 }',
       { url: "http://127.0.0.1:4555/", port: 4555, preset: false },
@@ -304,30 +314,31 @@ describe("pickCatalogStartScript", () => {
     expected: string | undefined;
   }>([
     {
-      label: "prefers script containing design for matching subdir",
+      label: "prefers design script for subdir",
       scripts: { dev: "astro dev --root ds", "design-system": "astro dev --root ds" },
       dir: "ds",
       expected: "design-system",
     },
     {
-      label: "falls back to dev for root config while skipping --root and cd",
-      scripts: {
-        other: "astro dev --root sub",
-        cd: "cd sub && astro dev",
-        dev: "astro dev",
-        start: "astro dev --port 4000",
-      },
+      label: "excludes --root script at root",
+      scripts: { "design-sub": "astro dev --root sub", dev: "astro dev" },
       dir: "",
       expected: "dev",
     },
     {
-      label: "falls back to first matching script when neither design nor dev matches",
-      scripts: { preview: "astro dev --root catalog" },
-      dir: "catalog",
-      expected: "preview",
+      label: "excludes cd script at root",
+      scripts: { "design-sub": "cd sub && astro dev", dev: "astro dev" },
+      dir: "",
+      expected: "dev",
     },
     {
-      label: "returns undefined when no script runs astro dev for the dir",
+      label: "picks first of two fallback scripts",
+      scripts: { first: "astro dev --root catalog", second: "astro dev --root catalog" },
+      dir: "catalog",
+      expected: "first",
+    },
+    {
+      label: "returns undefined without matching dir",
       scripts: { dev: "astro dev" },
       dir: "catalog",
       expected: undefined,
@@ -377,19 +388,19 @@ describe("selectDesignSystem", () => {
 
   test.each([
     {
-      label: "uses dev server when no designSystem is configured",
+      label: "uses dev server when unconfigured",
       configured: undefined,
       dev,
       expected: { designSystem: dev.url, designSystemDev: { port: 4332, start: "catalog" } },
     },
     {
-      label: "omits designSystemDev when configured URL differs from dev",
+      label: "omits dev when configured URL differs",
       configured: "https://example.invalid/catalog/",
       dev,
       expected: { designSystem: "https://example.invalid/catalog/", designSystemDev: undefined },
     },
     {
-      label: "keeps designSystemDev when configured URL matches dev URL",
+      label: "keeps dev when configured URL matches",
       configured: dev.url,
       dev,
       expected: { designSystem: dev.url, designSystemDev: { port: 4332, start: "catalog" } },
@@ -414,12 +425,60 @@ describe("readCheckSteps", () => {
 });
 
 describe("readRepoConfig", () => {
-  test("combines package metadata, standalone admin.json, and catalog discovery", () => {
+  const catalogConfig =
+    'import { catalog } from "@hackersandwizards/scaffolding/catalog";\nserver: { port: 4332 }';
+
+  test.each<{
+    label: string;
+    files: Record<string, string>;
+    expected: { designSystem?: string; designSystemDev?: { port: number; start?: string } };
+  }>([
+    {
+      label: "catalog config and start script present",
+      files: {
+        "package.json": JSON.stringify({ scripts: { catalog: "astro dev --root catalog" } }),
+        "catalog/astro.config.ts": catalogConfig,
+      },
+      expected: {
+        designSystem: "http://127.0.0.1:4332/catalog/",
+        designSystemDev: { port: 4332, start: "catalog" },
+      },
+    },
+    {
+      label: "catalog config without start script",
+      files: {
+        "package.json": JSON.stringify({ scripts: { test: "vitest" } }),
+        "catalog/astro.config.ts": catalogConfig,
+      },
+      expected: {
+        designSystem: "http://127.0.0.1:4332/catalog/",
+        designSystemDev: { port: 4332, start: undefined },
+      },
+    },
+    {
+      label: "start script without catalog config",
+      files: {
+        "package.json": JSON.stringify({ scripts: { catalog: "astro dev --root catalog" } }),
+      },
+      expected: {
+        designSystem: undefined,
+        designSystemDev: undefined,
+      },
+    },
+  ])("discovers catalog when $label", ({ files, expected }) => {
+    const config = readRepoConfig("/r/sample", {
+      paths: Object.keys(files),
+      read: (p) => files[p],
+    });
+    expect({
+      designSystem: config.designSystem,
+      designSystemDev: config.designSystemDev,
+    }).toEqual(expected);
+  });
+
+  test("combines package metadata and standalone admin.json", () => {
     const files: Record<string, string> = {
-      "docs/agent-work/admin.json": JSON.stringify({
-        label: "Sample repo",
-        links: [{ label: "Site", href: "https://example.invalid" }],
-      }),
+      "docs/agent-work/admin.json": JSON.stringify({ label: "Sample repo" }),
       "package.json": JSON.stringify({
         name: "sample",
         version: "1.2.3",
@@ -433,20 +492,26 @@ describe("readRepoConfig", () => {
       read: (p) => files[p],
     });
     expect(config).toEqual({
-      key: "sample",
-      label: "Sample repo",
       pkg: {
+        name: "sample",
+        version: "1.2.3",
+        scripts: { check: "lint && test" },
+        dependencies: { a: "1.0.0" },
+        devDependencies: { b: "2.0.0" },
+      },
+      pkgFields: {
         name: "sample",
         version: "1.2.3",
         dependencies: { a: "1.0.0", b: "2.0.0" },
         scripts: { check: "lint && test" },
-        bin: {},
       },
+      admin: { label: "Sample repo" },
+      from: "docs/agent-work/admin.json: ",
+      key: "sample",
+      label: "Sample repo",
+      scripts: { check: "lint && test" },
       designSystem: undefined,
       designSystemDev: undefined,
-      products: [],
-      links: [{ label: "Site", href: "https://example.invalid" }],
-      checkSteps: ["lint", "test"],
       defects: [],
     });
   });

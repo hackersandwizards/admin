@@ -1,12 +1,15 @@
 import { basename } from "node:path";
-import { fetchedAt, gitAsync, gitBytes, headSource, readCommits, type Commit } from "./git.ts";
+import { headSource, readGitMetadata, type Commit } from "./git.ts";
 import { ITEMS_DIR, WORK_DIR, type Item } from "./items.ts";
 import { readItems, type Source } from "./item-source.ts";
 import { extractTitle, renderDocMarkdown } from "./markdown.ts";
 import {
   ADMIN_FILE,
   ASTRO_CONFIG,
+  readCheckSteps,
+  readPackageBin,
   readRepoConfig,
+  resolveLinkedEntries,
   type Link,
   type Product,
 } from "./repo-config.ts";
@@ -18,9 +21,9 @@ export type Report = Doc & {
   changed?: number;
   version: string;
 };
-export type Review = { dir: string; images: string[]; report?: string };
+type Review = { dir: string; images: string[]; report?: string };
 export type Doc = { path: string; title: string; titleId?: string; html: string };
-export type ScriptFile = { path: string; comment: string };
+type ScriptFile = { path: string; comment: string };
 
 export type RepoData = {
   key: string;
@@ -61,7 +64,7 @@ const AGENT = /^\.claude\/agents\/[^/]+\.md$/;
 const SCRIPT = /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/;
 // A Markdown file at the root or under docs/: a report or a doc, unless an item file.
 const isDoc = (p: string) => /\.md$/i.test(p) && (p.startsWith("docs/") || !p.includes("/"));
-const wantsRepoFile = (p: string) =>
+export const wantsRepoFile = (p: string) =>
   p === "package.json" ||
   p === ADMIN_FILE ||
   ASTRO_CONFIG.test(p) ||
@@ -124,11 +127,13 @@ export function readReports(
     .map((p) => {
       const text = src.read(p) ?? "";
       const stem = basename(p, ".md");
-      const { title, ...rest } = extractTitle(renderDocMarkdown(repo, p, text));
+      const extracted = extractTitle(renderDocMarkdown(repo, p, text));
+      const base =
+        extracted.title === undefined
+          ? { path: p, title: stem, html: extracted.html }
+          : { path: p, title: extracted.title, titleId: extracted.titleId, html: extracted.html };
       return {
-        path: p,
-        ...rest,
-        title: title ?? stem,
+        ...base,
         stem,
         date: stem.slice(0, 10),
         changed: changed.get(p),
@@ -160,8 +165,10 @@ export function readDocs(repo: string, src: Source, reportedPaths: ReadonlySet<s
   return src.paths
     .filter((p) => isDoc(p) && !reportedPaths.has(p) && !p.startsWith(`${ITEMS_DIR}/`))
     .map((p) => {
-      const { title, ...rest } = extractTitle(renderDocMarkdown(repo, p, src.read(p) ?? ""));
-      return { path: p, ...rest, title: title ?? p };
+      const extracted = extractTitle(renderDocMarkdown(repo, p, src.read(p) ?? ""));
+      return extracted.title === undefined
+        ? { path: p, title: p, html: extracted.html }
+        : { path: p, title: extracted.title, titleId: extracted.titleId, html: extracted.html };
     })
     .sort((a, b) => a.path.localeCompare(b.path));
 }
@@ -182,42 +189,50 @@ export function readAgentNames(src: Source): string[] {
 
 // Every git call of a repository runs at once, and the hub reads its repositories at once.
 export async function readRepo(repo: string, source?: Source): Promise<RepoData> {
-  const [src, workLog, head, behind, trackingLog, log, fetched] = await Promise.all([
+  const [src, gitMeta] = await Promise.all([
     source ?? headSource(repo, wantsRepoFile),
-    gitAsync(repo, ["log", "-z", "--format=@%ct", "--name-only", "--", WORK_DIR]),
-    gitAsync(repo, ["rev-parse", "--short", "HEAD"]),
-    gitBytes(repo, ["rev-list", "--count", "HEAD..@{push}"]),
-    readCommits(repo, ["-n", "60", "--", WORK_DIR]),
-    readCommits(repo, ["-n", "60"]),
-    fetchedAt(repo),
+    readGitMetadata(repo, WORK_DIR),
   ]);
   const { items, defects: itemDefects } = readItems(src);
   const config = readRepoConfig(repo, src);
-  const changed = parseWorkLog(workLog);
+  const changed = parseWorkLog(gitMeta.workLog);
+  const withChange = attachItemChanges(items, src, changed);
   const reports = readReports(repo, src, changed);
   const reported = new Set(reports.map((r) => r.path));
+  const docs = readDocs(repo, src, reported);
+  const scripts = readScriptFiles(src);
+  const bin = readPackageBin(config.pkg);
+  const products = resolveLinkedEntries(repo, config.admin.products, `${config.from}products`);
+  const links = resolveLinkedEntries(repo, config.admin.links, `${config.from}links`);
+  const agents = readAgentNames(src);
   return {
     key: config.key,
     label: config.label,
     path: repo,
-    head: head.trim(),
-    behind: behind ? Number(behind.toString().trim()) : undefined,
-    fetched,
-    items: attachItemChanges(items, src, changed),
-    defects: [...itemDefects, ...config.defects],
+    head: gitMeta.head,
+    behind: gitMeta.behind,
+    fetched: gitMeta.fetched,
+    items: withChange,
+    defects: [
+      ...itemDefects,
+      ...config.defects,
+      ...bin.defects,
+      ...products.defects,
+      ...links.defects,
+    ],
     reports,
     reviews: readReviews(src.paths, reported),
-    docs: readDocs(repo, src, reported),
+    docs,
     workFiles: src.paths.filter((p) => p.startsWith(`${WORK_DIR}/`)),
-    pkg: config.pkg,
+    pkg: { ...config.pkgFields, bin: bin.value },
     designSystem: config.designSystem,
     designSystemDev: config.designSystemDev,
-    products: config.products,
-    links: config.links,
-    agents: readAgentNames(src),
-    checkSteps: config.checkSteps,
-    scripts: readScriptFiles(src),
-    trackingLog,
-    log,
+    products: products.entries,
+    links: links.entries,
+    agents,
+    checkSteps: readCheckSteps(config.scripts),
+    scripts,
+    trackingLog: gitMeta.trackingLog,
+    log: gitMeta.log,
   };
 }

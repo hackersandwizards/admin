@@ -3,8 +3,6 @@ import { entities } from "./entities.ts";
 
 export type MermaidRenderer = typeof import("beautiful-mermaid").renderMermaidSVG;
 
-let renderDiagram: MermaidRenderer | null | undefined;
-
 export function resolveMermaidRenderer(
   load: (id: string) => unknown,
   resolveId: (id: string) => string,
@@ -20,13 +18,21 @@ export function resolveMermaidRenderer(
   return (load(entry) as typeof import("beautiful-mermaid")).renderMermaidSVG;
 }
 
-function cachedMermaidRenderer(): MermaidRenderer | null {
-  if (renderDiagram === undefined) {
-    const require = createRequire(import.meta.url);
-    renderDiagram = resolveMermaidRenderer(require, (id) => require.resolve(id));
-  }
-  return renderDiagram;
+export function createMermaidLoader(
+  load: (id: string) => unknown,
+  resolveId: (id: string) => string,
+): () => MermaidRenderer | null {
+  let cached: MermaidRenderer | null | undefined;
+  return () => {
+    if (cached === undefined) cached = resolveMermaidRenderer(load, resolveId);
+    return cached;
+  };
 }
+
+const requireMermaid = createRequire(import.meta.url);
+const cachedMermaidRenderer = createMermaidLoader(requireMermaid, (id) =>
+  requireMermaid.resolve(id),
+);
 
 export function cleanMermaidSource(source: string): string {
   const lines = entities(source)

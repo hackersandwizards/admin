@@ -33,7 +33,7 @@ export const hasPage = (path: string) =>
 // Docs render committed raw HTML, and /_file/ serves every committed file from the hub's origin,
 // so only the pages' own scripts may run, with no <base> to repoint them, else that markup could
 // read every repository through /_file/. Nor may it post a form or frame a page from elsewhere,
-// which would put an outside login inside the hub; withElements in repo.ts defuses the meta
+// which would put an outside login inside the hub; withElements in src/markdown.ts defuses the meta
 // refresh no policy stops, and a refresh inside a frame stays under frame-src. Reports lay
 // themselves out in raw HTML, so inline styles stay, but nothing loads from elsewhere: an image or
 // a stylesheet's url() would report each view and could read the page's attributes out. Only a

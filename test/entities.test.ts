@@ -9,10 +9,9 @@ describe("decodeEntity", () => {
     ["named lowercase lt", "lt;", "<"],
     ["named uppercase GT", "GT;", ">"],
     ["named lowercase apos", "apos;", "'"],
-    ["decimal with semicolon", "#60;", "<"],
-    ["decimal without semicolon", "#62", ">"],
-    ["lowercase hex", "#x27;", "'"],
-    ["uppercase hex without semicolon", "#X2f", "/"],
+    ["decimal code point", "#60;", "<"],
+    ["lowercase hex code point", "#x27;", "'"],
+    ["uppercase hex code point", "#X2f", "/"],
     ["code point clamped to max Unicode scalar", "#999999999;", String.fromCodePoint(0x10ffff)],
   ])("decodes %s", (_label, token, expected) => {
     expect(decodeEntity(token)).toBe(expected);
@@ -21,7 +20,11 @@ describe("decodeEntity", () => {
 
 describe("entities", () => {
   test.each([
-    ["mixed numeric and named entities", "a&amp;b &#x27;c&#39; &LT;d&GT;", "a&b 'c' <d>"],
+    [
+      "mixed numeric without semicolon and named entities",
+      "a&amp;b &#x27;c&#62 &LT;d&GT; &apos;e&QUOT;",
+      "a&b 'c> <d> 'e\"",
+    ],
     ["double-encoded entity stays decoded once", "&amp;lt;", "&lt;"],
     [
       "mixed-case or uppercase APOS stays literal",

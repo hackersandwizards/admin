@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { rejection } from "@hackersandwizards/scaffolding/rejection";
 import type { Item } from "../src/items.ts";
 import {
   agentDescription,
@@ -11,7 +12,29 @@ import {
   readReports,
   readReviews,
   readScriptFiles,
+  wantsRepoFile,
 } from "../src/repo.ts";
+
+describe("wantsRepoFile", () => {
+  test.each([
+    ["package.json", "package.json", true],
+    ["admin.json", "docs/agent-work/admin.json", true],
+    ["root astro config", "astro.config.ts", true],
+    ["one-level nested astro config", "catalog/astro.config.mjs", true],
+    ["too-deep astro config", "a/b/astro.config.ts", false],
+    ["root markdown doc", "README.md", true],
+    ["docs markdown file", "docs/guide.md", true],
+    ["nested non-docs markdown", "src/notes.md", false],
+    ["scripts TypeScript file", "scripts/build.ts", true],
+    ["bin shell script", "bin/run.sh", true],
+    ["non-script under scripts", "scripts/data.json", false],
+    ["agent definition", ".claude/agents/ada.md", true],
+    ["nested agent file", ".claude/agents/sub/ada.md", false],
+    ["source file", "src/index.ts", false],
+  ])("matches %s", (_label, path, expected) => {
+    expect(wantsRepoFile(path)).toBe(expected);
+  });
+});
 
 describe("readRepo defect order", () => {
   test("reports defects across items, config, package fields, and hrefs in order", async () => {
@@ -51,6 +74,150 @@ describe("readRepo defect order", () => {
       'package.json: admin.products "Catalog": scheme not allowed, not linked',
       'package.json: admin.links "Guide": scheme not allowed, not linked',
     ]);
+  });
+});
+
+describe("readRepo evaluation and key order", () => {
+  test("reads source files in fixed order from items through agents", async () => {
+    const files: Record<string, string> = {
+      "docs/agent-work/items/goal.md": "---\nkind: goal\nstatus: open\n---\n# Goal\n",
+      "package.json": JSON.stringify({
+        name: "sample",
+        scripts: { catalog: "astro dev --root catalog" },
+      }),
+      "docs/agent-work/admin.json": JSON.stringify({ label: "Sample" }),
+      "catalog/astro.config.ts":
+        'import { catalog } from "@hackersandwizards/scaffolding/catalog";\nserver: { port: 4332 }',
+      "docs/agent-work/2026-01-15-r.md": "# Report\n",
+      "docs/guide.md": "# Guide\n",
+      "scripts/run.ts": "// Runs\n",
+      ".claude/agents/ada.md": "---\ndescription: Ada, who runs checks\n---\n",
+    };
+    const reads: string[] = [];
+    await readRepo("/nonexistent/sample-repo", {
+      paths: Object.keys(files),
+      read: (path) => {
+        reads.push(path);
+        return files[path];
+      },
+    });
+    expect(reads).toEqual([
+      "docs/agent-work/items/goal.md",
+      "package.json",
+      "docs/agent-work/admin.json",
+      "catalog/astro.config.ts",
+      "docs/agent-work/items/goal.md",
+      "docs/agent-work/2026-01-15-r.md",
+      "docs/guide.md",
+      "scripts/run.ts",
+      ".claude/agents/ada.md",
+    ]);
+  });
+
+  test("surfaces the earlier stage error when both item version read and report read fail", async () => {
+    const itemReads = [
+      () => "---\nkind: goal\nstatus: open\n---\n# Goal\n",
+      () => {
+        throw new Error("item-version-boom");
+      },
+    ];
+    const readers: Record<string, () => string | undefined> = {
+      "docs/agent-work/items/goal.md": () => itemReads.shift()!(),
+      "docs/agent-work/2026-01-15-r.md": () => {
+        throw new Error("report-boom");
+      },
+    };
+    const error = await rejection(
+      readRepo("/nonexistent/sample-repo", {
+        paths: Object.keys(readers),
+        read: (path) => readers[path]?.(),
+      }),
+    );
+    expect(error).toContain("item-version-boom");
+  });
+
+  test("surfaces script read failure before agent read failure", async () => {
+    const readers: Record<string, () => string | undefined> = {
+      "scripts/run.ts": () => {
+        throw new Error("script-boom");
+      },
+      ".claude/agents/ada.md": () => {
+        throw new Error("agent-boom");
+      },
+    };
+    const error = await rejection(
+      readRepo("/nonexistent/sample-repo", {
+        paths: Object.keys(readers),
+        read: (path) => readers[path]?.(),
+      }),
+    );
+    expect(error).toContain("script-boom");
+  });
+
+  test("preserves RepoData and pkg property order", async () => {
+    const repo = await readRepo("/nonexistent/sample-repo", {
+      paths: ["package.json"],
+      read: () => JSON.stringify({ name: "sample" }),
+    });
+    expect(Object.keys(repo)).toEqual([
+      "key",
+      "label",
+      "path",
+      "head",
+      "behind",
+      "fetched",
+      "items",
+      "defects",
+      "reports",
+      "reviews",
+      "docs",
+      "workFiles",
+      "pkg",
+      "designSystem",
+      "designSystemDev",
+      "products",
+      "links",
+      "agents",
+      "checkSteps",
+      "scripts",
+      "trackingLog",
+      "log",
+    ]);
+    expect(Object.keys(repo.pkg)).toEqual(["name", "version", "dependencies", "scripts", "bin"]);
+  });
+
+  test("preserves Report and Doc property order for titled and untitled markdown", async () => {
+    const files: Record<string, string> = {
+      "docs/agent-work/2026-01-15-titled.md": "# Titled report\n\nBody\n",
+      "docs/agent-work/2026-01-14-plain.md": "Plain report\n",
+      "docs/a-titled.md": "# Titled doc\n\nBody\n",
+      "docs/b-plain.md": "Plain doc\n",
+    };
+    const repo = await readRepo("/nonexistent/sample-repo", {
+      paths: Object.keys(files),
+      read: (path) => files[path],
+    });
+    expect(Object.keys(repo.reports[0]!)).toEqual([
+      "path",
+      "title",
+      "titleId",
+      "html",
+      "stem",
+      "date",
+      "changed",
+      "version",
+    ]);
+    expect(Object.keys(repo.reports[1]!)).toEqual([
+      "path",
+      "title",
+      "html",
+      "stem",
+      "date",
+      "changed",
+      "version",
+    ]);
+    expect(Object.keys(repo.docs[0]!)).toEqual(["path", "title", "titleId", "html"]);
+    expect(Object.keys(repo.docs[1]!)).toEqual(["path", "title", "html"]);
   });
 });
 
@@ -111,7 +278,7 @@ describe("attachItemChanges", () => {
     };
     const changed = new Map([["docs/agent-work/items/goal.md", 1700000000]]);
     expect(attachItemChanges([item], src, changed)).toEqual([
-      { ...item, changed: 1700000000, version: Bun.hash(text).toString(36) },
+      { ...item, changed: 1700000000, version: "facypbage5i7" },
     ]);
   });
 });

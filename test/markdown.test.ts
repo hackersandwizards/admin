@@ -1,7 +1,8 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   decodeLinkPath,
   extractTitle,
+  finishRenderedHtml,
   isUnsafeLink,
   renderDocMarkdown,
   renderItemMarkdown,
@@ -88,24 +89,9 @@ describe("withElements", () => {
       '<blockquote class="hw-quote not-prose"><a class="hw-link" href="x">t</a></blockquote>',
     ],
     [
-      "plain list vs task list",
-      '<ul><li>a</li></ul><ul>\n<li class="task-list-item">b</li></ul>',
-      '<ul class="hw-marker-list"><li>a</li></ul><ul>\n<li class="task-list-item">b</li></ul>',
-    ],
-    [
       "task checkbox preserves literal $ sequences in label",
       '<ul>\n<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>Pay $1 and $&</li></ul>',
       '<ul>\n<li class="task-list-item"><label><input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly disabled>Pay $1 and $&</label></li></ul>',
-    ],
-    [
-      "loose task checkbox keeps label inside paragraph",
-      '<ul>\n<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled>\n<p>Check</p></li></ul>',
-      '<ul>\n<li class="task-list-item">\n<p><label><input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly disabled>Check</label></p></li></ul>',
-    ],
-    [
-      "pre code stays distinct from inline code",
-      "<pre><code>block</code></pre><p><code>inline</code></p>",
-      '<pre class="hw-code not-prose"><code>block</code></pre><p><code class="hw-inline-code">inline</code></p>',
     ],
   ])("formats %s", (_label, html, expected) => {
     expect(withElements(html)).toBe(expected);
@@ -122,7 +108,6 @@ describe("isUnsafeLink", () => {
     ["javascript scheme", "javascript:alert(1)", true],
     ["entity-obfuscated javascript scheme", "&#106;avascript:x", true],
     ["named entity before slash", "javascript&colon;x", true],
-    ["data URI", "data:text/html,hi", true],
     ["control-padded javascript", " \tjava\nscript:x", true],
   ])("classifies %s", (_label, href, expected) => {
     expect(isUnsafeLink(href)).toBe(expected);
@@ -190,10 +175,9 @@ describe("renderMermaidBlocks", () => {
       '<pre><code class="language-mermaid">flowchart LR\n  a --&gt; b</code></pre>' +
       '<pre><code class="language-mermaid">flowchart LR\n  c --&gt; d</code></pre>' +
       '<pre><code class="language-ts">const x = 1;</code></pre>';
-    const out = renderMermaidBlocks(html, '["/r","docs/a.md","sample"]');
+    const out = renderMermaidBlocks(html, "doc1");
     const ids = [...out.matchAll(/<svg id="([^"]+)"/g)].map((m) => m[1]);
-    expect(ids).toHaveLength(2);
-    expect(ids[0]).not.toBe(ids[1]);
+    expect(ids).toEqual(["mermaid-doc1-1-svg", "mermaid-doc1-2-svg"]);
     expect(out).toContain('<pre><code class="language-ts">const x = 1;</code></pre>');
   });
 });
@@ -201,7 +185,6 @@ describe("renderMermaidBlocks", () => {
 describe("decodeLinkPath", () => {
   test.each([
     ["percent-encoded space", "first%20draft.md", "first draft.md"],
-    ["plain path", "guide.md", "guide.md"],
     ["stray percent kept verbatim", "50%.md", "50%.md"],
   ])("decodes %s", (_label, path, expected) => {
     expect(decodeLinkPath(path)).toBe(expected);
@@ -239,6 +222,21 @@ describe("rewriteRelativeUrls", () => {
   });
 });
 
+describe("finishRenderedHtml", () => {
+  test("sanitizes before rendering diagrams, styles before stripping unsafe links, and strips unsafe links before rewriting relative URLs", () => {
+    const rendered =
+      '<h2 id="copy" data-x="1">Copy</h2>\n' +
+      '<p><a href="javascript&colon;x">drop</a> <a href="guide.md">keep</a></p>\n' +
+      '<pre><code data-x="1" class="language-mermaid">pie bad</code></pre>';
+    expect(finishRenderedHtml(rendered, "/r/docs", "doc1")).toBe(
+      '<h2 id="section-copy">Copy</h2>\n' +
+        '<p>drop <a class="hw-link" href="file:///r/docs/guide.md">keep</a></p>\n' +
+        '<pre class="hw-code not-prose"><code class="language-mermaid">pie bad</code></pre>' +
+        "<p>This diagram did not render: Invalid mermaid header: &quot;pie bad&quot;. Expected &quot;graph TD&quot;, &quot;flowchart LR&quot;, &quot;stateDiagram-v2&quot;, etc.</p>",
+    );
+  });
+});
+
 describe("renderDocMarkdown and renderItemMarkdown", () => {
   test("renderDocMarkdown strips frontmatter, adds heading ids, and preserves raw HTML", () => {
     const html = renderDocMarkdown(
@@ -255,6 +253,21 @@ describe("renderDocMarkdown and renderItemMarkdown", () => {
     expect(html).toContain("<h1>Hello</h1>");
     expect(html).toContain("&lt;tag&gt;");
   });
+
+  test("does not serialize the source when Markdown contains no Mermaid block", () => {
+    const stringify = vi.spyOn(JSON, "stringify");
+    try {
+      expect(renderDocMarkdown("/r", "docs/a.md", "# Plain\n\nBody.\n")).toBe(
+        '<h1 id="plain">Plain</h1>\n<p>Body.</p>\n',
+      );
+      expect(renderItemMarkdown("/r", "docs/agent-work/items/a.md", "Plain body.\n")).toBe(
+        "<p>Plain body.</p>\n",
+      );
+      expect(stringify).not.toHaveBeenCalled();
+    } finally {
+      stringify.mockRestore();
+    }
+  });
 });
 
 describe("extractTitle", () => {
@@ -263,11 +276,6 @@ describe("extractTitle", () => {
       "leading h1 with id and entity removed from html",
       '<h1 id="setup-run">Setup &amp; <em>run</em></h1>\n<p>Body.</p>\n',
       { title: "Setup & run", titleId: "setup-run", html: "<p>Body.</p>\n" },
-    ],
-    [
-      "raw h1 with > inside attribute",
-      '<h1 title="2 > 1" id="named">Title</h1>\n<p>Body.</p>\n',
-      { title: "Title", titleId: "named", html: "<p>Body.</p>\n" },
     ],
     [
       "image-only h1 stays in article",

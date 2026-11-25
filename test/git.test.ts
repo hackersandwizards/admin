@@ -7,12 +7,15 @@ import {
   git,
   gitAsync,
   gitBytes,
+  gitEnv,
   headSource,
   parseBatchBlobs,
   parseCommitLog,
   parseTreeBlobs,
-  treeSource,
+  readCommits,
+  readGitMetadata,
 } from "../src/git.ts";
+import { wantsRepoFile } from "../src/repo.ts";
 import { commit, scratch, sh } from "./admin-fixtures.ts";
 
 describe("cleanGitEnv", () => {
@@ -24,22 +27,16 @@ describe("cleanGitEnv", () => {
 });
 
 describe("parseTreeBlobs", () => {
-  test.each([
-    ["empty output", Buffer.from(""), []],
-    [
-      "blobs, submodules, and paths with newlines",
-      Buffer.from(
-        "100644 blob aaa111\tdocs/line\nbreak.md\0" +
-          "160000 commit bbb222\tdocs/sub.md\0" +
-          "100755 blob ccc333\tscripts/run.sh\0",
-      ),
-      [
-        { path: "docs/line\nbreak.md", oid: "aaa111" },
-        { path: "scripts/run.sh", oid: "ccc333" },
-      ],
-    ],
-  ])("parses %s", (_label, input, expected) => {
-    expect(parseTreeBlobs(input)).toEqual(expected);
+  test("parses blobs and paths with newlines while skipping submodules", () => {
+    const input = Buffer.from(
+      "100644 blob aaa111\tdocs/line\nbreak.md\0" +
+        "160000 commit bbb222\tdocs/sub.md\0" +
+        "100755 blob ccc333\tscripts/run.sh\0",
+    );
+    expect(parseTreeBlobs(input)).toEqual([
+      { path: "docs/line\nbreak.md", oid: "aaa111" },
+      { path: "scripts/run.sh", oid: "ccc333" },
+    ]);
   });
 });
 
@@ -93,36 +90,89 @@ describe("git commands and sources", () => {
     expect(await gitAsync(dir, ["rev-parse", "HEAD"])).toBe("");
   });
 
-  test("headSource reads only wanted committed files and fails outside git", async () => {
+  test("headSource reads only repository files selected by wantsRepoFile and fails outside git", async () => {
     const plain = scratch();
-    expect(await rejection(headSource(plain, () => true))).toContain("git ls-tree HEAD failed");
+    expect(await rejection(headSource(plain, wantsRepoFile))).toContain("git ls-tree HEAD failed");
 
     const repo = scratch();
     sh(repo, "git", "init", "-q", "-b", "main");
     mkdirSync(join(repo, "docs"));
+    mkdirSync(join(repo, "src"));
     writeFileSync(join(repo, "docs/kept.md"), "# Kept\n");
-    writeFileSync(join(repo, "docs/skip.txt"), "skip");
-    sh(repo, "git", "add", "docs");
+    writeFileSync(join(repo, "src/skip.ts"), "export const x = 1;\n");
+    sh(repo, "git", "add", "docs", "src");
     commit(repo, "initial");
 
-    const source = await headSource(repo, (path) => path.endsWith(".md"));
-    expect(source.paths).toEqual(["docs/kept.md", "docs/skip.txt"]);
+    const source = await headSource(repo, wantsRepoFile);
+    expect(source.paths).toEqual(["docs/kept.md", "src/skip.ts"]);
     expect(source.read("docs/kept.md")).toBe("# Kept\n");
-    expect(source.read("docs/skip.txt")).toBeUndefined();
+    expect(source.read("src/skip.ts")).toBeUndefined();
   });
 
-  test("treeSource walks a non-git folder while skipping .git and node_modules", () => {
-    const dir = scratch();
-    mkdirSync(join(dir, ".git"));
-    mkdirSync(join(dir, "node_modules"));
-    mkdirSync(join(dir, "docs"));
-    writeFileSync(join(dir, ".git/HEAD"), "ref");
-    writeFileSync(join(dir, "node_modules/a.js"), "x");
-    writeFileSync(join(dir, "docs/note.md"), "# Note");
+  test("readCommits returns formatted commits with timestamps and respects pathspec args", async () => {
+    const repo = scratch();
+    sh(repo, "git", "init", "-q", "-b", "main");
+    mkdirSync(join(repo, "docs"));
+    const commitAt = (iso: string, file: string, message: string) => {
+      writeFileSync(join(repo, file), `# ${file}\n`);
+      sh(repo, "git", "add", file);
+      const r = Bun.spawnSync(
+        [
+          "git",
+          "-c",
+          "user.name=t",
+          "-c",
+          "user.email=t@example.invalid",
+          "commit",
+          "-qm",
+          message,
+        ],
+        { cwd: repo, env: { ...gitEnv, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso } },
+      );
+      expect(r.exitCode).toBe(0);
+    };
+    commitAt("2026-01-14T10:00:00Z", "docs/a.md", "First\tnote");
+    commitAt("2026-01-14T11:00:00Z", "README.md", "Second");
+    const secondHash = git(repo, "rev-parse", "--short", "HEAD").trim();
+    const firstHash = git(repo, "rev-parse", "--short", "HEAD~1").trim();
 
-    const source = treeSource(dir);
-    expect(source.paths).toEqual(["docs/note.md"]);
-    expect(source.read("docs/note.md")).toBe("# Note");
-    expect(source.read("docs/absent.md")).toBeUndefined();
+    expect(await readCommits(repo, ["-n", "2"])).toEqual([
+      { hash: secondHash, time: 1768388400, subject: "Second" },
+      { hash: firstHash, time: 1768384800, subject: "First\tnote" },
+    ]);
+    expect(await readCommits(repo, ["-n", "2", "--", "docs"])).toEqual([
+      { hash: firstHash, time: 1768384800, subject: "First\tnote" },
+    ]);
+  });
+
+  test("readGitMetadata reads trimmed head, tracking log, full log, and work log for a repo", async () => {
+    const repo = scratch();
+    sh(repo, "git", "init", "-q", "-b", "main");
+    mkdirSync(join(repo, "docs/agent-work"), { recursive: true });
+    writeFileSync(join(repo, "docs/agent-work/note.md"), "# Note\n");
+    sh(repo, "git", "add", "docs");
+    const r = Bun.spawnSync(
+      ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "Track"],
+      {
+        cwd: repo,
+        env: {
+          ...gitEnv,
+          GIT_AUTHOR_DATE: "2026-01-14T10:00:00Z",
+          GIT_COMMITTER_DATE: "2026-01-14T10:00:00Z",
+        },
+      },
+    );
+    expect(r.exitCode).toBe(0);
+    const head = git(repo, "rev-parse", "--short", "HEAD").trim();
+
+    const meta = await readGitMetadata(repo, "docs/agent-work");
+    expect(meta).toEqual({
+      workLog: "@1768384800\0\ndocs/agent-work/note.md\0",
+      head,
+      behind: undefined,
+      trackingLog: [{ hash: head, time: 1768384800, subject: "Track" }],
+      log: [{ hash: head, time: 1768384800, subject: "Track" }],
+      fetched: undefined,
+    });
   });
 });

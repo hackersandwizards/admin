@@ -146,15 +146,11 @@ export function sanitizeMarkup(html: string): string {
     .transform(html);
 }
 
-export function renderMermaidBlocks(html: string, docKey: string): string {
+export function renderMermaidBlocks(html: string, documentId: string): string {
   let index = 0;
-  let documentId: string;
   return html.replace(
     /<pre><code class="language-mermaid">([^<]*)<\/code><\/pre>/g,
-    (_, source: string) => {
-      documentId ??= Bun.hash(docKey).toString(36);
-      return diagram(source, `mermaid-${documentId}-${++index}-`);
-    },
+    (_, source: string) => diagram(source, `mermaid-${documentId}-${++index}-`),
   );
 }
 
@@ -184,23 +180,29 @@ export function rewriteRelativeUrls(html: string, dir: string): string {
   );
 }
 
-function finishRenderedHtml(rendered: string, dir: string, docKey: string): string {
+export function finishRenderedHtml(rendered: string, dir: string, documentId: string): string {
   const cleaned = sanitizeMarkup(rendered);
-  const withDiagrams = renderMermaidBlocks(cleaned, docKey);
+  const withDiagrams = renderMermaidBlocks(cleaned, documentId);
   const styled = withElements(withDiagrams);
   return rewriteRelativeUrls(stripUnsafeLinks(styled), dir);
 }
 
 export function renderDocMarkdown(repo: string, path: string, text: string): string {
   const rendered = Bun.markdown.html(stripFrontmatter(text), { headings: { ids: true } });
-  return finishRenderedHtml(rendered, join(repo, path, ".."), JSON.stringify([repo, path, text]));
+  const documentId = rendered.includes('class="language-mermaid"')
+    ? Bun.hash(JSON.stringify([repo, path, text])).toString(36)
+    : "";
+  return finishRenderedHtml(rendered, join(repo, path, ".."), documentId);
 }
 
 // An item's body has no front matter and no HTML: a placeholder such as <id> shows as written,
 // and an address in angle brackets is linked by the pages.
 export function renderItemMarkdown(repo: string, path: string, text: string): string {
   const rendered = Bun.markdown.html(text, { noHtmlSpans: true, noHtmlBlocks: true });
-  return finishRenderedHtml(rendered, join(repo, path, ".."), JSON.stringify([repo, path, text]));
+  const documentId = rendered.includes('class="language-mermaid"')
+    ? Bun.hash(JSON.stringify([repo, path, text])).toString(36)
+    : "";
+  return finishRenderedHtml(rendered, join(repo, path, ".."), documentId);
 }
 
 // A page's title is its first rendered h1, which leaves the article since the title shows above it.

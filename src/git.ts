@@ -115,6 +115,25 @@ export async function readCommits(repo: string, args: string[]): Promise<Commit[
   return parseCommitLog(await gitAsync(repo, ["log", "--format=%h%x09%ct%x09%s", ...args]));
 }
 
+export async function readGitMetadata(repo: string, workDir: string) {
+  const [workLog, head, behind, trackingLog, log, fetched] = await Promise.all([
+    gitAsync(repo, ["log", "-z", "--format=@%ct", "--name-only", "--", workDir]),
+    gitAsync(repo, ["rev-parse", "--short", "HEAD"]),
+    gitBytes(repo, ["rev-list", "--count", "HEAD..@{push}"]),
+    readCommits(repo, ["-n", "60", "--", workDir]),
+    readCommits(repo, ["-n", "60"]),
+    fetchedAt(repo),
+  ]);
+  return {
+    workLog,
+    head: head.trim(),
+    behind: behind ? Number(behind.toString().trim()) : undefined,
+    trackingLog,
+    log,
+    fetched,
+  };
+}
+
 // When the repository was last fetched: its FETCH_HEAD's time, which a worktree keeps in its own
 // git folder rather than in <repo>/.git.
 const fetchHeads = new Map<string, Promise<string>>();
