@@ -2,6 +2,7 @@ import { fc, test, unicodeString } from "@hackersandwizards/scaffolding/property
 import { expect } from "vitest";
 import { compareItems, dueSoon, imagesOf, ITEMS_DIR, parseItem, type Item } from "../src/items.ts";
 import { itemDefects, usable } from "../src/item-validation.ts";
+import { inZone } from "./admin-fixtures.ts";
 
 const work: Item = {
   id: "draft",
@@ -228,16 +229,19 @@ const calendarDay = fc.record({
   day: fc.integer({ min: 1, max: 31 }),
 });
 
+const ZONE = "Europe/Berlin";
+
 const dueCheckAt = (
   today: { year: number; month: number; day: number },
   offset: number,
   expected: boolean,
-) => {
-  const now = new Date(today.year, today.month, today.day, 23, 59);
-  const civilDay = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-  const due = new Date(civilDay + offset * 86_400_000).toISOString().slice(0, 10);
-  return { now: now.getTime(), due, expected };
-};
+) =>
+  inZone(ZONE, () => {
+    const now = new Date(today.year, today.month, today.day, 23, 59);
+    const civilDay = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const due = new Date(civilDay + offset * 86_400_000).toISOString().slice(0, 10);
+    return { now: now.getTime(), due, expected };
+  });
 
 const dueWindowCase = fc.oneof(
   fc
@@ -258,9 +262,14 @@ test.prop([dueWindowCase], {
     [dueCheckAt({ year: 2026, month: 11, day: 31 }, -1, true)],
   ],
 })("due soon includes local calendar days through the seventh day", (windowCase) => {
-  expect(dueSoon(windowCase.due, windowCase.now)).toBe(windowCase.expected);
-  expect(dueSoon(undefined, windowCase.now)).toBe(false);
-  expect(dueSoon("", windowCase.now)).toBe(false);
+  const [onDue, onMissing, onEmpty] = inZone(ZONE, () => [
+    dueSoon(windowCase.due, windowCase.now),
+    dueSoon(undefined, windowCase.now),
+    dueSoon("", windowCase.now),
+  ]);
+  expect(onDue).toBe(windowCase.expected);
+  expect(onMissing).toBe(false);
+  expect(onEmpty).toBe(false);
 });
 
 test.prop([fc.integer({ min: 1, max: 100 }), fc.nat(), fc.integer({ min: 0, max: 9999 })], {

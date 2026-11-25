@@ -2302,8 +2302,8 @@ describe("serve", () => {
         body: "",
       },
     ];
-    let hub: ReturnType<typeof createHub>;
-    const get = (path: string) => hub.fetch(new Request(`http://admin.localhost/spoke/${path}`));
+    let indexHtml = "";
+    const responses = new Map<string, { status: number; html: string }>();
 
     beforeAll(async () => {
       const repo = repoFrom("spoke");
@@ -2321,13 +2321,19 @@ describe("serve", () => {
         sh(repo, "git", "add", path);
       }
       commit(repo, "Add dated samples");
-      hub = createHub({ root: dirname(repo) });
-      await hub.pages();
+      const hub = createHub({ root: dirname(repo) });
+      const get = (path: string) => hub.fetch(new Request(`http://admin.localhost/spoke/${path}`));
+      indexHtml = await (await get("docs")).text();
+      for (const { stem } of datedReports) {
+        const response = await get(`doc/docs/agent-work/${encodeURIComponent(stem)}.html`);
+        responses.set(stem, { status: response.status, html: await response.text() });
+      }
     }, testTimeout(60_000));
 
-    test("the Docs index links every dated report", async () => {
-      const index = await (await get("docs")).text();
-      const hrefs = [...index.matchAll(/href="(doc\/docs\/agent-work\/[^"]+)"/g)].map((m) => m[1]);
+    test("the Docs index links every dated report", () => {
+      const hrefs = [...indexHtml.matchAll(/href="(doc\/docs\/agent-work\/[^"]+)"/g)].map(
+        (m) => m[1],
+      );
       expect(hrefs).toEqual(
         expect.arrayContaining([
           "doc/docs/agent-work/2026-01-15-archive.html",
@@ -2342,10 +2348,9 @@ describe("serve", () => {
 
     test.each(datedReports)(
       "serves $label at its encoded address with its heading and change line",
-      async ({ stem, title }) => {
-        const response = await get(`doc/docs/agent-work/${encodeURIComponent(stem)}.html`);
-        expect(response.status).toBe(200);
-        const html = await response.text();
+      ({ stem, title }) => {
+        const { status, html } = responses.get(stem)!;
+        expect(status).toBe(200);
         expect(html).toContain(`>${title}</h1>`);
         expect(html).toContain("Last changed");
       },
@@ -2360,10 +2365,8 @@ describe("serve", () => {
       { label: "newline in name", stem: "2026-01-15-two\nlines", expected: false },
     ])(
       "gives copy and comment controls only to plain dated report names ($label)",
-      async ({ stem, expected }) => {
-        const html = await (
-          await get(`doc/docs/agent-work/${encodeURIComponent(stem)}.html`)
-        ).text();
+      ({ stem, expected }) => {
+        const { html } = responses.get(stem)!;
         expect(html.includes('id="copy"')).toBe(expected);
         expect(html.includes("data-comment data-k")).toBe(expected);
       },
@@ -2371,17 +2374,15 @@ describe("serve", () => {
 
     test.each(datedReports)(
       "omits the topic graph on $label without work or a goal for a plain topic",
-      async ({ stem }) => {
-        const html = await (
-          await get(`doc/docs/agent-work/${encodeURIComponent(stem)}.html`)
-        ).text();
-        expect(html).not.toContain("What waits on what");
+      ({ stem }) => {
+        expect(responses.get(stem)!.html).not.toContain("What waits on what");
       },
     );
 
-    test("the archive page links the served page of the report whose stem ends in .html", async () => {
-      const html = await (await get("doc/docs/agent-work/2026-01-15-archive.html")).text();
-      expect(html).toContain('href="/spoke/doc/docs/agent-work/2026-01-15-archive.html.html"');
+    test("the archive page links the served page of the report whose stem ends in .html", () => {
+      expect(responses.get("2026-01-15-archive")!.html).toContain(
+        'href="/spoke/doc/docs/agent-work/2026-01-15-archive.html.html"',
+      );
     });
   });
 

@@ -57,3 +57,15 @@ export const evaluate = (window: Window, source: string) => {
   if (__stryker__) Object.assign(window, { __stryker__ });
   window.eval(source);
 };
+
+// Runs a check in another time zone, then restores the process's own, unset included.
+export const inZone = <T>(zone: string, check: () => T): T => {
+  const tz = process.env.TZ;
+  process.env.TZ = zone;
+  try {
+    return check();
+  } finally {
+    if (tz === undefined) delete process.env.TZ;
+    else process.env.TZ = tz;
+  }
+};

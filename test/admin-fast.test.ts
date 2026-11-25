@@ -25,20 +25,9 @@ import {
   when,
 } from "../src/repo.ts";
 import { dueOf, inline, prerequisiteLabels, withLinks } from "../site/src/data.ts";
-import { commit, fromFiles, repoFrom, sh } from "./admin-fixtures.ts";
+import { commit, fromFiles, inZone, repoFrom, sh } from "./admin-fixtures.ts";
 
 const FIX = join(import.meta.dirname, "fixtures");
-// Runs a check in another time zone, then restores the process's own, unset included.
-const inZone = (zone: string, check: () => void) => {
-  const tz = process.env.TZ;
-  process.env.TZ = zone;
-  try {
-    check();
-  } finally {
-    if (tz === undefined) delete process.env.TZ;
-    else process.env.TZ = tz;
-  }
-};
 
 const valid: Item = {
   id: "a-question",
@@ -744,17 +733,19 @@ describe("admin-check", () => {
     const { items, defects } = readItems(treeSource(join(FIX, "spoke")));
     expect(defects).toEqual([]);
     expect(items.find((i) => i.id === "pick-a-variant")?.topic).toBe("2026-01-15-sample-topic");
-    expect(items.map((i) => i.id).sort()).toEqual([
-      "ask-the-printer",
-      "cache-folder",
-      "check-the-copy",
-      "goal",
-      "name-the-command",
-      "pick-a-logo",
-      "pick-a-variant",
-      "pick-recipients",
-      "sort-the-samples",
-      "work-wire-the-gate",
+    expect(
+      items.map((i) => [i.id, i.needs] as const).toSorted(([a], [b]) => a.localeCompare(b)),
+    ).toEqual([
+      ["ask-the-printer", undefined],
+      ["cache-folder", ["pick-a-variant"]],
+      ["check-the-copy", ["pick-a-variant"]],
+      ["goal", undefined],
+      ["name-the-command", ["goal"]],
+      ["pick-a-logo", undefined],
+      ["pick-a-variant", undefined],
+      ["pick-recipients", undefined],
+      ["sort-the-samples", undefined],
+      ["work-wire-the-gate", ["check-the-copy", "cache-folder", "name-the-command"]],
     ]);
   });
 

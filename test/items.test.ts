@@ -2,12 +2,14 @@ import { describe, expect, test } from "vitest";
 import {
   ItemError,
   compareItems,
+  dueSoon,
   imagePath,
   itemRankKey,
   parseFrontmatter,
   splitItemBody,
   type Item,
 } from "../src/items.ts";
+import { inZone } from "./admin-fixtures.ts";
 
 const baseDecision: Item = {
   id: "pick-option",
@@ -147,5 +149,16 @@ describe("imagePath", () => {
     },
   ])("$label", ({ id, src, expected }) => {
     expect(imagePath(id, src)).toBe(expected);
+  });
+});
+
+describe("dueSoon", () => {
+  test("follows a time zone that skips a calendar day (Pacific/Apia)", () => {
+    const [onSkippedCutoff, onNextDay] = inZone("Pacific/Apia", () => {
+      const now = new Date(2011, 11, 23, 23, 59).getTime();
+      return [dueSoon("2011-12-31", now), dueSoon("2012-01-01", now)];
+    });
+    expect(onSkippedCutoff).toBe(true);
+    expect(onNextDay).toBe(false);
   });
 });
