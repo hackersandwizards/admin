@@ -47,9 +47,9 @@ describe("openPrerequisites", () => {
       expected: [],
     },
     {
-      label: "returns only open direct prerequisites sorted alphabetically",
-      item: makeItem({ id: "direct", needs: ["open-z", "open-a"] }),
-      expected: ["open-a", "open-z"],
+      label: "returns open direct prerequisites in walk order",
+      item: makeItem({ id: "direct", needs: ["open-a", "open-z"] }),
+      expected: ["open-z", "open-a"],
     },
     {
       label: "walks through settled items to find transitive open prerequisites",
@@ -64,7 +64,7 @@ describe("openPrerequisites", () => {
     {
       label: "deduplicates diamond prerequisites",
       item: makeItem({ id: "dia", needs: ["dia-left", "dia-right"] }),
-      expected: ["dia-left", "dia-right", "open-a"],
+      expected: ["dia-right", "open-a", "dia-left"],
     },
     {
       label: "skips unknown prerequisite ids",
@@ -77,31 +77,35 @@ describe("openPrerequisites", () => {
 });
 
 describe("prerequisiteSummary", () => {
-  test("records waitingOn for every item with needs and counts only open waiters", () => {
+  test("sorts waitingOn and builds waitingCount keys in walk order for open waiters only", () => {
     const { waitingOn, waitingCount } = prerequisiteSummary([
-      makeItem({ id: "base", status: "open" }),
-      makeItem({ id: "mid", status: "decided", needs: ["base"] }),
-      makeItem({ id: "top", status: "open", needs: ["mid"] }),
-      makeItem({ id: "done-waiter", status: "assumed", needs: ["base"] }),
+      makeItem({ id: "open-a", status: "open" }),
+      makeItem({ id: "open-z", status: "open" }),
+      makeItem({ id: "mid", status: "decided", needs: ["open-a"] }),
+      makeItem({ id: "top", status: "open", needs: ["mid", "open-z"] }),
+      makeItem({ id: "done-waiter", status: "assumed", needs: ["open-a"] }),
       makeItem({ id: "solo", status: "open" }),
     ]);
     expect(Object.fromEntries(waitingOn)).toEqual({
-      mid: ["base"],
-      top: ["base"],
-      "done-waiter": ["base"],
+      mid: ["open-a"],
+      top: ["open-a", "open-z"],
+      "done-waiter": ["open-a"],
     });
-    expect(Object.fromEntries(waitingCount)).toEqual({ base: 1 });
+    expect([...waitingCount.entries()]).toEqual([
+      ["open-z", 1],
+      ["open-a", 1],
+    ]);
   });
 });
 
 describe("needsGraphItems", () => {
-  test("preserves input order while dropping isolated items and self-needs", () => {
+  test("preserves input order even when connected set insertion order differs", () => {
     const connected = needsGraphItems([
       makeViewItem({ id: "iso" }),
-      makeViewItem({ id: "second", needs: ["first"] }),
-      makeViewItem({ id: "self", needs: ["self"] }),
       makeViewItem({ id: "first" }),
+      makeViewItem({ id: "self", needs: ["self"] }),
+      makeViewItem({ id: "second", needs: ["first"] }),
     ]);
-    expect(connected.map((i) => i.id)).toEqual(["second", "first"]);
+    expect(connected.map((i) => i.id)).toEqual(["first", "second"]);
   });
 });

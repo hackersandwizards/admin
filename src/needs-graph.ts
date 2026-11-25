@@ -13,10 +13,10 @@ export function openPrerequisites(item: Item, byId: ReadonlyMap<string, Item>): 
     seen.add(id);
     const target = byId.get(id);
     if (!target) continue;
-    if (target.needs) pending.push(...target.needs);
+    for (const need of target.needs ?? []) pending.push(need);
     if (target.status === "open") open.push(id);
   }
-  return open.sort();
+  return open;
 }
 
 export function prerequisiteSummary(items: readonly Item[]) {
@@ -26,9 +26,9 @@ export function prerequisiteSummary(items: readonly Item[]) {
   for (const item of items) {
     if (!item.needs?.length) continue;
     const open = openPrerequisites(item, byId);
-    waitingOn.set(item.id, open);
-    if (item.status !== "open") continue;
-    for (const id of open) waitingCount.set(id, (waitingCount.get(id) ?? 0) + 1);
+    if (item.status === "open")
+      for (const id of open) waitingCount.set(id, (waitingCount.get(id) ?? 0) + 1);
+    waitingOn.set(item.id, open.sort());
   }
   return { waitingOn, waitingCount };
 }

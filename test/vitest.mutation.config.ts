@@ -8,6 +8,7 @@ export default mergeConfig(vite, {
     ...test,
     include: [
       "test/admin-fast.test.ts",
+      "test/data-links.test.ts",
       "test/diagrams.test.ts",
       "test/display.test.ts",
       "test/entities.test.ts",

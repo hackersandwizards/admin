@@ -29,6 +29,11 @@ describe("withLinks", () => {
       "<pre>https://inside.example/p</a></pre>",
     ],
     [
+      "keeps nested tags inside a pre block unlinked until its first matching closing tag",
+      "<pre><code>https://inner.example/a</code> https://still-pre.example/b</pre> https://after.example/c <pre>https://second.example/d</pre>",
+      '<pre><code>https://inner.example/a</code> https://still-pre.example/b</pre> <a class="hw-link" href="https://after.example/c">https://after.example/c</a> <pre>https://second.example/d</pre>',
+    ],
+    [
       "turns an escaped angle-bracketed URL into a link without the brackets",
       "<p>&lt;https://angle.example/p?q=1&gt;</p>",
       '<p><a class="hw-link" href="https://angle.example/p?q=1">https://angle.example/p?q=1</a></p>',

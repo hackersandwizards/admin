@@ -270,7 +270,7 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
     const prefix = `${r.key}/`;
     const dashboard = `${prefix}dashboard`;
     const items = repoViewItems(r, classify, renderHtml);
-    pages.push(...repoPages(r, items));
+    for (const page of repoPages(r, items)) pages.push(page);
     const { workFiles: _, ...rest } = r;
     const connected = needsGraphItems(items);
     const needsSvg = connected.length ? needsGraph(connected) : undefined;

@@ -80,11 +80,20 @@ describe("reportStatusLine", () => {
 });
 
 describe("reportBody", () => {
-  test("places status line before Contents and body, keeping h3 out of Contents", () => {
+  test("places status line before Contents and body", () => {
+    const sixH2 = [1, 2, 3, 4, 5, 6].map((n) => `<h2 id="s${n}">S${n}</h2>`).join("");
+    const html = reportBody("spoke", makeReport({ html: sixH2 }));
+    const statusAt = html.indexOf("data-report");
+    const contentsAt = html.indexOf('aria-label="Contents"');
+    const bodyAt = html.indexOf('<h2 id="s1">');
+    expect(statusAt).toBeGreaterThanOrEqual(0);
+    expect(contentsAt).toBeGreaterThan(statusAt);
+    expect(bodyAt).toBeGreaterThan(contentsAt);
+  });
+
+  test("adds comment disclosure for h3 without listing h3 in Contents", () => {
     const sixH2 = [1, 2, 3, 4, 5, 6].map((n) => `<h2 id="s${n}">S${n}</h2>`).join("");
     const html = reportBody("spoke", makeReport({ html: `${sixH2}<h3 id="sub">Sub &amp; A</h3>` }));
-    expect(html.indexOf("data-report")).toBeLessThan(html.indexOf('aria-label="Contents"'));
-    expect(html.indexOf('aria-label="Contents"')).toBeLessThan(html.indexOf('<h2 id="s1">'));
     expect(html).not.toContain('href="#sub"');
     expect(html).toContain('data-comment data-k="spoke:2026-01-15-notes#sub"');
     expect(html).toContain("Comment on Sub &amp; A");

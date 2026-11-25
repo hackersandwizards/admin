@@ -59,11 +59,12 @@ sits only where the text it answers is on screen: in the opened row, never on a 
 Chrome tests. The full gate runs them as `browser-test`. Both suites use Vitest with Bun and read the
 gate's `SCAFFOLDING_TEST_TIMEOUT_MS`.
 
-`bun run mutation` runs `test/admin-fast.test.ts`, the direct unit tests (`test/diagrams.test.ts`,
-`test/display.test.ts`, `test/entities.test.ts`, `test/git.test.ts`, `test/items.test.ts`,
-`test/item-validation.test.ts`, `test/item-source.test.ts`, `test/markdown.test.ts`,
-`test/repo-config.test.ts`, `test/repo.test.ts`) and the property tests against the modules listed
-in `stryker.config.mjs`. It runs outside the gate and writes `.stryker-reports/mutation.json`.
+`bun run mutation` runs `test/admin-fast.test.ts`, the direct unit tests (`test/data-links.test.ts`,
+`test/diagrams.test.ts`, `test/display.test.ts`, `test/entities.test.ts`, `test/git.test.ts`,
+`test/items.test.ts`, `test/item-validation.test.ts`, `test/item-source.test.ts`,
+`test/markdown.test.ts`, `test/repo-config.test.ts`, `test/repo.test.ts`) and the property tests
+against the modules listed in `stryker.config.mjs`. It runs outside the gate and writes
+`.stryker-reports/mutation.json`.
 
 `bun run check` runs the shared steps from `@hackersandwizards/scaffolding`, including
 `colours` and `copies`. Then it runs `check:values` (no design value here),
