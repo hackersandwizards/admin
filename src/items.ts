@@ -1,7 +1,7 @@
 export const WORK_DIR = "docs/agent-work";
 export const ITEMS_DIR = `${WORK_DIR}/items`;
-const KINDS = ["decision", "review", "work", "goal"] as const;
-const STATUSES = ["open", "assumed", "decided"] as const;
+export const KINDS = ["decision", "review", "work", "goal"] as const;
+export const STATUSES = ["open", "assumed", "decided"] as const;
 
 export type Option = {
   key: string;
@@ -58,12 +58,10 @@ const FIELDS = [
 
 export class ItemError extends Error {}
 
-export function parseItem(id: string, text: string): Item {
-  const m = text.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
-  if (!m) throw new ItemError("no frontmatter between --- lines");
+export function parseFrontmatter(yaml: string): Partial<Item> {
   let front: Record<string, unknown>;
   try {
-    front = (Bun.YAML.parse(m[1]!) ?? {}) as Record<string, unknown>;
+    front = (Bun.YAML.parse(yaml) ?? {}) as Record<string, unknown>;
   } catch (e) {
     throw new ItemError(`frontmatter: ${(e as Error).message}`);
   }
@@ -72,169 +70,30 @@ export function parseItem(id: string, text: string): Item {
   const unknown = Object.keys(front).filter((k) => !FIELDS.includes(k));
   if (unknown.length) throw new ItemError(`unknown field ${unknown.join(", ")}`);
   // The parser keeps a repeated key's last value without a word; a top-level key starts a line.
-  const keys = [...m[1]!.matchAll(/^(["']?)([\w-]+)\1[ \t]*:/gm)].map((k) => k[2]!);
+  const keys = [...yaml.matchAll(/^(["']?)([\w-]+)\1[ \t]*:/gm)].map((k) => k[2]!);
   const repeated = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
   if (repeated.length) throw new ItemError(`repeated field ${repeated.join(", ")}`);
-  const rest = m[2]!.replace(/^\s*\n/, "");
+  return front as Partial<Item>;
+}
+
+export function splitItemBody(markdown: string): { title: string; body: string } {
+  const rest = markdown.replace(/^\s*\n/, "");
   const heading = rest.match(/^# ([^\r\n]+)\n?/);
   const title = heading?.[1]?.trim();
   if (!heading || !title) throw new ItemError('body does not start with "# <title>"');
-  return {
-    ...(front as Partial<Item>),
-    id,
-    title,
-    body: rest.slice(heading[0].length).trim(),
-  } as Item;
+  return { title, body: rest.slice(heading[0].length).trim() };
 }
 
-const ID = /^[a-z0-9][a-z0-9-]*$/;
-// A day the calendar has, not only a string in ISO shape.
-const isDay = (v: unknown) => {
-  const t = Date.parse(`${v}T00:00Z`);
-  return (
-    /^\d{4}-\d{2}-\d{2}$/.test(String(v)) &&
-    !Number.isNaN(t) &&
-    new Date(t).toISOString().startsWith(String(v))
-  );
-};
+export function parseItem(id: string, text: string): Item {
+  const m = text.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  if (!m) throw new ItemError("no frontmatter between --- lines");
+  const front = parseFrontmatter(m[1]!);
+  const { title, body } = splitItemBody(m[2]!);
+  return { ...front, id, title, body } as Item;
+}
+
 export const isPlainReportName = (value: unknown): value is string =>
   typeof value === "string" && /^\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*$/.test(value);
-// The fields a page prints as text.
-const TEXTS = ["area", "owner", "assumption", "decision", "by", "quote", "evidence"] as const;
-const isText = (v: unknown) => typeof v === "string" || typeof v === "number";
-// An option key as the pages store and compare it: text.
-const optionKey = (v: unknown) => (v == null || v === "" ? undefined : String(v));
-
-export function itemDefects(item: Item, exists: (path: string) => boolean): string[] {
-  const d: string[] = [];
-  const { kind, status } = item;
-  if (!ID.test(item.id)) d.push(`id ${item.id} is not lower-case kebab`);
-  if (!KINDS.includes(kind)) d.push(`kind ${kind}`);
-  if (!STATUSES.includes(status)) d.push(`status ${status}`);
-  if (kind !== "goal" && ![1, 2, 3].includes(item.priority as number))
-    d.push(`priority ${item.priority}`);
-  if (kind === "goal" && item.priority !== undefined) d.push("goal has a priority");
-  if (item.order !== undefined && typeof item.order !== "number") d.push(`order ${item.order}`);
-  if (kind !== "goal" && !item.owner) d.push("lacks owner");
-  for (const f of TEXTS) if (item[f] !== undefined && !isText(item[f])) d.push(`${f} is not text`);
-  if (item.due !== undefined && !isDay(item.due)) d.push(`due ${item.due} not ISO`);
-  if (item.topic !== undefined) {
-    if (!isPlainReportName(item.topic))
-      d.push(
-        "topic must be a plain report name: YYYY-MM-DD- followed by lower-case letters, digits and hyphens, without .md. Rename the report or correct the field",
-      );
-    else if (!exists(`${WORK_DIR}/${item.topic}.md`))
-      d.push(
-        `topic report ${WORK_DIR}/${item.topic}.md not found. Add the report or correct topic`,
-      );
-  }
-  if (item.needs !== undefined && !Array.isArray(item.needs))
-    d.push("needs must be a list. Use a list of item ids");
-  if (Array.isArray(item.needs)) {
-    const seen = new Set<string>();
-    item.needs.forEach((id, i) => {
-      if (typeof id !== "string") d.push(`needs entry ${i + 1} must be a string. Use an item id`);
-      else if (seen.has(id))
-        d.push(`needs has duplicate item ${JSON.stringify(id)}. Remove entry ${i + 1}`);
-      else seen.add(id);
-    });
-  }
-  if ((kind === "work" || kind === "goal") && status !== "open") d.push(`${kind} is ${status}`);
-  const options = item.options ?? [];
-  if (!Array.isArray(options)) d.push("options is not a list");
-  const keys = Array.isArray(options) ? options.map((o) => optionKey(o?.key)) : [];
-  if (Array.isArray(options))
-    options.forEach((o, i) => {
-      if (!optionKey(o?.key) || !optionKey(o?.label)) d.push(`option ${i + 1} lacks key or label`);
-      else if (!isText(o.key) || /[\s,]/.test(String(o.key)))
-        d.push(`option ${i + 1} key ${JSON.stringify(o.key)} is not one word`);
-      else if (!isText(o.label) || (o.detail !== undefined && !isText(o.detail)))
-        d.push(`option ${o.key} label or detail is not text`);
-    });
-  if (new Set(keys).size !== keys.length) d.push("duplicate option key");
-  if (kind === "decision" && status === "open" && keys.length < 2)
-    d.push("open decision with fewer than two options (a review request is kind: review)");
-  if (item.multiple !== undefined && typeof item.multiple !== "boolean")
-    d.push(`multiple ${item.multiple} is not true or false`);
-  const recommended = [item.recommended ?? []].flat().map(String);
-  if (recommended.length > 1 && !item.multiple) d.push("several recommended without multiple");
-  for (const r of recommended) if (!keys.includes(r)) d.push(`recommended ${r} is not an option`);
-  if (Array.isArray(options))
-    for (const o of options) {
-      if (o?.score !== undefined && typeof o.score !== "number")
-        d.push(`option ${o.key} score ${o.score} is not a number`);
-      if (o?.noise !== undefined && (typeof o.noise !== "number" || o.score === undefined))
-        d.push(`option ${o.key} noise without a numeric score`);
-    }
-  if (status === "assumed" && !item.assumption && !recommended.length)
-    d.push("assumed without assumption or recommended");
-  if (status === "decided" && (!item.decision || !item.by))
-    d.push("decided without decision or by");
-  const images = item.images ?? [];
-  const groups: [string | undefined, unknown][] = Array.isArray(images)
-    ? [[undefined, images]]
-    : typeof images === "object"
-      ? Object.entries(images)
-      : [];
-  if (typeof images !== "object") d.push("images is neither a list nor a mapping");
-  for (const [k, value] of groups) {
-    if (k !== undefined && !keys.includes(k)) d.push(`image key ${k} is not an option`);
-    for (const image of [value].flat()) {
-      const { src, caption, ...rest } =
-        typeof image === "string" ? { src: image } : ((image ?? {}) as Record<string, unknown>);
-      if (
-        typeof src !== "string" ||
-        !["string", "undefined"].includes(typeof caption) ||
-        Object.keys(rest).length
-      )
-        d.push(`image ${JSON.stringify(image)} is not a path or {src, caption}`);
-      else if (!exists(imagePath(item.id, src)))
-        d.push(`image ${imagePath(item.id, src)} not found`);
-    }
-  }
-  return d;
-}
-
-// The item with each field its pages read in the shape its type states, so a malformed field shows
-// as its defect rather than failing the build of every page or printing "[object Object]".
-export function usable(item: Item): Item {
-  const text = (v: unknown) => (isText(v) ? String(v) : undefined);
-  const shots = (v: unknown) =>
-    [v]
-      .flat()
-      .filter(
-        (i): i is Image =>
-          typeof i === "string" || typeof (i as { src?: unknown })?.src === "string",
-      );
-  const { images } = item;
-  return {
-    ...item,
-    ...Object.fromEntries(TEXTS.map((f) => [f, text(item[f])])),
-    priority: [1, 2, 3].includes(item.priority as number) ? item.priority : undefined,
-    order: typeof item.order === "number" ? item.order : undefined,
-    due: isDay(item.due) ? String(item.due) : undefined,
-    topic: isPlainReportName(item.topic) ? item.topic : undefined,
-    needs: Array.isArray(item.needs)
-      ? item.needs.filter((id) => typeof id === "string")
-      : undefined,
-    recommended: item.recommended == null ? undefined : [item.recommended].flat().map(String),
-    options: Array.isArray(item.options)
-      ? item.options
-          .filter((o) => optionKey(o?.key))
-          .map((o) => ({
-            ...o,
-            key: String(o.key),
-            label: text(o.label) ?? String(o.key),
-            detail: text(o.detail),
-          }))
-      : undefined,
-    images: Array.isArray(images)
-      ? shots(images)
-      : images && typeof images === "object"
-        ? Object.fromEntries(Object.entries(images).map(([k, v]) => [k, shots(v)]))
-        : undefined,
-  };
-}
 
 export const DUE_SOON_DAYS = 7;
 // Compared as local days, the days the hub rebuilds on.
@@ -244,21 +103,38 @@ export const dueSoon = (due: string | undefined, now = Date.now()) => {
   return !!due && due <= last.toLocaleDateString("sv-SE");
 };
 
-export function compareItems(a: Item & { changed?: number }, b: Item & { changed?: number }) {
-  const afterLastDay = "9999-12-32";
-  const soon = (i: Item) => (dueSoon(i.due) ? i.due! : afterLastDay);
-  return (
-    (a.priority ?? 9) - (b.priority ?? 9) ||
-    soon(a).localeCompare(soon(b)) ||
-    Number(a.kind === "work") - Number(b.kind === "work") ||
-    (a.order ?? 1e9) - (b.order ?? 1e9) ||
-    (a.due ?? afterLastDay).localeCompare(b.due ?? afterLastDay) ||
-    (b.changed ?? 0) - (a.changed ?? 0) ||
-    a.id.localeCompare(b.id)
-  );
+type RankedItem = Item & { changed?: number };
+const AFTER_LAST_DAY = "9999-12-32";
+const soonDue = (item: RankedItem) => (dueSoon(item.due) ? item.due! : AFTER_LAST_DAY);
+
+const ITEM_RANK_CRITERIA: readonly {
+  name: string;
+  compare: (a: RankedItem, b: RankedItem) => number;
+}[] = [
+  { name: "priority", compare: (a, b) => (a.priority ?? 9) - (b.priority ?? 9) },
+  { name: "dueSoon", compare: (a, b) => soonDue(a).localeCompare(soonDue(b)) },
+  {
+    name: "nonWorkFirst",
+    compare: (a, b) => Number(a.kind === "work") - Number(b.kind === "work"),
+  },
+  { name: "order", compare: (a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) },
+  {
+    name: "due",
+    compare: (a, b) => (a.due ?? AFTER_LAST_DAY).localeCompare(b.due ?? AFTER_LAST_DAY),
+  },
+  { name: "latestChange", compare: (a, b) => (b.changed ?? 0) - (a.changed ?? 0) },
+  { name: "id", compare: (a, b) => a.id.localeCompare(b.id) },
+];
+
+export function compareItems(a: RankedItem, b: RankedItem) {
+  for (const { compare } of ITEM_RANK_CRITERIA) {
+    const diff = compare(a, b);
+    if (diff !== 0) return diff;
+  }
+  return 0;
 }
 
-const imagePath = (id: string, src: string) =>
+export const imagePath = (id: string, src: string) =>
   src.includes("/") ? src : `${ITEMS_DIR}/${id}/${src}`;
 
 export function imagesOf(item: Item): Record<string, { src: string; caption?: string }[]> {

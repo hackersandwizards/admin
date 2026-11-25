@@ -4,6 +4,7 @@ export default {
   ...base,
   mutate: [
     "src/item-source.ts",
+    "src/item-validation.ts",
     "src/items.ts",
     "src/repo.ts",
     "src/repo-keys.ts",

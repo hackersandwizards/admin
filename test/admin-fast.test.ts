@@ -11,11 +11,10 @@ import {
   dueSoon,
   imagesOf,
   ItemError,
-  itemDefects,
   parseItem,
-  usable,
   type Item,
 } from "../src/items.ts";
+import { itemDefects, usable } from "../src/item-validation.ts";
 import {
   gitEnv,
   readItems,
@@ -95,12 +94,13 @@ describe("needs graph", () => {
         ratio: Number(rect.getAttribute("rx")) / (Number(rect.getAttribute("height")) / 2),
       };
     });
+    const anyNumber: unknown = expect.any(Number);
     expect(nodes).toEqual([
       { id: "pick-a-variant", shape: "stadium", ratio: 1 },
       { id: "work-wire-the-gate", shape: "rectangle", ratio: 0 },
       { id: "check-the-copy", shape: "rectangle", ratio: 0 },
-      { id: "name-the-command", shape: "rounded", ratio: expect.any(Number) },
-      { id: "cache-folder", shape: "rounded", ratio: expect.any(Number) },
+      { id: "name-the-command", shape: "rounded", ratio: anyNumber },
+      { id: "cache-folder", shape: "rounded", ratio: anyNumber },
       { id: "goal", shape: "stadium", ratio: 1 },
     ]);
     const roundedRatios = [nodes[3]!.ratio, nodes[4]!.ratio];

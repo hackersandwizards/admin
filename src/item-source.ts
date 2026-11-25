@@ -1,12 +1,5 @@
-import {
-  ITEMS_DIR,
-  ItemError,
-  WORK_DIR,
-  itemDefects,
-  parseItem,
-  usable,
-  type Item,
-} from "./items.ts";
+import { ITEMS_DIR, ItemError, WORK_DIR, parseItem, type Item } from "./items.ts";
+import { itemDefects, usable } from "./item-validation.ts";
 import { IMAGE } from "./repo-paths.ts";
 
 const LEGACY = ["GOAL.md"];
@@ -15,38 +8,50 @@ export type Source = { paths: string[]; read: (path: string) => string | undefin
 
 export type ReadItems = { items: Item[]; defects: string[] };
 
-export function readItems(src: Source): ReadItems {
-  const items: Item[] = [];
-  const defects: string[] = [];
-  const has = new Set(src.paths);
-  // An image is a file: a folder of that name has no picture to show.
-  const exists = (p: string) => has.has(p);
-  for (const p of src.paths) {
-    if (!p.startsWith(`${ITEMS_DIR}/`)) continue;
-    const name = p.slice(ITEMS_DIR.length + 1);
-    const [folder, file, deeper] = name.split("/");
-    if (file && !deeper && IMAGE.test(file)) {
-      if (!has.has(`${ITEMS_DIR}/${folder}.md`)) defects.push(`${p}: no item ${folder}.md`);
-      continue;
-    }
-    if (name.includes("/") || !name.endsWith(".md")) {
-      defects.push(`${p}: only <id>.md files and <id>/<image> belong in ${ITEMS_DIR}`);
-      continue;
-    }
-    try {
-      const item = parseItem(name.slice(0, -3), src.read(p) ?? "");
-      for (const d of itemDefects(item, exists)) defects.push(`${p}: ${d}`);
-      items.push(usable(item));
-    } catch (e) {
-      if (!(e instanceof ItemError)) throw e;
-      defects.push(`${p}: ${e.message}`);
-    }
+export type ItemPathKind =
+  | { kind: "outside" }
+  | { kind: "image"; ownerId: string }
+  | { kind: "stray" }
+  | { kind: "item"; id: string };
+
+export function classifyItemPath(path: string): ItemPathKind {
+  if (!path.startsWith(`${ITEMS_DIR}/`)) return { kind: "outside" };
+  const name = path.slice(ITEMS_DIR.length + 1);
+  const [folder, file, deeper] = name.split("/");
+  if (file && !deeper && IMAGE.test(file)) return { kind: "image", ownerId: folder! };
+  if (name.includes("/") || !name.endsWith(".md")) return { kind: "stray" };
+  return { kind: "item", id: name.slice(0, -3) };
+}
+
+export function loadItemFile(
+  id: string,
+  text: string,
+  exists: (path: string) => boolean,
+): { item?: Item; defects: string[] } {
+  try {
+    const item = parseItem(id, text);
+    return { item: usable(item), defects: itemDefects(item, exists) };
+  } catch (e) {
+    if (!(e instanceof ItemError)) throw e;
+    return { defects: [e.message] };
   }
-  for (const p of LEGACY)
+}
+
+export function legacyPathDefects(paths: readonly string[]): string[] {
+  const has = new Set(paths);
+  const defects: string[] = [];
+  for (const p of LEGACY) {
     if (has.has(p)) defects.push(`${p}: legacy file, items live in ${ITEMS_DIR}`);
+  }
   // The folder was renamed: a file left at the old path would vanish from every page unnoticed.
-  for (const p of src.paths)
+  for (const p of paths) {
     if (p.startsWith("docs/tracking/")) defects.push(`${p}: legacy folder, move it to ${WORK_DIR}`);
+  }
+  return defects;
+}
+
+export function needsGraphDefects(items: readonly Item[]): string[] {
+  const defects: string[] = [];
   const byId = new Map(items.map((i) => [i.id, i]));
   const checked = new Set<string>();
   const visiting = new Set<string>();
@@ -73,5 +78,31 @@ export function readItems(src: Source): ReadItems {
     visiting.delete(id);
   };
   for (const item of items) if (!checked.has(item.id)) visit(item);
+  return defects;
+}
+
+export function readItems(src: Source): ReadItems {
+  const items: Item[] = [];
+  const defects: string[] = [];
+  const has = new Set(src.paths);
+  // An image is a file: a folder of that name has no picture to show.
+  const exists = (p: string) => has.has(p);
+  for (const p of src.paths) {
+    const entry = classifyItemPath(p);
+    if (entry.kind === "outside") continue;
+    if (entry.kind === "image") {
+      if (!has.has(`${ITEMS_DIR}/${entry.ownerId}.md`))
+        defects.push(`${p}: no item ${entry.ownerId}.md`);
+      continue;
+    }
+    if (entry.kind === "stray") {
+      defects.push(`${p}: only <id>.md files and <id>/<image> belong in ${ITEMS_DIR}`);
+      continue;
+    }
+    const loaded = loadItemFile(entry.id, src.read(p) ?? "", exists);
+    for (const d of loaded.defects) defects.push(`${p}: ${d}`);
+    if (loaded.item) items.push(loaded.item);
+  }
+  defects.push(...legacyPathDefects(src.paths), ...needsGraphDefects(items));
   return { items, defects };
 }

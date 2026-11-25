@@ -1,15 +1,7 @@
 import { fc, test, unicodeString } from "@hackersandwizards/scaffolding/property";
 import { expect } from "vitest";
-import {
-  compareItems,
-  dueSoon,
-  imagesOf,
-  itemDefects,
-  ITEMS_DIR,
-  parseItem,
-  usable,
-  type Item,
-} from "../src/items.ts";
+import { compareItems, dueSoon, imagesOf, ITEMS_DIR, parseItem, type Item } from "../src/items.ts";
+import { itemDefects, usable } from "../src/item-validation.ts";
 
 const work: Item = {
   id: "draft",
@@ -22,25 +14,35 @@ const work: Item = {
 };
 const id = fc.nat().map((n) => `item-${n}`);
 
-test.prop([id, unicodeString, unicodeString, unicodeString], {
-  examples: [
-    ["draft", "", "", ""],
-    ["constructor", "__proto__", "é", "Line 1\n---\nLine 2"],
-    ["tostring", "字".repeat(1024), "e\u0301", "🧪".repeat(1024)],
-    ["title", "", "\u2028!", ""],
-    ["title", "Alex", "Before\u2029after", ""],
-  ],
-})("item text round-trips its frontmatter, heading and body", (itemId, owner, heading, body) => {
-  const title = `Draft ${heading.replace(/[\r\n]/g, " ")}`;
-  const text = `---\nkind: work\nstatus: open\npriority: 2\nowner: ${JSON.stringify(owner)}\n---\n\n# ${title}\n\n${body}\n`;
-  expect(parseItem(itemId, text)).toEqual({
-    ...work,
-    id: itemId,
-    owner,
-    title: title.trim(),
-    body: body.trim(),
-  });
+const itemMarkdownParts = fc.record({
+  id,
+  owner: unicodeString,
+  heading: unicodeString,
+  body: unicodeString,
 });
+
+test.prop([itemMarkdownParts], {
+  examples: [
+    [{ id: "draft", owner: "", heading: "", body: "" }],
+    [{ id: "constructor", owner: "__proto__", heading: "é", body: "Line 1\n---\nLine 2" }],
+    [{ id: "tostring", owner: "字".repeat(1024), heading: "e\u0301", body: "🧪".repeat(1024) }],
+    [{ id: "title", owner: "", heading: "\u2028!", body: "" }],
+    [{ id: "title", owner: "Alex", heading: "Before\u2029after", body: "" }],
+  ],
+})(
+  "item text round-trips its frontmatter, heading and body",
+  ({ id: itemId, owner, heading, body }) => {
+    const title = `Draft ${heading.replace(/[\r\n]/g, " ")}`;
+    const text = `---\nkind: work\nstatus: open\npriority: 2\nowner: ${JSON.stringify(owner)}\n---\n\n# ${title}\n\n${body}\n`;
+    expect(parseItem(itemId, text)).toEqual({
+      ...work,
+      id: itemId,
+      owner,
+      title: title.trim(),
+      body: body.trim(),
+    });
+  },
+);
 
 test.prop([id, unicodeString], {
   examples: [
@@ -96,47 +98,77 @@ test.prop([optionKey, unicodeString], {
   ]);
 });
 
-test.prop([id, optionKey, unicodeString, fc.boolean()], {
+const bareItemImage = fc.record({
+  itemId: id,
+  group: optionKey,
+  file: unicodeString.map((name) => `${name.replaceAll("/", "_")}.png`),
+  caption: unicodeString,
+});
+
+test.prop([bareItemImage], {
   examples: [
-    ["draft", "__proto__", "", false],
-    ["draft", "constructor", "é/私", true],
-    ["draft", "toString", "字".repeat(1024), false],
+    [{ itemId: "draft", group: "__proto__", file: ".png", caption: "" }],
+    [
+      {
+        itemId: "draft",
+        group: "toString",
+        file: `${"字".repeat(1024)}.png`,
+        caption: "字".repeat(1024),
+      },
+    ],
   ],
 })(
-  "image normalization keeps the group and caption while resolving paths by their separators",
-  (itemId, key, name, hasCaption) => {
-    const src = `${name}.png`;
-    const caption = name;
-    const image = hasCaption ? { src, caption } : src;
-    const resolved = name.includes("/") ? src : `${ITEMS_DIR}/${itemId}/${src}`;
-    const expected = hasCaption ? { src: resolved, caption } : { src: resolved };
+  "bare image filenames resolve under the item folder for plain and captioned entries",
+  ({ itemId, group, file, caption }) => {
+    const resolved = `${ITEMS_DIR}/${itemId}/${file}`;
     expect(imagesOf({ ...work, id: itemId })).toEqual({ "": [] });
-    expect(imagesOf({ ...work, id: itemId, images: [image] })).toEqual({ "": [expected] });
-    expect(imagesOf({ ...work, id: itemId, images: { [key]: image } })).toEqual({
-      [key]: [expected],
+    expect(imagesOf({ ...work, id: itemId, images: [file] })).toEqual({
+      "": [{ src: resolved }],
+    });
+    expect(imagesOf({ ...work, id: itemId, images: { [group]: { src: file, caption } } })).toEqual({
+      [group]: [{ src: resolved, caption }],
     });
   },
 );
 
-test.prop(
-  [
-    fc.integer({ min: 2000, max: 2090 }),
-    fc.integer({ min: 0, max: 11 }),
-    fc.integer({ min: 1, max: 31 }),
-    fc.integer({ min: -365, max: 365 }),
-  ],
-  {
-    examples: [
-      [2011, 11, 23, 8],
-      [2024, 1, 22, 7],
-      [2024, 1, 22, 8],
-      [2026, 2, 27, 7],
-      [2026, 9, 31, 8],
-      [2026, 11, 31, -1],
-    ],
+const repoItemImage = fc.record({
+  itemId: id,
+  group: optionKey,
+  path: fc.tuple(unicodeString, unicodeString).map(([dir, file]) => `${dir}/${file}.png`),
+  caption: unicodeString,
+});
+
+test.prop([repoItemImage], {
+  examples: [[{ itemId: "draft", group: "constructor", path: "é/私.png", caption: "é/私" }]],
+})(
+  "image paths containing a slash stay relative to the repository root",
+  ({ itemId, group, path, caption }) => {
+    expect(imagesOf({ ...work, id: itemId, images: [path] })).toEqual({
+      "": [{ src: path }],
+    });
+    expect(imagesOf({ ...work, id: itemId, images: { [group]: { src: path, caption } } })).toEqual({
+      [group]: [{ src: path, caption }],
+    });
   },
-)("due soon includes local calendar days through the seventh day", (year, month, day, offset) => {
-  const now = new Date(year, month, day, 23, 59);
+);
+
+const calendarDay = fc.record({
+  year: fc.integer({ min: 2000, max: 2090 }),
+  month: fc.integer({ min: 0, max: 11 }),
+  day: fc.integer({ min: 1, max: 31 }),
+});
+
+test.prop([calendarDay, fc.integer({ min: -365, max: 365 })], {
+  examples: [
+    [{ year: 2011, month: 11, day: 23 }, 8],
+    [{ year: 2024, month: 1, day: 22 }, 7],
+    [{ year: 2024, month: 1, day: 22 }, 8],
+    [{ year: 2026, month: 2, day: 27 }, 7],
+    [{ year: 2026, month: 9, day: 31 }, 8],
+    [{ year: 2026, month: 11, day: 31 }, -1],
+  ],
+})("due soon includes local calendar days through the seventh day", (today, offset) => {
+  const now = new Date(today.year, today.month, today.day, 23, 59);
   const civilDay = (date: Date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
   const dueDay = civilDay(now) + offset * 86_400_000;
   const due = new Date(dueDay).toISOString().slice(0, 10);
