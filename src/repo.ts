@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { basename, join, resolve } from "node:path";
 import { ITEMS_DIR, WORK_DIR, type Item } from "./items.ts";
 import { readItems, type Source } from "./item-source.ts";
@@ -256,6 +258,75 @@ const entities = (v: string) =>
         : String.fromCodePoint(Math.min(parseInt(hex ?? dec!, hex ? 16 : 10), 0x10ffff)),
   );
 
+let renderDiagram: typeof import("beautiful-mermaid").renderMermaidSVG | null | undefined;
+
+function diagram(source: string, prefix: string) {
+  const code = `<pre><code class="language-mermaid">${source}</code></pre>`;
+  try {
+    if (renderDiagram === undefined) {
+      const require = createRequire(import.meta.url);
+      let entry: string;
+      try {
+        entry = require.resolve("beautiful-mermaid");
+      } catch (error) {
+        if (!(error instanceof Error) || !("code" in error) || error.code !== "MODULE_NOT_FOUND")
+          throw error;
+        renderDiagram = null;
+        return code;
+      }
+      renderDiagram = (require(entry) as typeof import("beautiful-mermaid")).renderMermaidSVG;
+    }
+    if (renderDiagram === null) return code;
+    const lines = entities(source)
+      .replace(/^\s*%%\{[\s\S]*?\}%%[^\S\n]*/gm, "")
+      .split("\n")
+      .filter((line) => !/^\s*%%|^\s*(?:classDef|style|linkStyle|click)\s/.test(line));
+    const header = lines.find((line) => line.trim())?.trim();
+    const body = /^classDiagram(?:\s*;|$)/i.test(header ?? "")
+      ? lines
+      : lines.filter((line) => !/^\s*class\s/.test(line));
+    const localUrls = (value: string) =>
+      value.replace(/\burl\((["']?)#([^\s"')]+)\1\)/g, `url($1#${prefix}$2$1)`);
+    // The renderer decodes XML on entry. Keep it from decoding a second layer after filtering.
+    const svg = renderDiagram(Bun.escapeHTML(body.join("\n")), {
+      bg: "var(--background)",
+      fg: "var(--foreground)",
+      border: "var(--border)",
+      transparent: true,
+    })
+      // A custom property cannot refer to itself. The SVG can inherit the page's border directly.
+      .replace(";--border:var(--border)", "")
+      .replace(/<style>([\s\S]*?)<\/style>/g, (_, css: string) => {
+        const scoped = css
+          .replace(/^[ \t]*@import url\([^\n]*fonts\.googleapis\.com[^\n]*\);\n/gm, "")
+          .replace(/^[ \t]*(?:text|\.mono)\s*\{[^}]*\}\n/gm, "")
+          .replace(
+            /^([ \t]*)((?:svg\b|[a-z]*\.[\w-]+)[^{}\n]*)\{/gm,
+            (_, space: string, selectors: string) =>
+              `${space}${selectors
+                .split(",")
+                .map((s) => `#${prefix}svg${s.trim() === "svg" ? "" : ` ${s.trim()}`}`)
+                .join(", ")} {`,
+          );
+        return `<style>${localUrls(scoped)}</style>`;
+      })
+      .replace(/<[a-z][^<>]*>/gi, (tag) =>
+        tag.replace(/\s([\w:-]+)="([^"]*)"/g, (all, name: string, value: string) => {
+          if (name === "href" || name === "xlink:href")
+            return value.startsWith("#") ? ` ${name}="#${prefix}${value.slice(1)}"` : all;
+          if (name === "id" || name === "aria-labelledby" || name === "aria-describedby")
+            return ` ${name}="${value.replace(/\S+/g, (id) => prefix + id)}"`;
+          return name.startsWith("data-") ? all : ` ${name}="${localUrls(value)}"`;
+        }),
+      )
+      .replace("<svg ", `<svg id="${prefix}svg" `);
+    return `<figure class="admin-diagram not-prose" tabindex="0">${svg}</figure>`;
+  } catch (error) {
+    const message = Bun.escapeHTML(error instanceof Error ? error.message : String(error));
+    return `${code}<p>This diagram did not render: ${message}</p>`;
+  }
+}
+
 // A link goes out only over http(s), to mailto or to a path; any other scheme shows its text,
 // beside the pages' policy, which refuses a javascript: link too. HTMLRewriter reads tags as a
 // browser does, a doc's raw HTML included. A browser decodes an href's entities, trims spaces and
@@ -296,8 +367,21 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
         }
       })
     : text;
+  let index = 0;
+  let documentId: string;
   const html = withElements(
-    Bun.markdown.html(body, item ? { noHtmlSpans: true, noHtmlBlocks: true } : {}),
+    Bun.markdown
+      .html(body, item ? { noHtmlSpans: true, noHtmlBlocks: true } : {})
+      .replace(
+        /<pre><code class="language-mermaid">([^<]*)<\/code><\/pre>/g,
+        (_, source: string) => {
+          documentId ??= createHash("sha256")
+            .update(JSON.stringify([repo, path, text]))
+            .digest("hex")
+            .slice(0, 16);
+          return diagram(source, `mermaid-${documentId}-${++index}-`);
+        },
+      ),
   );
   return links
     .transform(html)

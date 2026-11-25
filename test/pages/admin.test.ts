@@ -45,6 +45,14 @@ const testTimeout = (ms: number) =>
 // Each build draws its own nonce, so pages from two builds compare without it.
 const sansNonce = (html: string) => html.replace(/nonce(-|=")[\w-]+/g, "nonce$1");
 
+// Happy DOM's raw-text parser stops at SVG style elements and drops the rest of the page.
+const domMarkup = new HTMLRewriter().on(".admin-diagram svg style", {
+  element(el) {
+    el.remove();
+  },
+});
+const readForDom = (file: string) => domMarkup.transform(readFileSync(file, "utf8"));
+
 describe("admin-check", () => {
   test("a malformed item shows as a defect and leaves the pages building", async () => {
     const dir = join(scratch(), "r");
@@ -162,7 +170,7 @@ describe("pages", () => {
       const pages = readdirSync(join(out, "spoke"), { recursive: true }) as string[];
       expect(pages).toContain("decisions.html");
       const rendered = new Window().document;
-      rendered.body.innerHTML = readFileSync(join(out, "spoke/decisions.html"), "utf8");
+      rendered.body.innerHTML = readForDom(join(out, "spoke/decisions.html"));
       const summary = (id: string) =>
         rendered.getElementById(`spoke:${id}`)?.firstElementChild?.textContent;
       expect(summary("pick-a-variant")).toContain("2 open items wait on this");
@@ -171,7 +179,7 @@ describe("pages", () => {
       expect(summary("cache-folder")).not.toMatch(/waits? on this/);
       expect(summary("name-the-command")).toContain("Waiting on goal");
       expect(summary("name-the-command")).not.toMatch(/waits? on this/);
-      rendered.body.innerHTML = readFileSync(join(out, "spoke/work.html"), "utf8");
+      rendered.body.innerHTML = readForDom(join(out, "spoke/work.html"));
       expect(summary("goal")).toContain("1 open item waits on this");
       expect(summary("work-wire-the-gate")).toContain(
         "Waiting on check-the-copy, goal, pick-a-variant",
@@ -469,6 +477,86 @@ describe("pages", () => {
     testTimeout(60_000),
   );
   test(
+    "Mermaid fits its labels, follows the page theme, and causes no CSP violations",
+    async () => {
+      const repo = await readRepo(repoFrom("spoke"));
+      const out = join(scratch(), "out");
+      await buildSite(siteData([repo]), out);
+      const executablePath = await chromeBinaryAsync();
+      if (!executablePath) throw new Error(INSTALL_HINT);
+      const browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
+      try {
+        const page = await browser.newPage();
+        await page.evaluateOnNewDocument(() => {
+          document.addEventListener("securitypolicyviolation", (event) => {
+            console.error("CSP violation:", event.violatedDirective, event.blockedURI);
+          });
+        });
+        const violations: string[] = [];
+        page.on("console", (message) => {
+          if (message.text().startsWith("CSP violation:")) violations.push(message.text());
+        });
+        await page.setViewport({ width: 390, height: 844 });
+        await page.goto(`file://${out}/spoke/doc/docs/agent-work/2026-01-15-sample-topic.html`);
+        const diagram = await page.locator(".admin-diagram > svg").waitHandle();
+        const view = await diagram.evaluate(async (svg) => {
+          await document.fonts.ready;
+          const { width, height } = svg.getBoundingClientRect();
+          const figure = svg.parentElement!;
+          const nodes = [...svg.querySelectorAll(".node")];
+          const measurements = nodes.map((node) => {
+            const label = node.querySelector("text")!;
+            const box = node.querySelector("rect")!;
+            return [label.textContent, label.getBBox().width, box.getBBox().width] as const;
+          });
+          const root = document.documentElement;
+          const first = nodes[0]!.querySelector("rect")!;
+          root.dataset.theme = "light";
+          const day = getComputedStyle(first).fill;
+          root.dataset.theme = "dark";
+          return {
+            width,
+            height,
+            scrollWidth: figure.scrollWidth,
+            clientWidth: figure.clientWidth,
+            overflow: getComputedStyle(figure).overflowX,
+            font: getComputedStyle(nodes[0]!.querySelector("text")!).fontFamily,
+            measurements,
+            day,
+            night: getComputedStyle(first).fill,
+          };
+        });
+        expect(view.width).toBeGreaterThan(0);
+        expect(view.height).toBeGreaterThan(0);
+        expect(view.scrollWidth).toBeGreaterThan(view.clientWidth);
+        expect(view.overflow).toBe("auto");
+        expect(view.font).toContain("Inter");
+        expect(view.measurements).toHaveLength(3);
+        for (const [label, width, box] of view.measurements) {
+          expect(width, label ?? "").toBeGreaterThan(0);
+          expect(width, label ?? "").toBeLessThanOrEqual(box);
+        }
+        expect(view.day).not.toBe(view.night);
+        expect(violations).toEqual([]);
+        await page.goto(`file://${out}/spoke/work.html#spoke:sort-the-samples`);
+        expect(
+          await page.$eval(
+            '[id="spoke:sort-the-samples"] .admin-diagram svg',
+            (svg) => svg.textContent,
+          ),
+        ).toContain("Dated folders");
+        expect(
+          await page.$eval('[id="spoke:work-wire-the-gate"] > summary', (row) => row.textContent),
+        ).toContain("Waiting on check-the-copy, goal, pick-a-variant");
+        expect(violations).toEqual([]);
+      } finally {
+        await browser.close();
+      }
+    },
+    testTimeout(60_000),
+  );
+
+  test(
     "a page opened from disk runs the hub's scripts and none of a doc's, and a doc's q&a link resolves",
     async () => {
       const repo = join(scratch(), "r");
@@ -572,7 +660,7 @@ describe("admin.js", () => {
       });
     for (const [k, v] of Object.entries(storage ?? {})) window.localStorage.setItem(k, v);
     window.document.write(
-      readFileSync(join(out, `${page}.html`), "utf8").replace(/<script[^>]*><\/script>/g, ""),
+      readForDom(join(out, `${page}.html`)).replace(/<script[^>]*><\/script>/g, ""),
     );
     evaluate(window, code);
     return window;
@@ -594,7 +682,7 @@ describe("admin.js", () => {
       window.localStorage.setItem("theme", "dark");
       // brand's switch in the catalog shell's header, ahead of the page's own under the same id.
       window.document.write(
-        readFileSync(join(out, "index.html"), "utf8")
+        readForDom(join(out, "index.html"))
           .replace(/<script[^>]*><\/script>/g, "")
           .replace(/<body[^>]*>/, '$&<button id="theme-toggle" data-shell></button>'),
       );
@@ -985,7 +1073,7 @@ describe("admin.js", () => {
       const window = new Window({ url: "http://admin.localhost/index" });
       opened.push(window);
       window.document.write(
-        readFileSync(join(dir, "index.html"), "utf8").replace(/<script[^>]*><\/script>/g, ""),
+        readForDom(join(dir, "index.html")).replace(/<script[^>]*><\/script>/g, ""),
       );
       evaluate(window, code);
       const fold = (id: string) =>
@@ -1186,10 +1274,7 @@ describe("admin.js", () => {
     const window = new Window({ url: "http://admin.localhost/spoke/decisions#spoke:gone-item" });
     opened.push(window);
     window.document.write(
-      readFileSync(join(out, "spoke/decisions.html"), "utf8").replace(
-        /<script[^>]*><\/script>/g,
-        "",
-      ),
+      readForDom(join(out, "spoke/decisions.html")).replace(/<script[^>]*><\/script>/g, ""),
     );
     evaluate(window, code);
     const gone = window.document.getElementById("admin-gone")!;

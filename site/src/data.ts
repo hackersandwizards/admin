@@ -118,7 +118,7 @@ export function dueOf(due: string, now = Date.now()) {
 // body keeps <https://…>, becomes the link without them.
 const URL_CHAR = String.raw`(?:(?!&(?:quot|#x27|#39|lt|gt);)[^\s<>"'])`;
 const LINKED = new RegExp(
-  String.raw`(<(a|code|pre)\b[\s\S]*?<\/\2>|<[^>]*>)|&lt;(https?:\/\/${URL_CHAR}+)&gt;|\bhttps?:\/\/${URL_CHAR}*[^\s<>"'.,;:!?)\]&]`,
+  String.raw`(<(a|code|pre|svg)\b[\s\S]*?<\/\2>|<[^>]*>)|&lt;(https?:\/\/${URL_CHAR}+)&gt;|\bhttps?:\/\/${URL_CHAR}*[^\s<>"'.,;:!?)\]&]`,
   "g",
 );
 export const withLinks = (html: string) =>

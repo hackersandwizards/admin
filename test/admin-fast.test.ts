@@ -401,6 +401,79 @@ describe("item files", () => {
   });
 });
 
+describe("Mermaid in Markdown", () => {
+  const fence = (source: string) => `\`\`\`mermaid\n${source}\n\`\`\`\n`;
+  const flow = fence("flowchart LR\n  a --> b");
+  const render = (text: string) => renderMarkdown("/r", "docs/a.md", text);
+
+  test("renders inline SVG without remote fonts", () => {
+    const html = render(flow);
+    expect(html).toContain('<figure class="admin-diagram not-prose" tabindex="0"><svg');
+    expect(html).toContain('data-to="b"');
+    expect(html).not.toMatch(/@import|googleapis|font-family|<pre/);
+  });
+
+  test("diagrams share no id within or across documents", () => {
+    const text = flow + "\n" + flow;
+    const first = render(text);
+    const others = [render("# Other document\n\n" + flow), renderMarkdown("/r", "docs/b.md", flow)];
+    expect(render(text)).toBe(first);
+    const ids = [...[first, ...others].join("").matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
+    const markers = [...[first, ...others].join("").matchAll(/marker-end="url\(#([^)]+)\)"/g)];
+    expect(markers).toHaveLength(4);
+    for (const [, id] of markers) expect(ids).toContain(id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  test("drops flowchart styling and directives", () => {
+    const html = render(
+      fence(
+        [
+          "%%{init: {",
+          '  "theme": "forest"',
+          "}}%%",
+          "flowchart LR",
+          "a --> b",
+          "classDef tinted fill:#ff00ff",
+          "class a tinted",
+          "style b fill:#00ffff",
+          "linkStyle 0 stroke:#ff0000",
+          "&#115;tyle a fill:#00ff00",
+        ].join("\n"),
+      ),
+    );
+    expect(html).toContain("<svg");
+    expect(html).not.toMatch(/forest|#ff00ff|#00ffff|#ff0000|#00ff00/);
+  });
+
+  test("keeps declarations in a class diagram", () => {
+    const html = render(fence("%% A diagram\nclassDiagram\n  class Sample\n  class Folder"));
+    expect(html).toContain('class="class-node" data-id="Sample"');
+    expect(html).toContain('class="class-node" data-id="Folder"');
+  });
+
+  test("keeps unsupported Mermaid as code with an escaped error", () => {
+    const html = render(fence("pie <em>Samples</em>"));
+    expect(html).toContain('<code class="language-mermaid">pie &lt;em&gt;Samples&lt;/em&gt;');
+    expect(html).toMatch(/<p>This diagram did not render: [^<]*pie &lt;em&gt;Samples&lt;\/em&gt;/);
+  });
+
+  test("keeps markup in labels as text and strips click actions", () => {
+    const html = render(
+      fence(
+        [
+          "flowchart LR",
+          'a["<script>alert(1)</script>"] --> b',
+          'click a "https://example.invalid/"',
+          "click b callback",
+        ].join("\n"),
+      ),
+    );
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(html).not.toMatch(/<script|<a\b|href=|\son\w+=|callback|example\.invalid/);
+  });
+});
+
 describe("admin-check", () => {
   test("the spoke fixture is clean", () => {
     const { items, defects } = readItems(treeSource(join(FIX, "spoke")));

@@ -30,3 +30,8 @@ Done when:
 ```sh
 bun run check
 ```
+
+```mermaid
+flowchart LR
+  draft["Draft sample"] --> sort["Sort by date"] --> archive["Archive samples"]
+```

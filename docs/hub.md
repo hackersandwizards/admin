@@ -24,6 +24,8 @@ range shares its copy instead of getting a second Astro under admin. All four ar
 repository that only runs `admin-check` installs none of them, and `admin-serve` stops and names
 them when they are missing or outside their range.
 
+`beautiful-mermaid` is an optional peer dependency, so when it is missing, Mermaid fences stay code blocks.
+
 ## Addresses
 
 One repository's own pages open at `http://admin.localhost:4329/<repo>`, such as `/website`,
@@ -115,6 +117,9 @@ of the copy, and the next visit, a page view more than an hour after the last, a
 note written beside it as its answer.
 
 ## What a page may load
+
+A `mermaid` code block renders at build time as an inline diagram in the page's theme, with its styling directives removed.
+If the renderer fails, the page shows the original code block and the error below it.
 
 An item's body is Markdown without HTML: a tag in it, such as a placeholder `<id>`, shows as
 written, and a web address in angle brackets is a link. A doc keeps its raw HTML, styles and images

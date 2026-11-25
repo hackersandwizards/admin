@@ -77,9 +77,9 @@ function itemHtml(
   repo: RepoData,
   byKey: Map<string, RepoData>,
   files: Map<RepoData, Set<string>>,
-  text: string,
+  item: Item,
 ) {
-  const html = renderMarkdown(repo.path, `${ITEMS_DIR}/item.md`, text, true);
+  const html = renderMarkdown(repo.path, `${ITEMS_DIR}/${item.id}.md`, item.body, true);
   const named = (before: string, after: string) =>
     [
       before.match(/([\w.-]+)\s+(?:<code[^>]*>)?$/)?.[1],
@@ -87,7 +87,7 @@ function itemHtml(
     ].find((k) => k && byKey.has(k));
   // A link or a tag goes through whole, so no path inside an attribute becomes a link.
   return html.replace(
-    /(<a\b[\s\S]*?<\/a>|<[^>]*>)|(?<![\w/"=])(docs\/agent-work\/[\w./äöüÄÖÜß-]*\w)/g,
+    /(<svg\b[\s\S]*?<\/svg>|<a\b[\s\S]*?<\/a>|<[^>]*>)|(?<![\w/"=])(docs\/agent-work\/[\w./äöüÄÖÜß-]*\w)/g,
     (whole, tag: string | undefined, p: string, at: number) => {
       if (tag) return tag;
       const key = named(html.slice(Math.max(0, at - 80), at), html.slice(at + p.length));
@@ -206,7 +206,7 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
         repo: r.key,
         repoLabel: r.label,
         who,
-        html: itemHtml(r, byKey, files, i.body),
+        html: itemHtml(r, byKey, files, i),
         agent: !!i.owner && as === "agent",
         optionImages: Object.fromEntries(
           Object.entries(imagesOf(i)).map(([k, list]) => [
