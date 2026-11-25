@@ -4,7 +4,8 @@
 import { existsSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WORK_DIR } from "../src/items.ts";
-import { git, readItems, treeSource } from "../src/repo.ts";
+import { git, treeSource } from "../src/git.ts";
+import { readItems } from "../src/item-source.ts";
 
 const args = process.argv.slice(2);
 if (args.some((a) => a === "--help" || a === "-h")) {

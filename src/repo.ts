@@ -1,101 +1,16 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { createRequire } from "node:module";
-import { basename, join, resolve } from "node:path";
+import { basename } from "node:path";
+import { fetchedAt, gitAsync, gitBytes, headSource, readCommits, type Commit } from "./git.ts";
 import { ITEMS_DIR, WORK_DIR, type Item } from "./items.ts";
 import { readItems, type Source } from "./item-source.ts";
-import { asKey, fileHref, IMAGE, REPO_KEY } from "./repo-paths.ts";
-
-export { readItems, type ReadItems, type Source } from "./item-source.ts";
-export { asKey, docSlug, encodeFile, encodePath, fileHref } from "./repo-paths.ts";
-
-// A hook exports GIT_DIR, GIT_INDEX_FILE and the like, which point git at the hook's repository
-// whatever -C names.
-export const gitEnv = Object.fromEntries(
-  Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")),
-) as Record<string, string>;
-
-export const git = (cwd: string, ...args: string[]) => {
-  const r = Bun.spawnSync(["git", "-C", cwd, ...args], { stderr: "ignore", env: gitEnv });
-  return r.exitCode === 0 ? r.stdout.toString() : "";
-};
-
-// The same without blocking, so that many repositories are asked at once, as bytes or as text.
-export async function gitBytes(cwd: string, args: string[], stdin = "") {
-  const r = Bun.spawn(["git", "-C", cwd, ...args], {
-    stdin: stdin ? Buffer.from(stdin) : "ignore",
-    stderr: "ignore",
-    env: gitEnv,
-  });
-  const out = Buffer.from(await new Response(r.stdout).arrayBuffer());
-  return (await r.exited) === 0 ? out : undefined;
-}
-
-export const gitAsync = async (cwd: string, args: string[], stdin = "") =>
-  (await gitBytes(cwd, args, stdin))?.toString() ?? "";
-
-// A git call that fails throws, so a repository that cannot be read never shows as an empty one.
-async function headSource(repo: string): Promise<Source> {
-  const listed = await gitBytes(repo, ["ls-tree", "-r", "-z", "HEAD"]);
-  if (!listed) throw new Error("git ls-tree HEAD failed");
-  // "<mode> <type> <object>\t<path>": the batch asks by object, so a path holding a newline reads
-  // too, and a submodule, which is no file here, is left out.
-  const entries = listed
-    .toString()
-    .split("\0")
-    .filter(Boolean)
-    .map((e) => {
-      const tab = e.indexOf("\t");
-      const [, type, oid] = e.slice(0, tab).split(" ");
-      return { path: e.slice(tab + 1), type, oid: oid! };
-    })
-    .filter((e) => e.type === "blob");
-  const paths = entries.map((e) => e.path);
-  const cache = new Map<string, string>();
-  const wanted = entries.filter(
-    ({ path: p }) =>
-      p === "package.json" ||
-      p === ADMIN_FILE ||
-      ASTRO_CONFIG.test(p) ||
-      isDoc(p) ||
-      SCRIPT.test(p) ||
-      AGENT.test(p),
-  );
-  const batch = await gitBytes(
-    repo,
-    ["cat-file", "--batch"],
-    wanted.map((e) => e.oid).join("\n") + "\n",
-  );
-  if (!batch) throw new Error("git cat-file failed");
-  let at = 0;
-  for (const { path: p } of wanted) {
-    const nl = batch.indexOf(10, at);
-    const head = batch.subarray(at, nl).toString();
-    const size = Number(head.split(" ")[2]);
-    if (Number.isNaN(size)) throw new Error(`git cat-file answered "${head}"`);
-    cache.set(p, batch.subarray(nl + 1, nl + 1 + size).toString());
-    at = nl + 1 + size + 1;
-  }
-  return { paths, read: (p) => cache.get(p) };
-}
-
-export function treeSource(repo: string): Source {
-  const listed = git(repo, "ls-files", "-z", "--cached", "--others", "--exclude-standard");
-  const paths = (listed ? listed.split("\0").filter(Boolean) : walk(repo, "")).filter((p) =>
-    existsSync(join(repo, p)),
-  );
-  return {
-    paths,
-    read: (p) => (existsSync(join(repo, p)) ? readFileSync(join(repo, p), "utf8") : undefined),
-  };
-}
-
-function walk(root: string, dir: string): string[] {
-  return readdirSync(join(root, dir), { withFileTypes: true }).flatMap((e) => {
-    const p = dir ? `${dir}/${e.name}` : e.name;
-    if (e.name === ".git" || e.name === "node_modules") return [];
-    return e.isDirectory() ? walk(root, p) : [p];
-  });
-}
+import { extractTitle, renderDocMarkdown } from "./markdown.ts";
+import {
+  ADMIN_FILE,
+  ASTRO_CONFIG,
+  readRepoConfig,
+  type Link,
+  type Product,
+} from "./repo-config.ts";
+import { IMAGE } from "./repo-paths.ts";
 
 export type Report = Doc & {
   stem: string;
@@ -106,10 +21,6 @@ export type Report = Doc & {
 export type Review = { dir: string; images: string[]; report?: string };
 export type Doc = { path: string; title: string; titleId?: string; html: string };
 export type ScriptFile = { path: string; comment: string };
-export type Commit = { hash: string; time: number; subject: string };
-// No href: the configured one had a scheme other than http(s), so the label shows as text.
-export type Link = { label: string; href?: string };
-export type Product = { label: string; href?: string; description?: string };
 
 export type RepoData = {
   key: string;
@@ -146,14 +57,19 @@ export type RepoData = {
   log: Commit[];
 };
 
-// What a repository whose package.json cannot carry admin, having none or another party owning it,
-// sets there instead.
-const ADMIN_FILE = `${WORK_DIR}/admin.json`;
 const AGENT = /^\.claude\/agents\/[^/]+\.md$/;
 const SCRIPT = /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/;
 // A Markdown file at the root or under docs/: a report or a doc, unless an item file.
 const isDoc = (p: string) => /\.md$/i.test(p) && (p.startsWith("docs/") || !p.includes("/"));
-const description = (text: string) => {
+const wantsRepoFile = (p: string) =>
+  p === "package.json" ||
+  p === ADMIN_FILE ||
+  ASTRO_CONFIG.test(p) ||
+  isDoc(p) ||
+  SCRIPT.test(p) ||
+  AGENT.test(p);
+
+export function agentDescription(text: string): string {
   try {
     const front = Bun.YAML.parse(text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "") as {
       description?: unknown;
@@ -162,298 +78,9 @@ const description = (text: string) => {
   } catch {
     return "";
   }
-};
-const ASTRO_CONFIG = /^([^/]+\/)?astro\.config\.(ts|mjs|js)$/;
-// A moment as a reader names it, "10 Nov, 09:05", in the machine's time zone.
-export const when = (ms: number) =>
-  new Date(ms).toLocaleString("en-GB", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-// What admin-serve resizes a committed image to: a review tile's 16:9 box (the page's aspect-video),
-// and twice it for a 2x screen.
-export const THUMB_BOXES = [
-  [480, 270],
-  [960, 540],
-] as const;
-// The attributes of an <img> showing the linked file smaller; the browser picks from the laid-out width.
-export const thumbnail = (href: string) => ({
-  src: `${href}?w=${THUMB_BOXES[0][0]}`,
-  srcset: THUMB_BOXES.map(([w]) => `${href}?w=${w} ${w}w`).join(", "),
-  sizes: "auto, 50vw",
-});
-
-const plain = (html: string) =>
-  html
-    .replace(/<[^<>]*>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-// brand's tableScroll (elements/table.ts) takes a hast tree: this is the same step on Bun's HTML
-// string, held to brand's names by a test. Entities stay encoded, which the attribute decodes. A
-// table holding another is left to the inner one, so no wrapper closes inside a cell; a raw table
-// with attributes is wrapped as written. A tag ends before the next "<", so an unclosed one costs
-// no scan to the end of the text.
-function tableScroll(html: string) {
-  let title = "";
-  const used = new Set<string>();
-  return html.replace(
-    /<(h[1-6])\b[^<>]*>((?:(?!<h[1-6]\b)[\s\S])*?)<\/\1>|<table\b([^<>]*)>((?:(?!<table\b)[\s\S])*?<\/table>)/gi,
-    (all, h: string | undefined, heading: string, attrs: string, table: string) => {
-      if (h) {
-        title = plain(heading);
-        return all;
-      }
-      const base =
-        title ||
-        [
-          ...table
-            .split(/<\/tr>/i, 1)[0]!
-            .matchAll(/<t[hd]\b[^<>]*>((?:(?!<t[hd]\b)[\s\S])*?)<\/t[hd]>/gi),
-        ]
-          .map(([, cell]) => plain(cell!))
-          .filter(Boolean)
-          .join(" ");
-      let name = base;
-      for (let n = 2; name && used.has(name); n++) name = `${base} (${n})`;
-      used.add(name);
-      const region = name ? ` role="region" aria-label="${name.replaceAll('"', "&quot;")}"` : "";
-      return `<div class="hw-table-scroll" tabindex="0"${region}><table${attrs || ' class="hw-table not-prose"'}>${table}</div>`;
-    },
-  );
 }
 
-// brand's prose block asks for tables, quotes and code blocks to be not-prose. A link keeps hw-link
-// for an item's text, which no prose block holds. A task list gets no marker beside its checkboxes,
-// and its boxes are brand's read-only hw-check, a state shown rather than a control, each in a
-// <label> with its line's text up to the next block, which names the box; a loose item's label sits
-// inside its <p>. The text stops before the next <input, so a run of them costs no rescan each.
-// A <meta> tag shows as text, since csp() in serve.ts cannot stop its refresh. The opening is
-// escaped rather than the attributes matched, which quoting would defeat.
-export const withElements = (html: string) =>
-  tableScroll(html.replace(/<meta(?=[\s/>])/gi, "&lt;meta"))
-    .replace(/<blockquote>/g, '<blockquote class="hw-quote not-prose">')
-    .replace(/<a href=/g, '<a class="hw-link" href=')
-    .replace(/<ul>(?!\s*<li class="task-list-item")/g, '<ul class="hw-marker-list">')
-    .replace(
-      /<input type="checkbox" class="task-list-item-checkbox"([^<>]*)>(\n<p>)?((?:(?!<input)[\s\S])*?)(?=<\/p>|\n<(?:[uo]l|blockquote|pre|table|figure|hr|div|h[1-6]|p)\b|<\/li>|<input)/g,
-      (_, attrs: string, p = "", text: string) =>
-        `${p}<label><input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly${attrs}>${text}</label>`,
-    )
-    .replace(/<pre>/g, '<pre class="hw-code not-prose">')
-    .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');
-
-// A URL's scheme, as a browser reads one: a letter, then letters, digits, "+", "." or "-".
-// Also takes "_", which leaves such a path text rather than a link.
-const SCHEME = /^[a-z][\w+.-]*:/i;
-
-// An attribute's or a title's text as a browser reads it, in one pass: numeric entities and the
-// named ones Bun's renderer and hand-written HTML put there, apos in lower case only and the rest
-// in lower or upper case.
-const NAMED: Record<string, string> = { amp: "&", quot: '"', lt: "<", gt: ">", apos: "'" };
-export const entities = (v: string) =>
-  v.replace(
-    /&(?:#[xX]([\da-fA-F]+);?|#(\d+);?|(amp|AMP|quot|QUOT|lt|LT|gt|GT|apos);)/g,
-    (_, hex?: string, dec?: string, name?: string) =>
-      name
-        ? NAMED[name.toLowerCase()]!
-        : String.fromCodePoint(Math.min(parseInt(hex ?? dec!, hex ? 16 : 10), 0x10ffff)),
-  );
-
-let renderDiagram: typeof import("beautiful-mermaid").renderMermaidSVG | null | undefined;
-
-export function diagram(source: string, prefix: string) {
-  const code = `<pre><code class="language-mermaid">${source}</code></pre>`;
-  try {
-    if (renderDiagram === undefined) {
-      const require = createRequire(import.meta.url);
-      let entry: string;
-      try {
-        entry = require.resolve("beautiful-mermaid");
-      } catch (error) {
-        if (!(error instanceof Error) || !("code" in error) || error.code !== "MODULE_NOT_FOUND")
-          throw error;
-        renderDiagram = null;
-        return code;
-      }
-      renderDiagram = (require(entry) as typeof import("beautiful-mermaid")).renderMermaidSVG;
-    }
-    if (renderDiagram === null) return code;
-    const lines = entities(source)
-      .replace(/^\s*%%\{[\s\S]*?\}%%[^\S\n]*/gm, "")
-      .split("\n")
-      .filter((line) => !/^\s*%%|^\s*(?:classDef|style|linkStyle|click)\s/.test(line));
-    const header = lines.find((line) => line.trim())?.trim();
-    const body = /^classDiagram(?:\s*;|$)/i.test(header ?? "")
-      ? lines
-      : lines.filter((line) => !/^\s*class\s/.test(line));
-    const localUrls = (value: string) =>
-      value.replace(/\burl\((["']?)#([^\s"')]+)\1\)/g, `url($1#${prefix}$2$1)`);
-    // The renderer decodes XML on entry. Keep it from decoding a second layer after filtering.
-    const svg = renderDiagram(Bun.escapeHTML(body.join("\n")), {
-      bg: "var(--background)",
-      fg: "var(--foreground)",
-      transparent: true,
-    })
-      .replace(/<style>([\s\S]*?)<\/style>/g, (_, css: string) => {
-        const scoped = css
-          .replace(/^[ \t]*@import url\([^\n]*fonts\.googleapis\.com[^\n]*\);\n/gm, "")
-          .replace(/^[ \t]*(?:text|\.mono)\s*\{[^}]*\}\n/gm, "")
-          .replace(
-            /^([ \t]*)((?:svg\b|[a-z]*\.[\w-]+)[^{}\n]*)\{/gm,
-            (_, space: string, selectors: string) =>
-              `${space}${selectors
-                .split(",")
-                .map((s) => `#${prefix}svg${s.trim() === "svg" ? "" : ` ${s.trim()}`}`)
-                .join(", ")} {`,
-          );
-        return `<style>${localUrls(scoped)}</style>`;
-      })
-      .replace(/<[a-z][^<>]*>/gi, (tag) =>
-        tag.replace(/\s([\w:-]+)="([^"]*)"/g, (all, name: string, value: string) => {
-          if (name === "href" || name === "xlink:href")
-            return value.startsWith("#") ? ` ${name}="#${prefix}${value.slice(1)}"` : all;
-          if (name === "id" || name === "aria-labelledby" || name === "aria-describedby")
-            return ` ${name}="${value.replace(/\S+/g, (id) => prefix + id)}"`;
-          return name.startsWith("data-") ? all : ` ${name}="${localUrls(value)}"`;
-        }),
-      )
-      .replace("<svg ", `<svg id="${prefix}svg" `);
-    return `<figure class="admin-diagram not-prose" tabindex="0">${svg}</figure>`;
-  } catch (error) {
-    const message = Bun.escapeHTML(error instanceof Error ? error.message : String(error));
-    return `${code}<p>This diagram did not render: ${message}</p>`;
-  }
-}
-
-// A link goes out only over http(s), to mailto or to a path; any other scheme shows its text,
-// beside the pages' policy, which refuses a javascript: link too. HTMLRewriter reads tags as a
-// browser does, a doc's raw HTML included. A browser decodes an href's entities, trims spaces and
-// control characters around it and drops tabs and newlines inside before it reads the scheme; the
-// test decodes the numeric entities and &amp; or &AMP; and drops every character below "!", and
-// any other named entity before the first / ? or # leaves the link text. An SVG <set> or <animate>
-// could write an href after this test, so one aimed at href goes.
-const unsafe = (href: string) => {
-  const h = entities(href).replace(/[^!-\uffff]/g, "");
-  // Before decoding, since a decoded "&#38;" or "&amp;" is no entity.
-  const named = /&(?!amp;|AMP;|#)/.test(href.match(/^(?:&#|[^/?#])*/)![0]);
-  return !/^(?:https?|mailto):/i.test(h) && (SCHEME.test(h) || named);
-};
-const links = new HTMLRewriter()
-  .on("a, area", {
-    element(el) {
-      const hrefs = [el.getAttribute("href"), el.getAttribute("xlink:href")];
-      if (hrefs.some((h) => h !== null && unsafe(h))) el.removeAndKeepContent();
-    },
-  })
-  .on("set, animate", {
-    element(el) {
-      if (/href$/i.test(el.getAttribute("attributeName") ?? "")) el.remove();
-    },
-  });
-
-const ADMIN_ID = /^(?:admin-|copy$|state$|theme-toggle$|(?:sun|moon)-icon$)/;
-
-// Front matter is a leading YAML mapping between --- lines; a leading rule renders, since "---"
-// above a paragraph is no mapping. An item's body has no front matter and no HTML: a placeholder
-// such as <id> shows as written, and an address in angle brackets is linked by the pages.
-export function renderMarkdown(repo: string, path: string, text: string, item = false) {
-  const dir = join(repo, path, "..");
-  const body = !item
-    ? text.replace(/^---\n([\s\S]*?)\n---\n/, (all, yaml: string) => {
-        try {
-          return isObject(Bun.YAML.parse(yaml)) ? "" : all;
-        } catch {
-          return all;
-        }
-      })
-    : text;
-  const used = new Set<string>();
-  const markup = new HTMLRewriter()
-    .on("*", {
-      element(el) {
-        for (const [name] of [...el.attributes])
-          if (name.toLowerCase().startsWith("data-")) el.removeAttribute(name);
-        const id = el.getAttribute("id");
-        if (id && !/^h[1-6]$/.test(el.tagName) && ADMIN_ID.test(entities(id)))
-          el.removeAttribute("id");
-      },
-    })
-    .on("h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]", {
-      element(el) {
-        const slug =
-          entities(el.getAttribute("id")!).replace(/[^\p{L}\p{M}\p{N}_-]/gu, "-") || "section";
-        const base = ADMIN_ID.test(slug) ? `section-${slug}` : slug;
-        let id = base;
-        for (let n = 1; used.has(id); n++) id = `${base}-${n}`;
-        used.add(id);
-        el.setAttribute("id", id);
-      },
-    });
-  let index = 0;
-  let documentId: string;
-  const rendered = Bun.markdown.html(
-    body,
-    item ? { noHtmlSpans: true, noHtmlBlocks: true } : { headings: { ids: true } },
-  );
-  const html = withElements(
-    markup
-      .transform(rendered)
-      .replace(
-        /<pre><code class="language-mermaid">([^<]*)<\/code><\/pre>/g,
-        (_, source: string) => {
-          documentId ??= Bun.hash(JSON.stringify([repo, path, text])).toString(36);
-          return diagram(source, `mermaid-${documentId}-${++index}-`);
-        },
-      ),
-  );
-  return links
-    .transform(html)
-    .replace(
-      /(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"]*)"/gi,
-      (all, attr: string, value: string) => {
-        // "q&a.md" arrives as "q&amp;a.md", "roll's.md" as "roll&#x27;s.md".
-        const text = entities(value);
-        // Read as a browser does, without the spaces and controls around it and tabs or newlines.
-        if (/^(?:[a-z][\w+.-]*:|#|\/)/i.test(text.replace(/^[\0- ]+|[\t\n\r]/g, ""))) return all;
-        let [, path, rest] = text.match(/^([^?#]*)(.*)$/s)!;
-        try {
-          path = decodeURIComponent(path!);
-        } catch {
-          // A stray % in a hand-written link stays as written.
-        }
-        // Every markup character stays an entity, since this replace also reaches text.
-        rest = Bun.escapeHTML(rest!);
-        return `${attr}="${fileHref(join(dir, path!))}${rest}"`;
-      },
-    );
-}
-
-// A page's title is its first rendered h1, which leaves the article since the title shows above it.
-function titled(repo: string, path: string, text: string, fallback: string) {
-  const html = renderMarkdown(repo, path, text);
-  // From the first <h1 on: an unanchored search would scan to the end once per <h1.
-  const h1 = html
-    .slice(Math.max(html.indexOf("<h1"), 0))
-    .match(/^<h1(?=[\s>])(?:[^"'<>]|"[^"]*"|'[^']*')*>([\s\S]*?)<\/h1>\n?/);
-  // Bun's renderer decodes every other entity itself.
-  const title = h1?.[1] && entities(plain(h1[1]));
-  // An h1 without text, such as a lone image, stays in the article.
-  if (!h1 || !title) return { path, title: fallback, html };
-  let titleId: string | undefined;
-  new HTMLRewriter()
-    .on("h1", {
-      element(el) {
-        titleId ??= el.getAttribute("id") ?? undefined;
-      },
-    })
-    .transform(h1[0]);
-  return { path, title, titleId, html: html.replace(h1[0], "") };
-}
-
-function firstComment(text: string) {
+export function firstComment(text: string): string {
   for (const line of text.split("\n", 12)) {
     const m = line.match(/^\s*(?:\/\/|#(?!!)|\/\*+|\*)\s?(.*)/);
     const comment = m?.[1].trimEnd().replace(/\*\/$/, "").trimEnd();
@@ -462,243 +89,134 @@ function firstComment(text: string) {
   return "";
 }
 
-function astrobookDev(src: Source, scripts: Record<string, string>) {
-  for (const p of src.paths.filter((q) => ASTRO_CONFIG.test(q))) {
-    const text = src.read(p) ?? "";
-    const preset = text.includes("@hackersandwizards/scaffolding/catalog");
-    const port =
-      preset || text.includes("astrobook") ? text.match(/\bport:\s*(\d+)/)?.[1] : undefined;
-    if (!port) continue;
-    const at = (key: string) => text.match(new RegExp(`\\b${key}:\\s*["']([^"']+)["']`))?.[1];
-    // The preset answers /catalog/ wherever its catalog sits, forwarding a home catalog to its
-    // root; dev drops the base.
-    const path = preset
-      ? "/catalog/"
-      : `${at("base") ?? ""}${at("subpath") ?? ""}`.replace(/\/*$/, "/");
-    const dir = p.includes("/") ? p.slice(0, p.indexOf("/")) : "";
-    const runs = Object.keys(scripts).filter((k) => {
-      const v = scripts[k]!;
-      return v.includes("astro dev") && (dir ? v.includes(dir) : !/--root|\bcd /.test(v));
-    });
-    const start =
-      (preset && scripts.catalog ? "catalog" : undefined) ??
-      runs.find((k) => k.includes("design")) ??
-      runs.find((k) => k === "dev") ??
-      runs[0];
-    return { url: `http://127.0.0.1:${port}${path}`, port: Number(port), start };
-  }
-}
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  !!v && typeof v === "object" && !Array.isArray(v);
-
-// Config entries without a text label and href are dropped rather than failing the whole hub.
-const linked = <T extends { label?: unknown; href?: unknown }>(list: T[] | undefined) =>
-  (Array.isArray(list) ? list : []).filter(
-    (e): e is T & { label: string; href: string } =>
-      typeof e?.label === "string" && typeof e?.href === "string",
-  );
-
-type AdminConfig = {
-  name?: string;
-  label?: string;
-  designSystem?: string;
-  products?: Product[];
-  links?: Link[];
-};
-
-// When the repository was last fetched: its FETCH_HEAD's time, which a worktree keeps in its own
-// git folder rather than in <repo>/.git.
-const fetchHeads = new Map<string, Promise<string>>();
-export async function fetchedAt(repo: string) {
-  let path = fetchHeads.get(repo);
-  if (!path) {
-    path = gitAsync(repo, ["rev-parse", "--git-path", "FETCH_HEAD"]).then((p) =>
-      p.trim() ? resolve(repo, p.trim()) : "",
-    );
-    fetchHeads.set(repo, path);
-  }
-  const file = await path;
-  // A failed call is asked again next time, rather than kept.
-  if (!file) fetchHeads.delete(repo);
-  return file && existsSync(file) ? statSync(file).mtimeMs : undefined;
-}
-
-// Every git call of a repository runs at once, and the hub reads its repositories at once.
-export async function readRepo(repo: string, source?: Source): Promise<RepoData> {
-  const commits = async (...a: string[]) =>
-    (await gitAsync(repo, ["log", "--format=%h%x09%ct%x09%s", ...a]))
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => {
-        const [hash, time, ...s] = l.split("\t");
-        return { hash: hash!, time: Number(time), subject: s.join("\t") };
-      });
-  const [src, workLog, head, behind, trackingLog, log, fetched] = await Promise.all([
-    source ?? headSource(repo),
-    gitAsync(repo, ["log", "-z", "--format=@%ct", "--name-only", "--", WORK_DIR]),
-    gitAsync(repo, ["rev-parse", "--short", "HEAD"]),
-    gitBytes(repo, ["rev-list", "--count", "HEAD..@{push}"]),
-    commits("-n", "60", "--", WORK_DIR),
-    commits("-n", "60"),
-    fetchedAt(repo),
-  ]);
-  const { items, defects } = readItems(src);
-  const pkgText = src.read("package.json");
-  let pkg: Record<string, unknown> = {};
-  try {
-    const parsed: unknown = pkgText === undefined ? {} : JSON.parse(pkgText);
-    if (isObject(parsed)) pkg = parsed;
-    else defects.push("package.json: not an object");
-  } catch {
-    defects.push("package.json: not JSON");
-  }
-  // A field of the wrong type is a defect, never a failed build of every repository's pages.
-  const texts = (field: string) => {
-    const value = pkg[field] ?? {};
-    const entries = isObject(value) ? Object.entries(value) : [];
-    const kept = entries.filter(([, v]) => typeof v === "string");
-    if (!isObject(value) || kept.length < entries.length)
-      defects.push(`package.json: ${field} holds a value that is not text`);
-    return Object.fromEntries(kept) as Record<string, string>;
-  };
-  // package.json's admin, where it holds one, else docs/agent-work/admin.json's; `from` names the
-  // source in a defect.
-  const own = src.read(ADMIN_FILE);
-  let ownAdmin: unknown;
-  if (own !== undefined) {
-    try {
-      ownAdmin = JSON.parse(own);
-      if (!isObject(ownAdmin)) defects.push(`${ADMIN_FILE}: not a JSON object`);
-    } catch {
-      defects.push(`${ADMIN_FILE}: not JSON`);
-    }
-  }
-  const [raw, from] =
-    pkg.admin !== undefined ? [pkg.admin, "package.json: admin."] : [ownAdmin, `${ADMIN_FILE}: `];
-  if (pkg.admin !== undefined && !isObject(raw))
-    defects.push("package.json: admin is not an object");
-  if (pkg.admin !== undefined && isObject(ownAdmin))
-    defects.push(`${ADMIN_FILE}: ignored, package.json holds admin`);
-  const admin = (isObject(raw) ? raw : {}) as AdminConfig;
-  const named = typeof admin.name === "string" ? admin.name : undefined;
-  const key = named && REPO_KEY.test(named) ? named : asKey(basename(repo));
-  if (named !== undefined && key !== named)
-    defects.push(
-      `${from}name "${named}" is not letters, digits, ".", "_" and "-": its pages are under ${key}`,
-    );
-  if (admin.label !== undefined && typeof admin.label !== "string")
-    defects.push(`${from}label is not text`);
-  const label = (typeof admin.label === "string" && admin.label.trim()) || undefined;
-  const scriptsMap = texts("scripts");
-  // Only http(s) links out, beside the pages' policy, which refuses a javascript: link too.
-  const href = (h: string, field: string) => {
-    if (/^https?:/i.test(h)) return h;
-    if (SCHEME.test(h)) {
-      defects.push(`${from}${field}: scheme not allowed, not linked`);
-      return undefined;
-    }
-    const [, path, rest] = h.match(/^([^?#]*)(.*)$/s)!;
-    return fileHref(join(repo, path!)) + rest;
-  };
-  const dependencies = { ...texts("dependencies"), ...texts("devDependencies") };
-  const dev = astrobookDev(src, scriptsMap);
-  const designSystem =
-    (typeof admin.designSystem === "string" && href(admin.designSystem, "designSystem")) ||
-    dev?.url;
-  const designSystemDev =
-    dev && designSystem === dev.url ? { port: dev.port, start: dev.start } : undefined;
-
+export function parseWorkLog(workLog: string): Map<string, number> {
   const changed = new Map<string, number>();
   let t = 0;
   for (const line of workLog.split("\0").map((entry) => entry.replace(/^\n/, ""))) {
     if (line.startsWith("@")) t = Number(line.slice(1));
     else if (line && !changed.has(line)) changed.set(line, t);
   }
-  const change = (path: string, text: string) => ({
-    changed: changed.get(path),
-    version: Bun.hash(text).toString(36),
-  });
-  const withChange = items.map((i) => {
-    const path = `${ITEMS_DIR}/${i.id}.md`;
-    return { ...i, ...change(path, src.read(path) ?? "") };
-  });
+  return changed;
+}
 
-  const tracking = src.paths.filter(
-    (p) => p.startsWith(`${WORK_DIR}/`) && !p.startsWith(`${ITEMS_DIR}/`),
-  );
-  const reports = tracking
+export function attachItemChanges(
+  items: readonly Item[],
+  src: Source,
+  changed: ReadonlyMap<string, number>,
+): (Item & { changed?: number; version?: string })[] {
+  return items.map((i) => {
+    const path = `${ITEMS_DIR}/${i.id}.md`;
+    return {
+      ...i,
+      changed: changed.get(path),
+      version: Bun.hash(src.read(path) ?? "").toString(36),
+    };
+  });
+}
+
+export function readReports(
+  repo: string,
+  src: Source,
+  changed: ReadonlyMap<string, number>,
+): Report[] {
+  return src.paths
     .filter((p) => /^docs\/agent-work\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/.test(p))
     .map((p) => {
       const text = src.read(p) ?? "";
       const stem = basename(p, ".md");
-      return { ...titled(repo, p, text, stem), stem, date: stem.slice(0, 10), ...change(p, text) };
+      const { title, ...rest } = extractTitle(renderDocMarkdown(repo, p, text));
+      return {
+        path: p,
+        ...rest,
+        title: title ?? stem,
+        stem,
+        date: stem.slice(0, 10),
+        changed: changed.get(p),
+        version: Bun.hash(text).toString(36),
+      };
     })
     .sort((a, b) => b.date.localeCompare(a.date) || a.path.localeCompare(b.path));
+}
+
+export function readReviews(paths: readonly string[], reportPaths: ReadonlySet<string>): Review[] {
   const reviewDirs = new Map<string, string[]>();
-  for (const p of tracking) {
+  for (const p of paths) {
     const m = p.match(/^(docs\/agent-work\/\d{4}-\d{2}-\d{2}-[^/]+)\/(.+)$/);
     if (!m) continue;
     const list = reviewDirs.get(m[1]!) ?? [];
     list.push(m[2]!);
     reviewDirs.set(m[1]!, list);
   }
-  const reviews = [...reviewDirs]
+  return [...reviewDirs]
     .map(([dir, files]) => ({
       dir,
       images: files.filter((f) => IMAGE.test(f)).sort(),
-      report: reports.some((r) => r.path === `${dir}.md`) ? `${dir}.md` : undefined,
+      report: reportPaths.has(`${dir}.md`) ? `${dir}.md` : undefined,
     }))
     .sort((a, b) => b.dir.localeCompare(a.dir));
-  const reported = new Set(reports.map((r) => r.path));
-  const docs = src.paths
-    .filter((p) => isDoc(p) && !reported.has(p) && !p.startsWith(`${ITEMS_DIR}/`))
-    .map((p) => titled(repo, p, src.read(p) ?? "", p))
-    .sort((a, b) => a.path.localeCompare(b.path));
+}
 
-  const check = scriptsMap["check:all"] ?? scriptsMap.check ?? "";
-  const checkSteps = check
-    .split(/\s*&&\s*/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const scripts = src.paths
+export function readDocs(repo: string, src: Source, reportedPaths: ReadonlySet<string>): Doc[] {
+  return src.paths
+    .filter((p) => isDoc(p) && !reportedPaths.has(p) && !p.startsWith(`${ITEMS_DIR}/`))
+    .map((p) => {
+      const { title, ...rest } = extractTitle(renderDocMarkdown(repo, p, src.read(p) ?? ""));
+      return { path: p, ...rest, title: title ?? p };
+    })
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+export function readScriptFiles(src: Source): ScriptFile[] {
+  return src.paths
     .filter((p) => SCRIPT.test(p))
     .map((p) => ({ path: p, comment: firstComment(src.read(p) ?? "") }));
+}
 
+export function readAgentNames(src: Source): string[] {
+  return src.paths
+    .filter((p) => AGENT.test(p))
+    .flatMap(
+      (p) => agentDescription(src.read(p) ?? "").match(/^(\p{Lu}[\p{L}-]*), who\b/u)?.[1] ?? [],
+    );
+}
+
+// Every git call of a repository runs at once, and the hub reads its repositories at once.
+export async function readRepo(repo: string, source?: Source): Promise<RepoData> {
+  const [src, workLog, head, behind, trackingLog, log, fetched] = await Promise.all([
+    source ?? headSource(repo, wantsRepoFile),
+    gitAsync(repo, ["log", "-z", "--format=@%ct", "--name-only", "--", WORK_DIR]),
+    gitAsync(repo, ["rev-parse", "--short", "HEAD"]),
+    gitBytes(repo, ["rev-list", "--count", "HEAD..@{push}"]),
+    readCommits(repo, ["-n", "60", "--", WORK_DIR]),
+    readCommits(repo, ["-n", "60"]),
+    fetchedAt(repo),
+  ]);
+  const { items, defects: itemDefects } = readItems(src);
+  const config = readRepoConfig(repo, src);
+  const changed = parseWorkLog(workLog);
+  const reports = readReports(repo, src, changed);
+  const reported = new Set(reports.map((r) => r.path));
   return {
-    key,
-    label,
+    key: config.key,
+    label: config.label,
     path: repo,
     head: head.trim(),
     behind: behind ? Number(behind.toString().trim()) : undefined,
     fetched,
-    items: withChange,
-    defects,
+    items: attachItemChanges(items, src, changed),
+    defects: [...itemDefects, ...config.defects],
     reports,
-    reviews,
-    docs,
+    reviews: readReviews(src.paths, reported),
+    docs: readDocs(repo, src, reported),
     workFiles: src.paths.filter((p) => p.startsWith(`${WORK_DIR}/`)),
-    pkg: {
-      name: typeof pkg.name === "string" ? pkg.name : undefined,
-      version: typeof pkg.version === "string" ? pkg.version : undefined,
-      dependencies,
-      scripts: scriptsMap,
-      bin: typeof pkg.bin === "string" ? { [String(pkg.name)]: pkg.bin } : texts("bin"),
-    },
-    designSystem,
-    designSystemDev,
-    products: linked(admin.products).map((p) => ({
-      ...p,
-      href: href(p.href, `products "${p.label}"`),
-    })),
-    links: linked(admin.links).map((l) => ({ ...l, href: href(l.href, `links "${l.label}"`) })),
-    agents: src.paths
-      .filter((p) => AGENT.test(p))
-      .flatMap(
-        (p) => description(src.read(p) ?? "").match(/^(\p{Lu}[\p{L}-]*), who\b/u)?.[1] ?? [],
-      ),
-    checkSteps,
-    scripts,
+    pkg: config.pkg,
+    designSystem: config.designSystem,
+    designSystemDev: config.designSystemDev,
+    products: config.products,
+    links: config.links,
+    agents: readAgentNames(src),
+    checkSteps: config.checkSteps,
+    scripts: readScriptFiles(src),
     trackingLog,
     log,
   };

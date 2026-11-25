@@ -20,22 +20,10 @@ import { findRepos, uniqueKeys } from "./hub.ts";
 import { isPlainReportName } from "./items.ts";
 import { MISSING, NOTICE, policy } from "../site/src/data.ts";
 import { reportBody } from "../site/src/report.ts";
-import {
-  docSlug,
-  encodeFile,
-  encodePath,
-  fetchedAt,
-  fileHref,
-  git,
-  gitAsync,
-  gitBytes,
-  readRepo,
-  THUMB_BOXES,
-  type Doc,
-  type Report,
-  type RepoData,
-  when,
-} from "./repo.ts";
+import { THUMB_BOXES, when } from "./display.ts";
+import { fetchedAt, git, gitAsync, gitBytes } from "./git.ts";
+import { readRepo, type Doc, type Report, type RepoData } from "./repo.ts";
+import { docSlug, encodeFile, encodePath, fileHref } from "./repo-paths.ts";
 
 export type ServeOptions = { root: string; rescanMs?: number };
 

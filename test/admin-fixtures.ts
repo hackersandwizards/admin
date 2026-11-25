@@ -3,7 +3,8 @@ import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Window } from "happy-dom";
-import { gitEnv, readRepo } from "../src/repo.ts";
+import { gitEnv } from "../src/git.ts";
+import { readRepo } from "../src/repo.ts";
 
 export const FIX = join(import.meta.dirname, "fixtures");
 const made: string[] = [];

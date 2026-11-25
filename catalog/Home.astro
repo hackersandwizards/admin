@@ -7,7 +7,7 @@ import catalogs from "@hackersandwizards/brand/catalogs.json";
 import ItemGroups from "../site/src/components/ItemGroups.astro";
 import ItemRow from "../site/src/components/ItemRow.astro";
 import elements from "../brand-elements.json";
-import { withElements } from "../src/repo.ts";
+import { withElements } from "../src/markdown.ts";
 import { item, items } from "./story";
 
 const brand = catalogs.find((c) => c.name === "Brand")!;

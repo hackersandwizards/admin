@@ -6,14 +6,11 @@ import { peerDependenciesMeta } from "../package.json";
 import { PAGE_TYPES, siteData } from "../src/build.ts";
 import { findRepos } from "../src/hub.ts";
 import { parseItem } from "../src/items.ts";
-import {
-  fetchedAt,
-  fileHref,
-  readItems,
-  readRepo,
-  renderMarkdown,
-  treeSource,
-} from "../src/repo.ts";
+import { fetchedAt, treeSource } from "../src/git.ts";
+import { readItems } from "../src/item-source.ts";
+import { renderDocMarkdown } from "../src/markdown.ts";
+import { readRepo } from "../src/repo.ts";
+import { fileHref } from "../src/repo-paths.ts";
 import { withLinks } from "../site/src/data.ts";
 import {
   FIX,
@@ -178,7 +175,7 @@ describe("admin-check", () => {
       items: [item],
     };
     for (const html of [
-      renderMarkdown("/r", "docs/a.md", body),
+      renderDocMarkdown("/r", "docs/a.md", body),
       siteData([repo]).repos[0]!.items[0]!.html,
     ]) {
       expect(html).not.toMatch(/<meta/i);

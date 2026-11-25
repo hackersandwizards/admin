@@ -4,9 +4,10 @@ import type { Page, SiteData, ViewItem } from "../../src/build.ts";
 
 export type { Page, SiteData, ViewItem };
 import { dueSoon } from "../../src/items.ts";
-import { encodePath } from "../../src/repo.ts";
+import { encodePath } from "../../src/repo-paths.ts";
 import elements from "../../brand-elements.json";
-export { docSlug, fileHref, thumbnail, when } from "../../src/repo.ts";
+export { thumbnail, when } from "../../src/display.ts";
+export { docSlug, fileHref } from "../../src/repo-paths.ts";
 
 let cached: SiteData | undefined;
 export function data(): SiteData {

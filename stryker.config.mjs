@@ -3,9 +3,15 @@ import base from "@hackersandwizards/scaffolding/stryker";
 export default {
   ...base,
   mutate: [
+    "src/diagrams.ts",
+    "src/display.ts",
+    "src/entities.ts",
+    "src/git.ts",
     "src/item-source.ts",
     "src/item-validation.ts",
     "src/items.ts",
+    "src/markdown.ts",
+    "src/repo-config.ts",
     "src/repo.ts",
     "src/repo-keys.ts",
     "src/repo-paths.ts",

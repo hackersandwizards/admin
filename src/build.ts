@@ -2,7 +2,10 @@ import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync }
 import { dirname, join, relative } from "node:path";
 import { version } from "../package.json";
 import { compareItems, imagesOf, ITEMS_DIR, type Item } from "./items.ts";
-import { diagram, docSlug, fileHref, renderMarkdown, type Doc, type RepoData } from "./repo.ts";
+import { diagram } from "./diagrams.ts";
+import { renderItemMarkdown } from "./markdown.ts";
+import type { Doc, RepoData } from "./repo.ts";
+import { docSlug, fileHref } from "./repo-paths.ts";
 
 export const PKG = join(import.meta.dirname, "..");
 
@@ -82,7 +85,7 @@ function itemHtml(
   files: Map<RepoData, Set<string>>,
   item: Item,
 ) {
-  const html = renderMarkdown(repo.path, `${ITEMS_DIR}/${item.id}.md`, item.body, true);
+  const html = renderItemMarkdown(repo.path, `${ITEMS_DIR}/${item.id}.md`, item.body);
   const named = (before: string, after: string) =>
     [
       before.match(/([\w.-]+)\s+(?:<code[^>]*>)?$/)?.[1],

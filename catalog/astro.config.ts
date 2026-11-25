@@ -5,7 +5,9 @@ import { defineConfig } from "astro/config";
 import tailwind from "@tailwindcss/vite";
 import { catalog } from "@hackersandwizards/scaffolding/catalog";
 import { filesUnder, script, siteData, stylesheet } from "../src/build.ts";
-import { fileHref, readRepo, treeSource } from "../src/repo.ts";
+import { treeSource } from "../src/git.ts";
+import { readRepo } from "../src/repo.ts";
+import { fileHref } from "../src/repo-paths.ts";
 
 const root = join(import.meta.dirname, "..");
 const cache = join(root, "node_modules/.cache/admin-catalog");

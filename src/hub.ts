@@ -5,7 +5,7 @@ import { statSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { ITEMS_DIR } from "./items.ts";
-import { gitAsync } from "./repo.ts";
+import { gitAsync } from "./git.ts";
 export { uniqueKeys } from "./repo-keys.ts";
 
 // `_archive` holds retired checkouts, at any depth.

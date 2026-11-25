@@ -1,5 +1,7 @@
 import { isPlainReportName } from "../../src/items.ts";
-import { entities, when, type Report } from "../../src/repo.ts";
+import { when } from "../../src/display.ts";
+import { entities } from "../../src/entities.ts";
+import type { Report } from "../../src/repo.ts";
 
 export const reportKey = (repo: string, report: Report) => `#${repo}:${report.stem}`;
 

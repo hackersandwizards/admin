@@ -27,7 +27,9 @@ import {
 } from "happy-dom";
 import { buildSite, script, siteData } from "../../src/build.ts";
 import { uniqueKeys } from "../../src/hub.ts";
-import { readRepo, treeSource, when } from "../../src/repo.ts";
+import { when } from "../../src/display.ts";
+import { treeSource } from "../../src/git.ts";
+import { readRepo } from "../../src/repo.ts";
 import { createHub, csp, linker } from "../../src/serve.ts";
 import {
   FIX,

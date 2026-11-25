@@ -1,0 +1,225 @@
+import { join } from "node:path";
+import { diagram } from "./diagrams.ts";
+import { entities } from "./entities.ts";
+import { fileHref, SCHEME } from "./repo-paths.ts";
+
+const plainText = (html: string) =>
+  html
+    .replace(/<[^<>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+export function tableHeaderLabel(tableBody: string): string {
+  return [
+    ...tableBody
+      .split(/<\/tr>/i, 1)[0]!
+      .matchAll(/<t[hd]\b[^<>]*>((?:(?!<t[hd]\b)[\s\S])*?)<\/t[hd]>/gi),
+  ]
+    .map(([, cell]) => plainText(cell!))
+    .filter(Boolean)
+    .join(" ");
+}
+
+export function wrapScrollableTable(tableBody: string, attrs: string, label: string): string {
+  const region = label ? ` role="region" aria-label="${label.replaceAll('"', "&quot;")}"` : "";
+  return `<div class="hw-table-scroll" tabindex="0"${region}><table${attrs || ' class="hw-table not-prose"'}>${tableBody}</div>`;
+}
+
+// brand's tableScroll (elements/table.ts) takes a hast tree: this is the same step on Bun's HTML
+// string, held to brand's names by a test. Entities stay encoded, which the attribute decodes. A
+// table holding another is left to the inner one, so no wrapper closes inside a cell; a raw table
+// with attributes is wrapped as written. A tag ends before the next "<", so an unclosed one costs
+// no scan to the end of the text.
+const HEADING_OR_TABLE =
+  /<(?<tag>h[1-6])\b[^<>]*>(?<heading>(?:(?!<h[1-6]\b)[\s\S])*?)<\/\k<tag>>|<table\b(?<attrs>[^<>]*)>(?<table>(?:(?!<table\b)[\s\S])*?<\/table>)/gi;
+
+export function tableScroll(html: string): string {
+  let title = "";
+  const used = new Set<string>();
+  let out = "";
+  let cursor = 0;
+  for (const match of html.matchAll(HEADING_OR_TABLE)) {
+    const index = match.index;
+    out += html.slice(cursor, index);
+    cursor = index + match[0].length;
+    const { tag, heading, attrs, table } = match.groups!;
+    if (tag) {
+      title = plainText(heading!);
+      out += match[0];
+      continue;
+    }
+    const base = title || tableHeaderLabel(table!);
+    let name = base;
+    for (let n = 2; name && used.has(name); n++) name = `${base} (${n})`;
+    used.add(name);
+    out += wrapScrollableTable(table!, attrs!, name);
+  }
+  return out + html.slice(cursor);
+}
+
+// brand's prose block asks for tables, quotes and code blocks to be not-prose. A link keeps hw-link
+// for an item's text, which no prose block holds. A task list gets no marker beside its checkboxes,
+// and its boxes are brand's read-only hw-check, a state shown rather than a control, each in a
+// <label> with its line's text up to the next block, which names the box; a loose item's label sits
+// inside its <p>. The text stops before the next <input, so a run of them costs no rescan each.
+// A <meta> tag shows as text, since csp() in serve.ts cannot stop its refresh. The opening is
+// escaped rather than the attributes matched, which quoting would defeat.
+export const withElements = (html: string) =>
+  tableScroll(html.replace(/<meta(?=[\s/>])/gi, "&lt;meta"))
+    .replace(/<blockquote>/g, '<blockquote class="hw-quote not-prose">')
+    .replace(/<a href=/g, '<a class="hw-link" href=')
+    .replace(/<ul>(?!\s*<li class="task-list-item")/g, '<ul class="hw-marker-list">')
+    .replace(
+      /<input type="checkbox" class="task-list-item-checkbox"([^<>]*)>(\n<p>)?((?:(?!<input)[\s\S])*?)(?=<\/p>|\n<(?:[uo]l|blockquote|pre|table|figure|hr|div|h[1-6]|p)\b|<\/li>|<input)/g,
+      '$2<label><input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly$1>$3</label>',
+    )
+    .replace(/<pre>/g, '<pre class="hw-code not-prose">')
+    .replace(/(?<!<pre[^>]*>)<code>/g, '<code class="hw-inline-code">');
+
+// A link goes out only over http(s), to mailto or to a path; any other scheme shows its text,
+// beside the pages' policy, which refuses a javascript: link too. HTMLRewriter reads tags as a
+// browser does, a doc's raw HTML included. A browser decodes an href's entities, trims spaces and
+// control characters around it and drops tabs and newlines inside before it reads the scheme; the
+// test decodes the numeric entities and &amp; or &AMP; and drops every character below "!", and
+// any other named entity before the first / ? or # leaves the link text. An SVG <set> or <animate>
+// could write an href after this test, so one aimed at href goes.
+export function isUnsafeLink(href: string): boolean {
+  const h = entities(href).replace(/[^!-\uffff]/g, "");
+  // Before decoding, since a decoded "&#38;" or "&amp;" is no entity.
+  const named = /&(?!amp;|AMP;|#)/.test(href.match(/^(?:&#|[^/?#])*/)![0]);
+  return !/^(?:https?|mailto):/i.test(h) && (SCHEME.test(h) || named);
+}
+
+const links = new HTMLRewriter()
+  .on("a, area", {
+    element(el) {
+      const hrefs = [el.getAttribute("href"), el.getAttribute("xlink:href")];
+      if (hrefs.some((h) => h !== null && isUnsafeLink(h))) el.removeAndKeepContent();
+    },
+  })
+  .on("set, animate", {
+    element(el) {
+      if (/href$/i.test(el.getAttribute("attributeName") ?? "")) el.remove();
+    },
+  });
+
+export const stripUnsafeLinks = (html: string) => links.transform(html);
+
+const ADMIN_ID = /^(?:admin-|copy$|state$|theme-toggle$|(?:sun|moon)-icon$)/;
+
+// Front matter is a leading YAML mapping between --- lines; a leading rule renders, since "---"
+// above a paragraph is no mapping.
+export function stripFrontmatter(text: string): string {
+  return text.replace(/^---\n([\s\S]*?)\n---\n/, (all, yaml: string) => {
+    try {
+      const parsed: unknown = Bun.YAML.parse(yaml);
+      return !!parsed && typeof parsed === "object" && !Array.isArray(parsed) ? "" : all;
+    } catch {
+      return all;
+    }
+  });
+}
+
+export function sanitizeMarkup(html: string): string {
+  const used = new Set<string>();
+  return new HTMLRewriter()
+    .on("*", {
+      element(el) {
+        for (const [name] of [...el.attributes])
+          if (name.toLowerCase().startsWith("data-")) el.removeAttribute(name);
+        const id = el.getAttribute("id");
+        if (id && !/^h[1-6]$/.test(el.tagName) && ADMIN_ID.test(entities(id)))
+          el.removeAttribute("id");
+      },
+    })
+    .on("h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]", {
+      element(el) {
+        const slug =
+          entities(el.getAttribute("id")!).replace(/[^\p{L}\p{M}\p{N}_-]/gu, "-") || "section";
+        const base = ADMIN_ID.test(slug) ? `section-${slug}` : slug;
+        let id = base;
+        for (let n = 1; used.has(id); n++) id = `${base}-${n}`;
+        used.add(id);
+        el.setAttribute("id", id);
+      },
+    })
+    .transform(html);
+}
+
+export function renderMermaidBlocks(html: string, docKey: string): string {
+  let index = 0;
+  let documentId: string;
+  return html.replace(
+    /<pre><code class="language-mermaid">([^<]*)<\/code><\/pre>/g,
+    (_, source: string) => {
+      documentId ??= Bun.hash(docKey).toString(36);
+      return diagram(source, `mermaid-${documentId}-${++index}-`);
+    },
+  );
+}
+
+// A stray % in a hand-written link stays as written.
+export function decodeLinkPath(path: string): string {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
+export function rewriteRelativeUrls(html: string, dir: string): string {
+  return html.replace(
+    /(src|href)="(?![a-z][\w+.-]*:|#|\/)([^"]*)"/gi,
+    (all, attr: string, value: string) => {
+      // "q&a.md" arrives as "q&amp;a.md", "roll's.md" as "roll&#x27;s.md".
+      const text = entities(value);
+      // Read as a browser does, without the spaces and controls around it and tabs or newlines.
+      if (/^(?:[a-z][\w+.-]*:|#|\/)/i.test(text.replace(/^[\0- ]+|[\t\n\r]/g, ""))) return all;
+      const [, rawPath, rawRest] = text.match(/^([^?#]*)(.*)$/s)!;
+      const decodedPath = decodeLinkPath(rawPath!);
+      // Every markup character stays an entity, since this replace also reaches text.
+      const rest = Bun.escapeHTML(rawRest!);
+      return `${attr}="${fileHref(join(dir, decodedPath))}${rest}"`;
+    },
+  );
+}
+
+function finishRenderedHtml(rendered: string, dir: string, docKey: string): string {
+  const cleaned = sanitizeMarkup(rendered);
+  const withDiagrams = renderMermaidBlocks(cleaned, docKey);
+  const styled = withElements(withDiagrams);
+  return rewriteRelativeUrls(stripUnsafeLinks(styled), dir);
+}
+
+export function renderDocMarkdown(repo: string, path: string, text: string): string {
+  const rendered = Bun.markdown.html(stripFrontmatter(text), { headings: { ids: true } });
+  return finishRenderedHtml(rendered, join(repo, path, ".."), JSON.stringify([repo, path, text]));
+}
+
+// An item's body has no front matter and no HTML: a placeholder such as <id> shows as written,
+// and an address in angle brackets is linked by the pages.
+export function renderItemMarkdown(repo: string, path: string, text: string): string {
+  const rendered = Bun.markdown.html(text, { noHtmlSpans: true, noHtmlBlocks: true });
+  return finishRenderedHtml(rendered, join(repo, path, ".."), JSON.stringify([repo, path, text]));
+}
+
+// A page's title is its first rendered h1, which leaves the article since the title shows above it.
+export function extractTitle(html: string): { title?: string; titleId?: string; html: string } {
+  // From the first <h1 on: an unanchored search would scan to the end once per <h1.
+  const h1 = html
+    .slice(Math.max(html.indexOf("<h1"), 0))
+    .match(/^<h1(?=[\s>])(?:[^"'<>]|"[^"]*"|'[^']*')*>([\s\S]*?)<\/h1>\n?/);
+  // Bun's renderer decodes every other entity itself.
+  const title = h1?.[1] && entities(plainText(h1[1]));
+  // An h1 without text, such as a lone image, stays in the article.
+  if (!h1 || !title) return { html };
+  let titleId: string | undefined;
+  new HTMLRewriter()
+    .on("h1", {
+      element(el) {
+        titleId ??= el.getAttribute("id") ?? undefined;
+      },
+    })
+    .transform(h1[0]);
+  return { title, titleId, html: html.replace(h1[0], "") };
+}

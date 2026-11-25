@@ -18,3 +18,7 @@ export const fileHref = (abs: string) => "file://" + encodeFile(abs);
 export const encodePath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
 
 export const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
+
+// A URL's scheme, as a browser reads one: a letter, then letters, digits, "+", "." or "-".
+// Also takes "_", which leaves such a path text rather than a link.
+export const SCHEME = /^[a-z][\w+.-]*:/i;

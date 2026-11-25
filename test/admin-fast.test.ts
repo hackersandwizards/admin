@@ -4,7 +4,7 @@ import { Window, type Element as DomEl, type Node as DomNode } from "happy-dom";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { tableScroll as brandTableScroll } from "@hackersandwizards/brand/elements/table.ts";
 import { needsGraph, needsGraphItems, siteData } from "../src/build.ts";
-import * as diagrams from "../src/repo.ts";
+import * as diagrams from "../src/diagrams.ts";
 import {
   compareItems,
   DUE_SOON_DAYS,
@@ -15,15 +15,11 @@ import {
   type Item,
 } from "../src/items.ts";
 import { itemDefects, usable } from "../src/item-validation.ts";
-import {
-  gitEnv,
-  readItems,
-  readRepo,
-  renderMarkdown,
-  thumbnail,
-  treeSource,
-  when,
-} from "../src/repo.ts";
+import { thumbnail, when } from "../src/display.ts";
+import { gitEnv, treeSource } from "../src/git.ts";
+import { readItems } from "../src/item-source.ts";
+import { renderDocMarkdown, renderItemMarkdown } from "../src/markdown.ts";
+import { readRepo } from "../src/repo.ts";
 import { dueOf, inline, prerequisiteLabels, withLinks } from "../site/src/data.ts";
 import { commit, fromFiles, inZone, repoFrom, sh } from "./admin-fixtures.ts";
 
@@ -264,7 +260,7 @@ describe("needs graph", () => {
       .mockReturnValue('<pre><code class="language-mermaid">flowchart LR</code></pre>');
     try {
       expect(await fixture()).not.toHaveProperty("needsSvg");
-      expect(render).toHaveBeenCalledTimes(2);
+      expect(render).toHaveBeenCalledTimes(4);
     } finally {
       render.mockRestore();
     }
@@ -606,7 +602,7 @@ describe("item files", () => {
 describe("Mermaid in Markdown", () => {
   const fence = (source: string) => `\`\`\`mermaid\n${source}\n\`\`\`\n`;
   const flow = fence("flowchart LR\n  a --> b");
-  const render = (text: string) => renderMarkdown("/r", "docs/a.md", text);
+  const render = (text: string) => renderDocMarkdown("/r", "docs/a.md", text);
 
   test("renders inline SVG without remote fonts", () => {
     const html = render(flow);
@@ -618,7 +614,10 @@ describe("Mermaid in Markdown", () => {
   test("diagrams share no id within or across documents", () => {
     const text = flow + "\n" + flow;
     const first = render(text);
-    const others = [render("# Other document\n\n" + flow), renderMarkdown("/r", "docs/b.md", flow)];
+    const others = [
+      render("# Other document\n\n" + flow),
+      renderDocMarkdown("/r", "docs/b.md", flow),
+    ];
     expect(render(text)).toBe(first);
     const ids = [...[first, ...others].join("").matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
     const markers = [...[first, ...others].join("").matchAll(/marker-end="url\(#([^)]+)\)"/g)];
@@ -760,10 +759,10 @@ describe("admin-check", () => {
 
   test("Markdown headings have distinct ids in a document and none in an item", () => {
     const text = "# Copy\n\n## Same\n\n## Same\n\n### Same-1\n";
-    const ids = (item: boolean) =>
-      [...renderMarkdown("/r", "docs/a.md", text, item).matchAll(/id="([^"]*)"/g)].map((m) => m[1]);
-    expect(ids(false)).toEqual(["section-copy", "same", "same-1", "same-1-1"]);
-    expect(ids(true)).toEqual([]);
+    const ids = (render: (repo: string, path: string, text: string) => string) =>
+      [...render("/r", "docs/a.md", text).matchAll(/id="([^"]*)"/g)].map((m) => m[1]);
+    expect(ids(renderDocMarkdown)).toEqual(["section-copy", "same", "same-1", "same-1-1"]);
+    expect(ids(renderItemMarkdown)).toEqual([]);
   });
 
   test("a raw h1 keeps its id when an earlier attribute contains a greater-than sign", async () => {
@@ -807,8 +806,8 @@ describe("admin-check", () => {
       "[g][r]\n\n[r]: javascript:x",
     ];
     for (const md of bad)
-      for (const item of [false, true])
-        expect(renderMarkdown("/r", "docs/a.md", md, item)).not.toContain("<a ");
+      for (const render of [renderDocMarkdown, renderItemMarkdown])
+        expect(render("/r", "docs/a.md", md)).not.toContain("<a ");
     // Raw HTML in a doc, quoted any way, with an entity or a space the browser drops.
     for (const raw of [
       '<a href="javascript:x">t</a>',
@@ -830,10 +829,10 @@ describe("admin-check", () => {
       '<svg><a><set attributeName="href" to="javascript:x"/><text>t</text></a></svg>',
       '<svg><a><animate attributeName="xlink:href" values="javascript:x"/><text>t</text></a></svg>',
     ])
-      expect(renderMarkdown("/r", "docs/a.md", raw)).not.toMatch(
+      expect(renderDocMarkdown("/r", "docs/a.md", raw)).not.toMatch(
         /href\s*=\s*(?!["']?\s*https:)|javascript/i,
       );
-    const ok = renderMarkdown(
+    const ok = renderDocMarkdown(
       "/r",
       "docs/a.md",
       "[h](https://a.test/) [i](HTTP://a.test/) [m](mailto:x@a.test) [p](b.md#t) [q](/b.md) [s](#t) [a](q&a.md) [t](10:30.md)",
@@ -843,11 +842,15 @@ describe("admin-check", () => {
   });
 
   test("a stray % in a Markdown link stays as written", () => {
-    expect(renderMarkdown("/r", "docs/a.md", "[half](50%.md)")).toContain("docs/50%25.md");
+    expect(renderDocMarkdown("/r", "docs/a.md", "[half](50%.md)")).toContain("docs/50%25.md");
   });
 
   test("a task list wears no marker beside its read-only hw-check boxes", () => {
-    const html = renderMarkdown("/r", "docs/a.md", "- [ ] open\n- [x] done\n\nNext:\n\n- plain\n");
+    const html = renderDocMarkdown(
+      "/r",
+      "docs/a.md",
+      "- [ ] open\n- [x] done\n\nNext:\n\n- plain\n",
+    );
     expect(html.match(/hw-marker-list/g)).toHaveLength(1);
     expect(html).toContain('<ul>\n<li class="task-list-item">');
     expect(
@@ -857,20 +860,20 @@ describe("admin-check", () => {
 
   test("each task box is named by its own line, tight, nested or loose", () => {
     const box = '<input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly';
-    const tight = renderMarkdown("/r", "docs/a.md", "- [x] done **now**\n  - [ ] nested\n");
+    const tight = renderDocMarkdown("/r", "docs/a.md", "- [x] done **now**\n  - [ ] nested\n");
     expect(tight).toContain(
       `<label>${box} disabled checked>done <strong>now</strong></label>\n<ul>`,
     );
     expect(tight).toContain(`<label>${box} disabled>nested</label></li>`);
-    const loose = renderMarkdown("/r", "docs/a.md", "- [ ] loose\n\n  more\n\n- [x] next\n");
+    const loose = renderDocMarkdown("/r", "docs/a.md", "- [ ] loose\n\n  more\n\n- [x] next\n");
     expect(loose).toContain(`<p><label>${box} disabled>loose</label></p>\n<p>more</p>`);
-    const quote = renderMarkdown("/r", "docs/a.md", "- [ ] see\n  > quoted\n");
+    const quote = renderDocMarkdown("/r", "docs/a.md", "- [ ] see\n  > quoted\n");
     expect(quote).toContain(`<label>${box} disabled>see</label>\n<blockquote`);
-    const wrapped = renderMarkdown("/r", "docs/a.md", "- [ ] a [link\n  **b**](x.md) end\n");
+    const wrapped = renderDocMarkdown("/r", "docs/a.md", "- [ ] a [link\n  **b**](x.md) end\n");
     expect(wrapped).toContain("</strong></a> end</label>");
-    const fence = renderMarkdown("/r", "docs/a.md", "- [ ] run\n  ```\n  x\n  ```\n");
+    const fence = renderDocMarkdown("/r", "docs/a.md", "- [ ] run\n  ```\n  x\n  ```\n");
     expect(fence).toContain(`<label>${box} disabled>run</label>\n<pre`);
-    const mermaid = renderMarkdown(
+    const mermaid = renderDocMarkdown(
       "/r",
       "docs/a.md",
       "- [ ] check diagram\n  ```mermaid\n  flowchart LR\n    a --> b\n  ```\n",
@@ -881,7 +884,7 @@ describe("admin-check", () => {
 
 describe("hub", () => {
   test("front matter is a leading YAML mapping; a leading rule stays in the doc", () => {
-    const html = (text: string) => renderMarkdown("/r", "docs/a.md", text);
+    const html = (text: string) => renderDocMarkdown("/r", "docs/a.md", text);
     expect(html("---\n\nintro\n\n---\n\nrest\n")).toContain("intro");
     expect(html("---\ntitle: x\n---\n\nrest\n")).not.toContain("title");
   });
@@ -918,7 +921,7 @@ describe("hub", () => {
     const table = (head: string) => `| ${head} | B |\n| - | - |\n| 1 | 2 |\n\n`;
     const text = `${table("A **b**")}${table("A b")}## Prices\n\n${table("x")}${table("y")}<H3>Raw "q" &amp; <i>it</i></H3>\n\n${table("z")}# Next\n\n| |\n|-|\n|1|\n\n## Prices\n\n${table("w")}`;
     const ours = [
-      ...dom(renderMarkdown("/r", "docs/a.md", text)).querySelectorAll(".hw-table-scroll"),
+      ...dom(renderDocMarkdown("/r", "docs/a.md", text)).querySelectorAll(".hw-table-scroll"),
     ].map((w) => w.getAttribute("aria-label"));
     const root: Hast = {
       type: "root",
@@ -939,7 +942,7 @@ describe("hub", () => {
     ]);
     expect(
       [
-        ...dom(renderMarkdown("/r", "docs/a.md", "| |\n|-|\n|1|\n")).querySelectorAll(
+        ...dom(renderDocMarkdown("/r", "docs/a.md", "| |\n|-|\n|1|\n")).querySelectorAll(
           ".hw-table-scroll",
         ),
       ].map((w) => w.getAttribute("aria-label")),
@@ -947,7 +950,7 @@ describe("hub", () => {
   });
 
   test("a table holding another leaves the wrapper to the inner one", () => {
-    const html = renderMarkdown(
+    const html = renderDocMarkdown(
       "/r",
       "docs/a.md",
       "<table><tr><td><table><tr><td>in</td></tr></table></td><td>x</td></tr></table>\n",
@@ -956,7 +959,7 @@ describe("hub", () => {
     expect(html).toContain("</table></div></td>");
     // A raw table keeps its own attributes.
     expect(
-      renderMarkdown("/r", "docs/a.md", '<table class="x"><tr><td>a</td></tr></table>\n'),
+      renderDocMarkdown("/r", "docs/a.md", '<table class="x"><tr><td>a</td></tr></table>\n'),
     ).toContain(
       '<div class="hw-table-scroll" tabindex="0" role="region" aria-label="a"><table class="x">',
     );
@@ -1281,7 +1284,7 @@ describe("repository data", () => {
   });
 
   test("headings with attributes name tables and code blocks retain their own styling", () => {
-    const html = renderMarkdown(
+    const html = renderDocMarkdown(
       "/r",
       "docs/guide.md",
       '<h2 id="sizes">Paint  sizes</h2>\n\n<table><tr><th id="size">Size</th></tr><tr><td>10</td></tr></table>\n\n`one`\n\n```text\ntwo\n```',
@@ -1296,7 +1299,7 @@ describe("repository data", () => {
 
 describe("pages", () => {
   test("a relative link's decoded query or fragment writes no markup", () => {
-    const html = renderMarkdown(
+    const html = renderDocMarkdown(
       "/r",
       "docs/x.md",
       `<p>href="x?&#60;a href=javascript:alert(1)&#62;c&#60;/a&#62;"</p>\n\n` +
@@ -1304,11 +1307,11 @@ describe("pages", () => {
     );
     expect(html).not.toMatch(/<a |' onerror/);
     // A named entity in the fragment keeps the character it names.
-    expect(renderMarkdown("/r", "docs/x.md", `<a href="x.md#a&quot;b">r</a>`)).toContain(
+    expect(renderDocMarkdown("/r", "docs/x.md", `<a href="x.md#a&quot;b">r</a>`)).toContain(
       'href="file:///r/docs/x.md#a&quot;b"',
     );
     // An address or a fragment behind a leading space stays as written, as a browser reads it.
-    const lead = renderMarkdown(
+    const lead = renderDocMarkdown(
       "/r",
       "docs/x.md",
       `<a href="&#32;https://a.test/">a</a><a href="&#9;#t">t</a>`,
@@ -1317,7 +1320,7 @@ describe("pages", () => {
     expect(lead).toContain('href="&#9;#t"');
     // A browser reads &AMP;, &LT;, &GT; and &QUOT; as their lower-case names, and &Amp; or &APOS;
     // as text.
-    const upper = renderMarkdown(
+    const upper = renderDocMarkdown(
       "/r",
       "docs/x.md",
       `<a href="q&AMP;a.md">q</a><img src="x&Amp;y.png"><a href="b&APOS;c.md">b</a>`,
