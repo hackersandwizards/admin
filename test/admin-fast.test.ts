@@ -3,7 +3,8 @@ import { dirname, join } from "node:path";
 import { Window, type Element as DomEl, type Node as DomNode } from "happy-dom";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { tableScroll as brandTableScroll } from "@hackersandwizards/brand/elements/table.ts";
-import { needsGraph, needsGraphItems, siteData } from "../src/build.ts";
+import { needsGraph, needsGraphItems } from "../src/needs-graph.ts";
+import { siteData } from "../src/site-data.ts";
 import * as diagrams from "../src/diagrams.ts";
 import {
   compareItems,

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { relative, dirname } from "node:path/posix";
-import type { Page, SiteData, ViewItem } from "../../src/build.ts";
+import type { Page, SiteData, ViewItem } from "../../src/site-data.ts";
 
 export type { Page, SiteData, ViewItem };
 import { dueSoon } from "../../src/items.ts";

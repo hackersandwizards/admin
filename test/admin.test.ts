@@ -3,7 +3,8 @@ import { cpSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { dirname, join, resolve } from "node:path";
 import { Window } from "happy-dom";
 import { peerDependenciesMeta } from "../package.json";
-import { PAGE_TYPES, script, siteData } from "../src/build.ts";
+import { script } from "../src/build.ts";
+import { PAGE_TYPES, siteData } from "../src/site-data.ts";
 import { findRepos } from "../src/hub.ts";
 import { parseItem } from "../src/items.ts";
 import { fetchedAt, treeSource } from "../src/git.ts";

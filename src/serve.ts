@@ -7,14 +7,13 @@ import {
   buildCatalog,
   buildSite,
   filesUnder,
-  firstWord,
   PKG,
   SHELL,
   shelled,
   shellPath,
-  siteData,
   writeSiteData,
 } from "./build.ts";
+import { firstWord, siteData } from "./site-data.ts";
 import elements from "../brand-elements.json";
 import { findRepos, uniqueKeys } from "./hub.ts";
 import { isPlainReportName } from "./items.ts";

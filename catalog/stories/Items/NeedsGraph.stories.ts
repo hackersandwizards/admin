@@ -1,5 +1,5 @@
 import NeedsGraph from "../../../site/src/components/NeedsGraph.astro";
-import { needsGraphItems } from "../../../src/build";
+import { needsGraphItems } from "../../../src/needs-graph";
 import { items, page, site } from "../../story";
 
 export default { component: NeedsGraph };

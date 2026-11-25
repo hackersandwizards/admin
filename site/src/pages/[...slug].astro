@@ -5,7 +5,8 @@ import ItemRow from "../components/ItemRow.astro";
 import NeedsGraph from "../components/NeedsGraph.astro";
 import WhoFilter from "../components/WhoFilter.astro";
 import Waiting from "../components/Waiting.astro";
-import { needsGraphItems, SHELL } from "../../../src/build";
+import { SHELL } from "../../../src/build";
+import { needsGraphItems } from "../../../src/needs-graph";
 import { reportBody, reportKey } from "../report";
 import { compareItems, imagesOf, isPlainReportName } from "../../../src/items.ts";
 import {

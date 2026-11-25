@@ -25,7 +25,8 @@ import {
   type HTMLInputElement as DomInput,
   type HTMLTextAreaElement as DomTextArea,
 } from "happy-dom";
-import { buildSite, script, siteData } from "../../src/build.ts";
+import { buildSite, script } from "../../src/build.ts";
+import { siteData } from "../../src/site-data.ts";
 import { uniqueKeys } from "../../src/hub.ts";
 import { when } from "../../src/display.ts";
 import { treeSource } from "../../src/git.ts";
