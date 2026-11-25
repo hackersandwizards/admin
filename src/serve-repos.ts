@@ -11,10 +11,8 @@ export const errorMessageOf = (e: unknown) => (e as Error).message ?? String(e);
 
 export type RepoSnapshot = { state: string; data: RepoData };
 export type ReadFailure = { state: string; at: number; message: string };
-export type RepoMemory = { read?: RepoSnapshot; failed?: ReadFailure };
-export type RepoReadAction = "keep" | "defer" | "read";
 export type UnreadNotice = { name: string; message: string; hasLastRead: boolean };
-export type RepoProbe = {
+type RepoProbe = {
   states: (readonly [string, string])[];
   key: string;
   due: boolean;
@@ -44,10 +42,12 @@ export function siteStateKey(states: readonly (readonly [string, string])[], now
   return [new Date(now).toDateString(), ...states.map(([p, s]) => `${p} ${s}`)].join("\n");
 }
 
-export function decideRepoRead(memory: RepoMemory, state: string, now: number): RepoReadAction {
-  if (memory.read?.state === state) return "keep";
-  if (memory.failed?.state === state && now - memory.failed.at < RETRY_MS) return "defer";
-  return "read";
+export function isReadDeferred(
+  failed: ReadFailure | undefined,
+  state: string,
+  now: number,
+): boolean {
+  return failed?.state === state && now - failed.at < RETRY_MS;
 }
 
 // The first request waits for the search; a later one keeps the last result while the next
@@ -134,17 +134,17 @@ class RepoStore implements RepoCache {
         return [p, state] as const;
       }),
     );
-    const now = Date.now();
+    const key = siteStateKey(states, Date.now());
     // Back at the state of its last read, a failed read since then no longer applies.
     for (const [p, s] of states) if (this.#read.get(p)?.state === s) this.#unread.delete(p);
-    const due = [...this.#unread.values()].some((u) => now - u.at >= RETRY_MS);
-    return { states, key: siteStateKey(states, now), due };
+    const due = [...this.#unread.values()].some((u) => Date.now() - u.at >= RETRY_MS);
+    return { states, key, due };
   }
 
   // A repository that fails to read keeps its last pages, or is left out.
   async #loadOne(p: string, s: string): Promise<{ data: RepoData | undefined; fresh: boolean }> {
     const had = this.#read.get(p);
-    if (decideRepoRead({ read: had, failed: this.#unread.get(p) }, s, Date.now()) !== "read")
+    if (had?.state === s || isReadDeferred(this.#unread.get(p), s, Date.now()))
       return { data: had?.data, fresh: false };
     const result = await attemptRepoRead(p, this.#readOne);
     if (result.ok) {

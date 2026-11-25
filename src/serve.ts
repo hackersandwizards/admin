@@ -16,6 +16,7 @@ import {
   parseRequest,
 } from "./serve-http.ts";
 import {
+  createDocFiller,
   createPageDecorator,
   extractShells,
   formatNotice,
@@ -36,30 +37,22 @@ import { firstWord, siteData } from "./site-data.ts";
 export type ServeOptions = { root: string; rescanMs?: number };
 
 export class BuildError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "BuildError";
-  }
+  override readonly name = "Error";
 }
 
 export type BuildFailure = {
   key: string;
   at: number;
   message: string;
-  isBuildError: boolean;
+  error: Error;
 };
 
-export type SiteBuildAction = "reuse" | "rethrow" | "build";
-
-export function decideSiteBuild(
-  current: { siteKey?: string; failed?: BuildFailure },
-  target: { key: string; fresh: boolean },
+export function isBuildDeferred(
+  failed: BuildFailure | undefined,
+  key: string,
   now: number,
-): SiteBuildAction {
-  if (current.siteKey === target.key && !target.fresh) return "reuse";
-  if (current.failed?.key === target.key && now - current.failed.at < RETRY_MS && !target.fresh)
-    return current.siteKey !== undefined ? "reuse" : "rethrow";
-  return "build";
+): boolean {
+  return failed?.key === key && now - failed.at < RETRY_MS;
 }
 
 export async function loadSiteForFile(
@@ -116,10 +109,21 @@ async function rebuildSite(key: string, repos: RepoData[], you: string | undefin
     const links = linker(repos);
     const shells = extractShells(files, data.pages, links);
     const docs = indexDocs(repos);
-    return { key, built: Date.now(), files, repos, links, shells, docs, filled: new Map() };
+    const docPage = createDocFiller(shells, docs, links);
+    return { key, built: Date.now(), files, repos, docs, docPage };
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
+}
+
+function recordBuildFailure(key: string, error: unknown): BuildFailure {
+  const message = errorMessageOf(error);
+  return {
+    key,
+    at: Date.now(),
+    message,
+    error: error instanceof BuildError ? new BuildError(message) : new Error(message),
+  };
 }
 
 export function createSiteStore(
@@ -132,29 +136,30 @@ export function createSiteStore(
   // page what went wrong.
   let failed: BuildFailure | undefined;
 
-  async function refresh(): Promise<Site> {
-    const { states, key, due } = await repoCache.probe(await listRepos());
-    if (site?.key === key && !due) return site;
-    const { repos, fresh } = await repoCache.load(states);
-    const action = decideSiteBuild({ siteKey: site?.key, failed }, { key, fresh }, Date.now());
-    if (action === "reuse") return site!;
-    if (action === "rethrow") {
-      throw failed!.isBuildError ? new BuildError(failed!.message) : new Error(failed!.message);
-    }
+  async function runBuild(key: string, repos: RepoData[]): Promise<Site> {
     try {
       site = await build(key, uniqueKeys(repos));
       failed = undefined;
     } catch (e) {
       console.error(e);
-      failed = {
-        key,
-        at: Date.now(),
-        message: errorMessageOf(e),
-        isBuildError: e instanceof BuildError,
-      };
+      failed = recordBuildFailure(key, e);
       if (!site) throw e;
     }
     return site;
+  }
+
+  async function refresh(): Promise<Site> {
+    const { states, key, due } = await repoCache.probe(await listRepos());
+    if (site?.key === key && !due) return site;
+    const { repos, fresh } = await repoCache.load(states);
+    if (!fresh) {
+      if (site?.key === key) return site;
+      if (isBuildDeferred(failed, key, Date.now())) {
+        if (site) return site;
+        throw failed!.error;
+      }
+    }
+    return runBuild(key, repos);
   }
 
   function buildFailure(): BuildNotice | undefined {
@@ -190,12 +195,12 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const checked = parseRequest(req);
     if ("response" in checked) return checked.response;
     const { request } = checked;
-    return (
+    const response =
       astroAssetRoute(request, siteStore.current(), responder) ??
-      (await fileRoute(request)) ??
-      (await catalogRoute(request)) ??
-      (await pageRoute(request))
-    );
+      fileRoute(request) ??
+      catalogRoute(request) ??
+      pageRoute(request);
+    return await response;
   }
 
   return { fetch, pages };

@@ -2,7 +2,7 @@ import elements from "../brand-elements.json";
 import { policy } from "../site/src/data.ts";
 import { THUMB_BOXES } from "./display.ts";
 import { fileEtag, readRepoFile, resizeThumbnail } from "./serve-files.ts";
-import { fillDocPage, rewriteMissingPage, type PageDecorator, type Site } from "./serve-pages.ts";
+import { rewriteMissingPage, type PageDecorator, type Site } from "./serve-pages.ts";
 
 const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
 
@@ -10,10 +10,10 @@ const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
 // write and no committed markup from a repository, so it gets brand-elements.json "csp" alone,
 // which brand-elements and brand-markers render the catalog under; every other page policy() in
 // site/src/data.ts, which only the site's own build under /_astro/ may run.
-export const catalogCsp = elements.csp;
+const catalogCsp = elements.csp;
 export const csp = (origin: string) => `${policy(`${origin}/_astro/`)}; frame-ancestors 'self'`;
 
-export const IMMUTABLE = "public, max-age=31536000, immutable";
+const IMMUTABLE = "public, max-age=31536000, immutable";
 
 export type ParsedRequest = {
   url: URL;
@@ -22,7 +22,7 @@ export type ParsedRequest = {
   ifNoneMatch: string | null;
 };
 
-export type RequestCheck = { request: ParsedRequest } | { response: Response };
+type RequestCheck = { request: ParsedRequest } | { response: Response };
 
 export type PageMatch =
   | { kind: "strip-slash" }
@@ -31,7 +31,7 @@ export type PageMatch =
   | { kind: "dashboard" }
   | { kind: "missing" };
 
-export interface Responder {
+interface Responder {
   page(parsed: ParsedRequest, body: Buffer, name: string): Response;
   immutable(parsed: ParsedRequest, body: Buffer, name: string): Response;
   catalog(parsed: ParsedRequest, body: Buffer, name: string): Response;
@@ -150,14 +150,18 @@ export function createFileRoute(
   responder: Responder,
   readFile: (repo: string | undefined, path: string) => Promise<Buffer | undefined> = readRepoFile,
 ) {
-  return async function handleFile(parsed: ParsedRequest): Promise<Response | undefined> {
-    if (!parsed.path.startsWith("/_file/")) return undefined;
+  async function serve(parsed: ParsedRequest): Promise<Response> {
     const site = await ensureSite();
     const [repoKey, ...rest] = parsed.path.slice("/_file/".length).split("/");
     const repo = site?.repos.find((r) => r.key === repoKey)?.path;
     const body = await readFile(repo, rest.join("/"));
     if (!body) return new Response("not committed", { status: 404 });
     return serveRepoFile(parsed, body, responder);
+  }
+
+  return function handleFile(parsed: ParsedRequest): Promise<Response> | undefined {
+    if (!parsed.path.startsWith("/_file/")) return undefined;
+    return serve(parsed);
   };
 }
 
@@ -167,10 +171,7 @@ export function createCatalogRoute(
 ) {
   let catalog: Promise<Map<string, Buffer>> | undefined;
 
-  return async function handleCatalog(parsed: ParsedRequest): Promise<Response | undefined> {
-    const { path, url } = parsed;
-    if (path === "/catalog") return Response.redirect(`${url.origin}/catalog/${url.search}`, 302);
-    if (!path.startsWith("/catalog/")) return undefined;
+  async function serve(parsed: ParsedRequest): Promise<Response> {
     // A failed build answers with its reason until the hub restarts, rather than building again
     // on every request.
     const built = await (catalog ??= loadCatalog()).catch((e: Error) => e);
@@ -179,11 +180,18 @@ export function createCatalogRoute(
         `${built.message}: the catalog builds with astrobook and @hackersandwizards/scaffolding installed beside this package; install them and restart admin-serve`,
         { status: 503 },
       );
-    const name = path.slice("/catalog/".length).replace(/\/$/, "");
+    const name = parsed.path.slice("/catalog/".length).replace(/\/$/, "");
     const at = [name, name ? `${name}/index.html` : "index.html"].find((n) => built.has(n));
     return at
       ? responder.catalog(parsed, built.get(at)!, at)
       : new Response("no such page", { status: 404 });
+  }
+
+  return function handleCatalog(parsed: ParsedRequest): Response | Promise<Response> | undefined {
+    const { path, url } = parsed;
+    if (path === "/catalog") return Response.redirect(`${url.origin}/catalog/${url.search}`, 302);
+    if (!path.startsWith("/catalog/")) return undefined;
+    return serve(parsed);
   };
 }
 
@@ -234,11 +242,7 @@ export function createPageRoute(
       return responder.page(parsed, body, match.at);
     }
     if (match.kind === "doc")
-      return responder.page(
-        parsed,
-        decorator.withNotice(fillDocPage(built, match.name)!),
-        "doc.html",
-      );
+      return responder.page(parsed, decorator.withNotice(built.docPage(match.name)!), "doc.html");
     if (match.kind === "dashboard")
       return Response.redirect(
         `${url.origin}${url.pathname.replace(/\/$/, "")}/dashboard${url.search}`,
@@ -247,13 +251,15 @@ export function createPageRoute(
     return missingResponse(parsed, built);
   }
 
-  return async function handlePage(parsed: ParsedRequest): Promise<Response> {
-    const built = await loadSite().catch((e: Error) => e);
-    if (built instanceof Error)
-      return new Response(
-        `The hub could not build its pages: ${built.message}. It tries again a minute later, or once a repository changes.`,
-        { status: 503 },
-      );
-    return respondForMatch(parsed, built, matchSitePage(parsed.path, built.files, built.docs));
+  return function handlePage(parsed: ParsedRequest): Promise<Response> {
+    return loadSite().then(
+      (built) =>
+        respondForMatch(parsed, built, matchSitePage(parsed.path, built.files, built.docs)),
+      (e: Error) =>
+        new Response(
+          `The hub could not build its pages: ${e.message}. It tries again a minute later, or once a repository changes.`,
+          { status: 503 },
+        ),
+    );
   };
 }

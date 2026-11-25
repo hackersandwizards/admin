@@ -9,22 +9,20 @@ import { docSlug, encodeFile, encodePath, fileHref } from "./repo-paths.ts";
 import type { UnreadNotice } from "./serve-repos.ts";
 import type { Page } from "./site-data.ts";
 
-export type Linker = ReturnType<typeof linker>;
+type Linker = ReturnType<typeof linker>;
 
 export type Site = {
   key: string;
   built: number;
-  files: Map<string, Buffer>;
-  repos: RepoData[];
-  links: Linker;
+  files: ReadonlyMap<string, Buffer>;
+  repos: readonly RepoData[];
   // A doc page's path to its doc, each repository's shells by their paths, and the doc pages
   // filled so far.
-  docs: Map<string, { repo: RepoData; doc: Doc | Report }>;
-  shells: Map<string, string>;
-  filled: Map<string, Buffer>;
+  docs: ReadonlyMap<string, { repo: RepoData; doc: Doc | Report }>;
+  docPage(name: string): Buffer | undefined;
 };
 
-export type DocTarget = { name: string; repoKey: string; doc: Doc | Report };
+type DocTarget = { name: string; repoKey: string; doc: Doc | Report };
 export type BuildNotice = { at: number; message: string; builtAt?: number };
 
 export interface PageDecorator {
@@ -123,16 +121,23 @@ export function renderDocShell(shell: string, target: DocTarget, links: Linker):
 }
 
 // A doc page, its doc filled into the shell for its depth, once per build.
-export function fillDocPage(site: Site, name: string): Buffer | undefined {
-  const hit = site.docs.get(name);
-  if (!hit) return undefined;
-  const done = site.filled.get(name);
-  if (done) return done;
-  const { repo, doc } = hit;
-  const shell = site.shells.get(shellPath(`${repo.key}/`, name.split("/").length))!;
-  const page = Buffer.from(renderDocShell(shell, { name, repoKey: repo.key, doc }, site.links));
-  site.filled.set(name, page);
-  return page;
+export function createDocFiller(
+  shells: ReadonlyMap<string, string>,
+  docs: ReadonlyMap<string, { repo: RepoData; doc: Doc | Report }>,
+  links: Linker,
+) {
+  const filled = new Map<string, Buffer>();
+  return function docPage(name: string): Buffer | undefined {
+    const hit = docs.get(name);
+    if (!hit) return undefined;
+    const done = filled.get(name);
+    if (done) return done;
+    const { repo, doc } = hit;
+    const shell = shells.get(shellPath(`${repo.key}/`, name.split("/").length))!;
+    const page = Buffer.from(renderDocShell(shell, { name, repoKey: repo.key, doc }, links));
+    filled.set(name, page);
+    return page;
+  };
 }
 
 // An address no page answers: the hub's own 404 page, its relative addresses made absolute so
