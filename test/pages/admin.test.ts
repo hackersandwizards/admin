@@ -189,7 +189,7 @@ describe("pages", () => {
         /<details[^>]*data-group[^>]*>[\s\S]*?<\/details>/,
       );
       expect(disclosure).not.toBeNull();
-      expect(disclosure![0]).not.toMatch(/^<details[^>]*\bopen\b/);
+      expect(agentsSection![0]).not.toMatch(/<details[^>]*data-group[^>]* open/);
       expect(disclosure![0]).toContain("Sort the sample files");
     });
 
@@ -497,7 +497,7 @@ describe("pages", () => {
       expect(repoSection).not.toBeNull();
       const topByRepo = [
         ...repoSection![0].matchAll(
-          /<tr data-row data-repo-row="([^"]+)">[\s\S]*?<td class="max-w-md max-sm:hidden">([^<]*)<\/td>/g,
+          /<tr data-row data-repo-row="([^"]+)">(?:(?!<\/tr>)[\s\S])*?<td class="max-w-md max-sm:hidden">([^<]*)<\/td>/g,
         ),
       ].map(([, key, title]) => [key, title]);
       expect(topByRepo).toEqual([
