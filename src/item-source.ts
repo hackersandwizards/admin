@@ -25,11 +25,11 @@ export function classifyItemPath(path: string): ItemPathKind {
 
 export function loadItemFile(
   id: string,
-  text: string,
+  read: () => string | undefined,
   exists: (path: string) => boolean,
 ): { item?: Item; defects: string[] } {
   try {
-    const item = parseItem(id, text);
+    const item = parseItem(id, read() ?? "");
     return { item: usable(item), defects: itemDefects(item, exists) };
   } catch (e) {
     if (!(e instanceof ItemError)) throw e;
@@ -99,10 +99,12 @@ export function readItems(src: Source): ReadItems {
       defects.push(`${p}: only <id>.md files and <id>/<image> belong in ${ITEMS_DIR}`);
       continue;
     }
-    const loaded = loadItemFile(entry.id, src.read(p) ?? "", exists);
+    const loaded = loadItemFile(entry.id, () => src.read(p), exists);
     for (const d of loaded.defects) defects.push(`${p}: ${d}`);
     if (loaded.item) items.push(loaded.item);
   }
-  defects.push(...legacyPathDefects(src.paths), ...needsGraphDefects(items));
-  return { items, defects };
+  return {
+    items,
+    defects: defects.concat(legacyPathDefects(src.paths), needsGraphDefects(items)),
+  };
 }

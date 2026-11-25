@@ -76,7 +76,7 @@ export function parseNeeds(raw: unknown): { value: string[] | undefined; defects
   const value: string[] = [];
   const defects: string[] = [];
   const seen = new Set<string>();
-  for (const [i, id] of raw.entries()) {
+  (raw as unknown[]).forEach((id, i) => {
     if (typeof id !== "string") {
       defects.push(`needs entry ${i + 1} must be a string. Use an item id`);
     } else {
@@ -85,7 +85,7 @@ export function parseNeeds(raw: unknown): { value: string[] | undefined; defects
         defects.push(`needs has duplicate item ${JSON.stringify(id)}. Remove entry ${i + 1}`);
       else seen.add(id);
     }
-  }
+  });
   return { value, defects };
 }
 

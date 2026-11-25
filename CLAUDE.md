@@ -54,7 +54,8 @@ sits only where the text it answers is on screen: in the opened row, never on a 
 Chrome tests. The full gate runs them as `browser-test`. Both suites use Vitest with Bun and read the
 gate's `SCAFFOLDING_TEST_TIMEOUT_MS`.
 
-`bun run mutation` runs `test/admin-fast.test.ts` and the property tests against the item,
+`bun run mutation` runs `test/admin-fast.test.ts`, `test/items.test.ts`, `test/item-validation.test.ts`,
+`test/item-source.test.ts` and the property tests against the item, item validation,
 repository, repository key, path and site data modules listed in `stryker.config.mjs`. It runs outside the gate and writes
 `.stryker-reports/mutation.json`.
 

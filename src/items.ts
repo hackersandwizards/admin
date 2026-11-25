@@ -103,33 +103,31 @@ export const dueSoon = (due: string | undefined, now = Date.now()) => {
   return !!due && due <= last.toLocaleDateString("sv-SE");
 };
 
-type RankedItem = Item & { changed?: number };
+export type RankedItem = Item & { changed?: number };
+export type RankKey = readonly [number, string, number, number, string, number, string];
 const AFTER_LAST_DAY = "9999-12-32";
-const soonDue = (item: RankedItem) => (dueSoon(item.due) ? item.due! : AFTER_LAST_DAY);
 
-const ITEM_RANK_CRITERIA: readonly {
-  name: string;
-  compare: (a: RankedItem, b: RankedItem) => number;
-}[] = [
-  { name: "priority", compare: (a, b) => (a.priority ?? 9) - (b.priority ?? 9) },
-  { name: "dueSoon", compare: (a, b) => soonDue(a).localeCompare(soonDue(b)) },
-  {
-    name: "nonWorkFirst",
-    compare: (a, b) => Number(a.kind === "work") - Number(b.kind === "work"),
-  },
-  { name: "order", compare: (a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) },
-  {
-    name: "due",
-    compare: (a, b) => (a.due ?? AFTER_LAST_DAY).localeCompare(b.due ?? AFTER_LAST_DAY),
-  },
-  { name: "latestChange", compare: (a, b) => (b.changed ?? 0) - (a.changed ?? 0) },
-  { name: "id", compare: (a, b) => a.id.localeCompare(b.id) },
-];
+export function itemRankKey(item: RankedItem): RankKey {
+  const soon = dueSoon(item.due) ? item.due! : AFTER_LAST_DAY;
+  return [
+    item.priority ?? 9,
+    soon,
+    Number(item.kind === "work"),
+    item.order ?? 1e9,
+    item.due ?? AFTER_LAST_DAY,
+    0 - (item.changed ?? 0),
+    item.id,
+  ];
+}
 
-export function compareItems(a: RankedItem, b: RankedItem) {
-  for (const { compare } of ITEM_RANK_CRITERIA) {
-    const diff = compare(a, b);
-    if (diff !== 0) return diff;
+export function compareItems(a: RankedItem, b: RankedItem): number {
+  const left = itemRankKey(a);
+  const right = itemRankKey(b);
+  for (let i = 0; i < left.length; i++) {
+    const l = left[i]!;
+    const r = right[i]!;
+    const diff = typeof l === "number" ? l - (r as number) : l.localeCompare(r as string);
+    if (diff) return diff;
   }
   return 0;
 }

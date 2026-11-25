@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { Item } from "../src/items.ts";
+import { ItemError, type Item } from "../src/items.ts";
 import {
   classifyItemPath,
   legacyPathDefects,
@@ -27,55 +27,77 @@ describe("classifyItemPath", () => {
 });
 
 describe("loadItemFile", () => {
+  const emptyFields = {
+    area: undefined,
+    assumption: undefined,
+    by: undefined,
+    decision: undefined,
+    due: undefined,
+    evidence: undefined,
+    images: undefined,
+    needs: undefined,
+    options: undefined,
+    order: undefined,
+    owner: undefined,
+    priority: undefined,
+    quote: undefined,
+    recommended: undefined,
+    topic: undefined,
+  };
+
   test.each([
     {
       label: "valid goal file",
       id: "goal",
-      text: "---\nkind: goal\nstatus: open\n---\n# Goal",
+      read: () => "---\nkind: goal\nstatus: open\n---\n# Goal",
       expected: {
-        item: {
-          id: "goal",
-          kind: "goal",
-          status: "open",
-          title: "Goal",
-          body: "",
-          area: undefined,
-          assumption: undefined,
-          by: undefined,
-          decision: undefined,
-          due: undefined,
-          evidence: undefined,
-          images: undefined,
-          needs: undefined,
-          options: undefined,
-          order: undefined,
-          owner: undefined,
-          priority: undefined,
-          quote: undefined,
-          recommended: undefined,
-          topic: undefined,
-        },
+        item: { ...emptyFields, id: "goal", kind: "goal", status: "open", title: "Goal", body: "" },
         defects: [],
+      },
+    },
+    {
+      label: "malformed field returning normalized item and defect",
+      id: "odd",
+      read: () => "---\nkind: goal\nstatus: open\norder: soon\n---\n# Odd",
+      expected: {
+        item: { ...emptyFields, id: "odd", kind: "goal", status: "open", title: "Odd", body: "" },
+        defects: ["order soon"],
       },
     },
     {
       label: "file with parse error",
       id: "bad",
-      text: "No frontmatter",
+      read: () => "No frontmatter",
       expected: { defects: ["no frontmatter between --- lines"] },
     },
-  ])("loads $label", ({ id, text, expected }) => {
-    expect(loadItemFile(id, text, () => true)).toEqual(expected);
+    {
+      label: "unreadable file returning undefined",
+      id: "missing",
+      read: () => undefined,
+      expected: { defects: ["no frontmatter between --- lines"] },
+    },
+    {
+      label: "reader throwing ItemError",
+      id: "broken",
+      read: () => {
+        throw new ItemError("invalid encoding");
+      },
+      expected: { defects: ["invalid encoding"] },
+    },
+  ])("loads $label", ({ id, read, expected }) => {
+    expect(loadItemFile(id, read, () => true)).toEqual(expected);
   });
 
-  test("returns both normalized item and field defects when frontmatter has malformed values", () => {
-    const result = loadItemFile(
-      "odd",
-      "---\nkind: goal\nstatus: open\norder: soon\n---\n# Odd",
-      () => true,
-    );
-    expect(result.item?.order).toBeUndefined();
-    expect(result.defects).toEqual(["order soon"]);
+  test("rethrows non-ItemError failures from the reader", () => {
+    expect(() =>
+      loadItemFile(
+        "boom",
+        () => {
+          throw new Error("disk full");
+        },
+        () => true,
+      ),
+    ).toThrow("disk full");
   });
 });
 

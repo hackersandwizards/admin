@@ -236,6 +236,8 @@ describe("topicDefects", () => {
 });
 
 describe("parseNeeds", () => {
+  const sparse: unknown[] = new Array(2);
+  sparse[1] = "a";
   test.each([
     ["absent needs", undefined, { value: undefined, defects: [] }],
     [
@@ -243,6 +245,7 @@ describe("parseNeeds", () => {
       "check",
       { value: undefined, defects: ["needs must be a list. Use a list of item ids"] },
     ],
+    ["sparse list skipping holes", sparse, { value: ["a"], defects: [] }],
     [
       "list with non-string and duplicate entries",
       ["a", 42, "a"],

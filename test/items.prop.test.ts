@@ -14,35 +14,56 @@ const work: Item = {
 };
 const id = fc.nat().map((n) => `item-${n}`);
 
-const itemMarkdownParts = fc.record({
-  id,
-  owner: unicodeString,
-  heading: unicodeString,
-  body: unicodeString,
+const renderItemFile = (item: Item) => ({
+  id: item.id,
+  text: `---\nkind: ${item.kind}\nstatus: ${item.status}\npriority: ${item.priority}\nowner: ${JSON.stringify(item.owner)}\n---\n\n# ${item.title}\n\n${item.body}\n`,
+  expected: { ...item, title: item.title.trim(), body: item.body.trim() },
 });
 
-test.prop([itemMarkdownParts], {
+const itemFileCase = fc
+  .record({
+    id,
+    owner: unicodeString,
+    title: unicodeString.map((heading) => `Draft ${heading.replace(/[\r\n]/g, " ")}`),
+    body: unicodeString,
+  })
+  .map((fields) => renderItemFile({ ...work, ...fields }));
+
+test.prop([itemFileCase], {
   examples: [
-    [{ id: "draft", owner: "", heading: "", body: "" }],
-    [{ id: "constructor", owner: "__proto__", heading: "é", body: "Line 1\n---\nLine 2" }],
-    [{ id: "tostring", owner: "字".repeat(1024), heading: "e\u0301", body: "🧪".repeat(1024) }],
-    [{ id: "title", owner: "", heading: "\u2028!", body: "" }],
-    [{ id: "title", owner: "Alex", heading: "Before\u2029after", body: "" }],
+    [renderItemFile({ ...work, id: "draft", owner: "", title: "Draft ", body: "" })],
+    [
+      renderItemFile({
+        ...work,
+        id: "constructor",
+        owner: "__proto__",
+        title: "Draft é",
+        body: "Line 1\n---\nLine 2",
+      }),
+    ],
+    [
+      renderItemFile({
+        ...work,
+        id: "tostring",
+        owner: "字".repeat(1024),
+        title: "Draft e\u0301",
+        body: "🧪".repeat(1024),
+      }),
+    ],
+    [renderItemFile({ ...work, id: "title", owner: "", title: "Draft \u2028!", body: "" })],
+    [
+      renderItemFile({
+        ...work,
+        id: "title",
+        owner: "Alex",
+        title: "Draft Before\u2029after",
+        body: "",
+      }),
+    ],
   ],
-})(
-  "item text round-trips its frontmatter, heading and body",
-  ({ id: itemId, owner, heading, body }) => {
-    const title = `Draft ${heading.replace(/[\r\n]/g, " ")}`;
-    const text = `---\nkind: work\nstatus: open\npriority: 2\nowner: ${JSON.stringify(owner)}\n---\n\n# ${title}\n\n${body}\n`;
-    expect(parseItem(itemId, text)).toEqual({
-      ...work,
-      id: itemId,
-      owner,
-      title: title.trim(),
-      body: body.trim(),
-    });
-  },
-);
+})("item text round-trips its frontmatter, heading and body", (fileCase) => {
+  expect(parseItem(fileCase.id, fileCase.text)).toEqual(fileCase.expected);
+});
 
 test.prop([id, unicodeString], {
   examples: [
@@ -98,57 +119,106 @@ test.prop([optionKey, unicodeString], {
   ]);
 });
 
-const bareItemImage = fc.record({
-  itemId: id,
-  group: optionKey,
-  file: unicodeString.map((name) => `${name.replaceAll("/", "_")}.png`),
-  caption: unicodeString,
+const imageCasesFor = ({
+  itemId,
+  group,
+  src,
+  resolved,
+  caption,
+}: {
+  itemId: string;
+  group: string;
+  src: string;
+  resolved: string;
+  caption: string;
+}) => ({
+  absent: { item: { ...work, id: itemId }, expected: { "": [] } },
+  plainList: {
+    item: { ...work, id: itemId, images: [src] },
+    expected: { "": [{ src: resolved }] },
+  },
+  captionedList: {
+    item: { ...work, id: itemId, images: [{ src, caption }] },
+    expected: { "": [{ src: resolved, caption }] },
+  },
+  plainGroup: {
+    item: { ...work, id: itemId, images: { [group]: src } },
+    expected: { [group]: [{ src: resolved }] },
+  },
+  captionedGroup: {
+    item: { ...work, id: itemId, images: { [group]: { src, caption } } },
+    expected: { [group]: [{ src: resolved, caption }] },
+  },
 });
 
-test.prop([bareItemImage], {
+const bareImageCase = fc
+  .record({
+    itemId: id,
+    group: optionKey,
+    src: unicodeString.map((name) => `${name.replaceAll("/", "_")}.png`),
+    caption: unicodeString,
+  })
+  .map((entry) =>
+    imageCasesFor({ ...entry, resolved: `${ITEMS_DIR}/${entry.itemId}/${entry.src}` }),
+  );
+
+test.prop([bareImageCase], {
   examples: [
-    [{ itemId: "draft", group: "__proto__", file: ".png", caption: "" }],
     [
-      {
+      imageCasesFor({
+        itemId: "draft",
+        group: "__proto__",
+        src: ".png",
+        resolved: `${ITEMS_DIR}/draft/.png`,
+        caption: "",
+      }),
+    ],
+    [
+      imageCasesFor({
         itemId: "draft",
         group: "toString",
-        file: `${"字".repeat(1024)}.png`,
+        src: `${"字".repeat(1024)}.png`,
+        resolved: `${ITEMS_DIR}/draft/${"字".repeat(1024)}.png`,
         caption: "字".repeat(1024),
-      },
+      }),
+    ],
+  ],
+})("bare image filenames resolve under the item folder in list and option-key forms", (entry) => {
+  expect(imagesOf(entry.absent.item)).toEqual(entry.absent.expected);
+  expect(imagesOf(entry.plainList.item)).toEqual(entry.plainList.expected);
+  expect(imagesOf(entry.captionedList.item)).toEqual(entry.captionedList.expected);
+  expect(imagesOf(entry.plainGroup.item)).toEqual(entry.plainGroup.expected);
+  expect(imagesOf(entry.captionedGroup.item)).toEqual(entry.captionedGroup.expected);
+});
+
+const repoImageCase = fc
+  .record({
+    itemId: id,
+    group: optionKey,
+    src: fc.tuple(unicodeString, unicodeString).map(([dir, file]) => `${dir}/${file}.png`),
+    caption: unicodeString,
+  })
+  .map((entry) => imageCasesFor({ ...entry, resolved: entry.src }));
+
+test.prop([repoImageCase], {
+  examples: [
+    [
+      imageCasesFor({
+        itemId: "draft",
+        group: "constructor",
+        src: "é/私.png",
+        resolved: "é/私.png",
+        caption: "é/私",
+      }),
     ],
   ],
 })(
-  "bare image filenames resolve under the item folder for plain and captioned entries",
-  ({ itemId, group, file, caption }) => {
-    const resolved = `${ITEMS_DIR}/${itemId}/${file}`;
-    expect(imagesOf({ ...work, id: itemId })).toEqual({ "": [] });
-    expect(imagesOf({ ...work, id: itemId, images: [file] })).toEqual({
-      "": [{ src: resolved }],
-    });
-    expect(imagesOf({ ...work, id: itemId, images: { [group]: { src: file, caption } } })).toEqual({
-      [group]: [{ src: resolved, caption }],
-    });
-  },
-);
-
-const repoItemImage = fc.record({
-  itemId: id,
-  group: optionKey,
-  path: fc.tuple(unicodeString, unicodeString).map(([dir, file]) => `${dir}/${file}.png`),
-  caption: unicodeString,
-});
-
-test.prop([repoItemImage], {
-  examples: [[{ itemId: "draft", group: "constructor", path: "é/私.png", caption: "é/私" }]],
-})(
-  "image paths containing a slash stay relative to the repository root",
-  ({ itemId, group, path, caption }) => {
-    expect(imagesOf({ ...work, id: itemId, images: [path] })).toEqual({
-      "": [{ src: path }],
-    });
-    expect(imagesOf({ ...work, id: itemId, images: { [group]: { src: path, caption } } })).toEqual({
-      [group]: [{ src: path, caption }],
-    });
+  "image paths containing a slash stay relative to the repository root in list and option-key forms",
+  (entry) => {
+    expect(imagesOf(entry.plainList.item)).toEqual(entry.plainList.expected);
+    expect(imagesOf(entry.captionedList.item)).toEqual(entry.captionedList.expected);
+    expect(imagesOf(entry.plainGroup.item)).toEqual(entry.plainGroup.expected);
+    expect(imagesOf(entry.captionedGroup.item)).toEqual(entry.captionedGroup.expected);
   },
 );
 
@@ -158,24 +228,39 @@ const calendarDay = fc.record({
   day: fc.integer({ min: 1, max: 31 }),
 });
 
-test.prop([calendarDay, fc.integer({ min: -365, max: 365 })], {
-  examples: [
-    [{ year: 2011, month: 11, day: 23 }, 8],
-    [{ year: 2024, month: 1, day: 22 }, 7],
-    [{ year: 2024, month: 1, day: 22 }, 8],
-    [{ year: 2026, month: 2, day: 27 }, 7],
-    [{ year: 2026, month: 9, day: 31 }, 8],
-    [{ year: 2026, month: 11, day: 31 }, -1],
-  ],
-})("due soon includes local calendar days through the seventh day", (today, offset) => {
+const dueCheckAt = (
+  today: { year: number; month: number; day: number },
+  offset: number,
+  expected: boolean,
+) => {
   const now = new Date(today.year, today.month, today.day, 23, 59);
-  const civilDay = (date: Date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
-  const dueDay = civilDay(now) + offset * 86_400_000;
-  const due = new Date(dueDay).toISOString().slice(0, 10);
-  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7, 23, 59);
-  expect(dueSoon(due, now.getTime())).toBe(dueDay <= civilDay(cutoff));
-  expect(dueSoon(undefined, now.getTime())).toBe(false);
-  expect(dueSoon("", now.getTime())).toBe(false);
+  const civilDay = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const due = new Date(civilDay + offset * 86_400_000).toISOString().slice(0, 10);
+  return { now: now.getTime(), due, expected };
+};
+
+const dueWindowCase = fc.oneof(
+  fc
+    .tuple(calendarDay, fc.integer({ min: -365, max: 7 }))
+    .map(([today, offset]) => dueCheckAt(today, offset, true)),
+  fc
+    .tuple(calendarDay, fc.integer({ min: 8, max: 365 }))
+    .map(([today, offset]) => dueCheckAt(today, offset, false)),
+);
+
+test.prop([dueWindowCase], {
+  examples: [
+    [dueCheckAt({ year: 2011, month: 11, day: 23 }, 8, false)],
+    [dueCheckAt({ year: 2024, month: 1, day: 22 }, 7, true)],
+    [dueCheckAt({ year: 2024, month: 1, day: 22 }, 8, false)],
+    [dueCheckAt({ year: 2026, month: 2, day: 27 }, 7, true)],
+    [dueCheckAt({ year: 2026, month: 9, day: 31 }, 8, false)],
+    [dueCheckAt({ year: 2026, month: 11, day: 31 }, -1, true)],
+  ],
+})("due soon includes local calendar days through the seventh day", (windowCase) => {
+  expect(dueSoon(windowCase.due, windowCase.now)).toBe(windowCase.expected);
+  expect(dueSoon(undefined, windowCase.now)).toBe(false);
+  expect(dueSoon("", windowCase.now)).toBe(false);
 });
 
 test.prop([fc.integer({ min: 1, max: 100 }), fc.nat(), fc.integer({ min: 0, max: 9999 })], {

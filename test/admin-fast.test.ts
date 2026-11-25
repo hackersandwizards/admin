@@ -84,41 +84,47 @@ describe("needs graph", () => {
   test("the fixture draws every needs edge and distinguishes ready, waiting, and settled items", async () => {
     const { items, needsSvg } = await fixture();
     const graph = graphDocument(needsSvg);
-    const connected = needsGraphItems(items);
-    const idOf = (nodeId: string) => connected[Number(nodeId.slice(1))]!.id;
+    expect(needsGraphItems(items).map((item) => item.id)).toEqual([
+      "pick-a-variant",
+      "work-wire-the-gate",
+      "check-the-copy",
+      "name-the-command",
+      "cache-folder",
+      "goal",
+    ]);
     const nodes = [...graph.querySelectorAll(".node")].map((node) => {
       const rect = node.querySelector("rect")!;
       return {
-        id: idOf(node.getAttribute("data-id")!),
+        id: node.getAttribute("data-id"),
         shape: node.getAttribute("data-shape"),
         ratio: Number(rect.getAttribute("rx")) / (Number(rect.getAttribute("height")) / 2),
       };
     });
     const anyNumber: unknown = expect.any(Number);
     expect(nodes).toEqual([
-      { id: "pick-a-variant", shape: "stadium", ratio: 1 },
-      { id: "work-wire-the-gate", shape: "rectangle", ratio: 0 },
-      { id: "check-the-copy", shape: "rectangle", ratio: 0 },
-      { id: "name-the-command", shape: "rounded", ratio: anyNumber },
-      { id: "cache-folder", shape: "rounded", ratio: anyNumber },
-      { id: "goal", shape: "stadium", ratio: 1 },
+      { id: "n0", shape: "stadium", ratio: 1 },
+      { id: "n1", shape: "rectangle", ratio: 0 },
+      { id: "n2", shape: "rectangle", ratio: 0 },
+      { id: "n3", shape: "rounded", ratio: anyNumber },
+      { id: "n4", shape: "rounded", ratio: anyNumber },
+      { id: "n5", shape: "stadium", ratio: 1 },
     ]);
     const roundedRatios = [nodes[3]!.ratio, nodes[4]!.ratio];
     expect(Math.min(...roundedRatios)).toBeGreaterThan(0);
     expect(Math.max(...roundedRatios)).toBeLessThan(1);
     const edges = [...graph.querySelectorAll(".edge")].map((edge) => ({
-      from: idOf(edge.getAttribute("data-from")!),
-      to: idOf(edge.getAttribute("data-to")!),
+      from: edge.getAttribute("data-from"),
+      to: edge.getAttribute("data-to"),
       style: edge.getAttribute("data-style"),
       dashed: edge.hasAttribute("stroke-dasharray"),
     }));
     expect(edges).toEqual([
-      { from: "check-the-copy", to: "work-wire-the-gate", style: "solid", dashed: false },
-      { from: "cache-folder", to: "work-wire-the-gate", style: "dotted", dashed: true },
-      { from: "name-the-command", to: "work-wire-the-gate", style: "dotted", dashed: true },
-      { from: "pick-a-variant", to: "check-the-copy", style: "solid", dashed: false },
-      { from: "goal", to: "name-the-command", style: "solid", dashed: false },
-      { from: "pick-a-variant", to: "cache-folder", style: "solid", dashed: false },
+      { from: "n2", to: "n1", style: "solid", dashed: false },
+      { from: "n4", to: "n1", style: "dotted", dashed: true },
+      { from: "n3", to: "n1", style: "dotted", dashed: true },
+      { from: "n0", to: "n2", style: "solid", dashed: false },
+      { from: "n5", to: "n3", style: "solid", dashed: false },
+      { from: "n0", to: "n4", style: "solid", dashed: false },
     ]);
   });
 
