@@ -30,6 +30,10 @@ export class MemoryStorage implements StorageLike {
     return [...this.#entries.keys()][index] ?? null;
   }
 
+  keys(): string[] {
+    return [...this.#entries.keys()];
+  }
+
   get length(): number {
     return this.#entries.size;
   }
@@ -37,7 +41,7 @@ export class MemoryStorage implements StorageLike {
 
 const DENIED = new Set(["QuotaExceededError", "SecurityError"]);
 
-function isStorageError(error: unknown): boolean {
+export function isStorageError(error: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -45,6 +49,16 @@ function isStorageError(error: unknown): boolean {
     typeof error.name === "string" &&
     DENIED.has(error.name)
   );
+}
+
+export function storageKeys(storage: StorageLike): string[] {
+  if (storage instanceof MemoryStorage) return storage.keys();
+  const keys: string[] = [];
+  for (let i = 0; i < storage.length; i++) {
+    const k = storage.key(i);
+    if (k !== null) keys.push(k);
+  }
+  return keys;
 }
 
 export function browserStorage(host: { readonly localStorage: StorageLike } = window): StorageLike {
@@ -94,13 +108,17 @@ export function parseJson(raw: string | null): unknown {
   }
 }
 
-export function parseRecord(raw: string | null): Record<string, string> {
-  const parsed = parseJson(raw);
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(parsed))
-    if (typeof value === "string") out[key] = value;
-  return out;
+// Absent or empty storage holds an empty map; invalid or non-object JSON returns null so callers
+// can stop without overwriting corrupt history. Valid objects keep all of their entries as stored.
+export function parseRecord(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 // Keys of this browser's own state beside the answers.
@@ -116,7 +134,7 @@ export interface AdminStore {
   setText(key: string, value: string): boolean;
   remove(key: string): boolean;
   readJson(key: string): unknown;
-  readRecord(key: string): Record<string, string>;
+  readRecord(key: string): Record<string, unknown> | null;
   writeJson(key: string, value: unknown): boolean;
   copiedAt(): string;
 }
@@ -126,14 +144,10 @@ export function createStore(storage: StorageLike, prefix: string): AdminStore {
   const isAnswerKey = (fullKey: string | null): boolean =>
     Boolean(fullKey) && fullKey!.startsWith(prefix) && !own.has(fullKey!);
 
-  const answerIds = (): string[] => {
-    const ids: string[] = [];
-    for (let i = 0; i < storage.length; i++) {
-      const fullKey = storage.key(i);
-      if (isAnswerKey(fullKey)) ids.push(fullKey!.slice(prefix.length));
-    }
-    return ids;
-  };
+  const answerIds = (): string[] =>
+    storageKeys(storage)
+      .filter(isAnswerKey)
+      .map((fullKey) => fullKey.slice(prefix.length));
 
   return {
     prefix,

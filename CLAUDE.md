@@ -16,12 +16,14 @@ exported file is a release whose commit names the change.
 - `bin/`: the two commands. `src/`: item format and check (`items.ts`), reading a repository at
   HEAD or from the working tree (`repo.ts`), the hub's repository search (`hub.ts`), page data and
   the Astro build (`build.ts`), the hub's server (`serve.ts`).
-- `site/`: the Astro site the build renders, brand's components and elements, and the shell's own
-  layout (`site/src/layout.css`).
+- `site/`: the Astro site the build renders, brand's components and elements, the shell's own
+  layout (`site/src/layout.css`), and the browser scripts (`site/src/theme.js` and
+  `site/src/admin.js` with its `storage.ts`, `time.ts`, `visits.ts`, `answer-rules.ts`,
+  `answers.ts`, `filter-rules.ts`, `repos.ts`, `filters.ts` and `reveal.ts` modules).
 - `catalog/`: the catalog of the site's pages and components on the invented fixture, in
   scaffolding's catalog shell (`catalog()` preset); its address on the hub is in `docs/hub.md`.
   `bun run catalog` serves it live at http://127.0.0.1:4332/ (restart it after editing
-  `site/src/admin.js`, bundled at start), `bun run build` writes it to `dist/catalog/`. Every component and page type has a story, guarded by `admin.test.ts`.
+  `site/src/admin.js` or the modules it imports, bundled at start), `bun run build` writes it to `dist/catalog/`. Every component and page type has a story, guarded by `admin.test.ts`.
   `bun run dev` runs the hub (`admin-serve`) on 4329. `brand-elements.json` lists the brand
   elements the site uses and the ones it keeps, and holds the catalog's Content-Security-Policy
   (`csp`), which `serve.ts` sends for the catalog and `policy()` in `site/src/data.ts` extends for the

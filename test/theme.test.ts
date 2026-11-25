@@ -43,7 +43,7 @@ describe("theme.js", () => {
     expect(window.document.documentElement.dataset.theme).toBe(expected);
   });
 
-  test("applies the system dark default before propagating an unexpected storage error", () => {
+  test("propagates unexpected storage errors without mutating the document theme", () => {
     const window = makeWindow("dark");
     Object.defineProperty(window, "localStorage", {
       get: () => {
@@ -51,14 +51,20 @@ describe("theme.js", () => {
       },
     });
     expect(() => evaluate(window, themeScript)).toThrow("storage getter broken");
-    expect(window.document.documentElement.dataset.theme).toBe("dark");
+    expect(window.document.documentElement.dataset.theme).toBeUndefined();
   });
 
-  test("restores the initial light attribute when stored theme overrides a dark system", () => {
+  test("stored light choice on a dark system never writes data-theme", () => {
     const window = makeWindow("dark");
-    window.document.documentElement.dataset.theme = "light";
     window.localStorage.setItem("theme", "light");
+    const observer = new window.MutationObserver(() => {});
+    observer.observe(window.document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
     evaluate(window, themeScript);
-    expect(window.document.documentElement.dataset.theme).toBe("light");
+    expect(observer.takeRecords()).toEqual([]);
+    expect(window.document.documentElement.dataset.theme).toBeUndefined();
+    observer.disconnect();
   });
 });

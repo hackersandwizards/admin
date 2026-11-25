@@ -1,0 +1,311 @@
+import { describe, expect, test } from "vitest";
+import {
+  assumptionsText,
+  changedSinceText,
+  classifyRow,
+  decodeHash,
+  describeHiddenRepos,
+  goneItemNotice,
+  hiddenRepoMatchesClause,
+  isRowAway,
+  loadHiddenRepos,
+  matchesPerson,
+  matchesSearchAndKind,
+  noMatchSentence,
+  otherPeopleMatchesClause,
+  pluralCount,
+  type ActiveFilters,
+  type RowFilterInfo,
+} from "../site/src/filter-rules.ts";
+
+describe("pluralCount and repository summaries", () => {
+  test.each([
+    { n: 0, one: "item", many: undefined, expected: "0 items" },
+    { n: 1, one: "item", many: undefined, expected: "1 item" },
+    { n: 2, one: "repository", many: "repositories", expected: "2 repositories" },
+    { n: 1, one: "repository", many: "repositories", expected: "1 repository" },
+  ])("pluralCount($n, $one)", ({ n, one, many, expected }) => {
+    expect(pluralCount(n, one, many)).toBe(expected);
+  });
+
+  test.each([
+    { label: "known array entries", stored: ["alpha", "unknown", 5], expected: ["alpha"] },
+    { label: "single string entry", stored: "beta", expected: ["beta"] },
+    { label: "null value", stored: null, expected: [] },
+  ])("loadHiddenRepos filters $label", ({ stored, expected }) => {
+    expect([...loadHiddenRepos(stored, ["alpha", "beta"])]).toEqual(expected);
+  });
+
+  test.each([
+    {
+      label: "none hidden",
+      names: [],
+      total: 3,
+      expected: { summary: "", hideShowAll: true, hideHideAll: false, countText: "3" },
+    },
+    {
+      label: "one hidden",
+      names: ["Alpha"],
+      total: 3,
+      expected: {
+        summary: "1 repository hidden: Alpha.",
+        hideShowAll: false,
+        hideHideAll: false,
+        countText: "2 of 3",
+      },
+    },
+    {
+      label: "all hidden",
+      names: ["Alpha", "Beta"],
+      total: 2,
+      expected: {
+        summary: "2 repositories hidden: Alpha, Beta.",
+        hideShowAll: false,
+        hideHideAll: true,
+        countText: "0 of 2",
+      },
+    },
+  ])("describeHiddenRepos handles $label", ({ names, total, expected }) => {
+    expect(describeHiddenRepos(names, total)).toEqual(expected);
+  });
+});
+
+describe("row visibility classification", () => {
+  const hiddenRepos = new Set(["alpha"]);
+
+  test.each([
+    {
+      label: "row in hidden repo",
+      row: { repo: "alpha", isTarget: false },
+      expected: true,
+    },
+    {
+      label: "target row in hidden repo stays visible",
+      row: { repo: "alpha", isTarget: true },
+      expected: false,
+    },
+    {
+      label: "row in visible repo",
+      row: { repo: "beta", isTarget: false },
+      expected: false,
+    },
+  ])("isRowAway returns $expected for $label", ({ row, expected }) => {
+    expect(isRowAway(row, hiddenRepos)).toBe(expected);
+  });
+
+  test.each([
+    {
+      label: "matching person in visible repo",
+      row: { who: "Kim", repo: "beta", isTarget: false },
+      person: "Kim",
+      expected: true,
+    },
+    {
+      label: "unowned row matches any person",
+      row: { who: "", repo: "beta", isTarget: false },
+      person: "Kim",
+      expected: true,
+    },
+    {
+      label: "other person does not match",
+      row: { who: "Sam", repo: "beta", isTarget: false },
+      person: "Kim",
+      expected: false,
+    },
+    {
+      label: "null person filter accepts any visible repo row",
+      row: { who: "Sam", repo: "beta", isTarget: false },
+      person: null,
+      expected: true,
+    },
+    {
+      label: "hidden repo row rejected even with null person filter",
+      row: { who: "Kim", repo: "alpha", isTarget: false },
+      person: null,
+      expected: false,
+    },
+  ])("matchesPerson returns $expected for $label", ({ row, person, expected }) => {
+    expect(matchesPerson(row, person, hiddenRepos)).toBe(expected);
+  });
+
+  const baseRow: RowFilterInfo = {
+    who: "Sam",
+    kind: "decision",
+    repo: "beta",
+    isTarget: false,
+    text: "pick a variant",
+  };
+  const baseFilters: ActiveFilters = {
+    person: "Kim",
+    kind: "all",
+    term: "variant",
+    hiddenRepos,
+  };
+
+  test.each([
+    {
+      label: "matching term and all kinds",
+      row: baseRow,
+      filters: baseFilters,
+      expected: true,
+    },
+    {
+      label: "empty term and matching kind",
+      row: baseRow,
+      filters: { ...baseFilters, term: "", kind: "decision" },
+      expected: true,
+    },
+    {
+      label: "kindless row matches specific kind filter",
+      row: { ...baseRow, kind: "" },
+      filters: { ...baseFilters, kind: "work" },
+      expected: true,
+    },
+    {
+      label: "non-matching term",
+      row: baseRow,
+      filters: { ...baseFilters, term: "logo" },
+      expected: false,
+    },
+    {
+      label: "non-matching kind",
+      row: baseRow,
+      filters: { ...baseFilters, kind: "work" },
+      expected: false,
+    },
+  ])("matchesSearchAndKind returns $expected for $label", ({ row, filters, expected }) => {
+    expect(matchesSearchAndKind(row, filters)).toBe(expected);
+  });
+
+  test.each([
+    {
+      label: "matches active filters",
+      row: { ...baseRow, who: "Kim" },
+      filters: baseFilters,
+      expected: "shown",
+    },
+    {
+      label: "other person hit counted as elsewhere",
+      row: baseRow,
+      filters: baseFilters,
+      expected: "elsewhere",
+    },
+    {
+      label: "hidden repo hit counted as unseen",
+      row: { ...baseRow, who: "Kim", repo: "alpha" },
+      filters: baseFilters,
+      expected: "unseen",
+    },
+    {
+      label: "wrong kind is hidden even with matching term",
+      row: { ...baseRow, kind: "work" },
+      filters: { ...baseFilters, kind: "decision" },
+      expected: "hidden",
+    },
+    {
+      label: "other person without search term is simply hidden",
+      row: baseRow,
+      filters: { ...baseFilters, term: "" },
+      expected: "hidden",
+    },
+  ])("classifyRow: $label", ({ row, filters, expected }) => {
+    expect(classifyRow(row, filters)).toBe(expected);
+  });
+});
+
+describe("filter sentences and fragment navigation", () => {
+  test.each([
+    { count: 1, expected: "1 assumption agents made" },
+    { count: 3, expected: "3 assumptions agents made" },
+  ])("assumptionsText($count)", ({ count, expected }) => {
+    expect(assumptionsText(count)).toBe(expected);
+  });
+
+  const morning = new Date(2026, 0, 5, 9, 15).getTime();
+
+  test.each([
+    { count: 0, expected: "" },
+    {
+      count: 1,
+      expected: "1 item on this page changed since your last visit, 5 Jan at 09:15.",
+    },
+    {
+      count: 2,
+      expected: "2 items on this page changed since your last visit, 5 Jan at 09:15.",
+    },
+  ])("changedSinceText($count)", ({ count, expected }) => {
+    expect(changedSinceText(count, morning)).toBe(expected);
+  });
+
+  test.each([
+    { count: 0, expected: "" },
+    { count: 1, expected: "; 1 row of other people does: choose All to see it" },
+    { count: 2, expected: "; 2 rows of other people do: choose All to see them" },
+  ])("otherPeopleMatchesClause($count)", ({ count, expected }) => {
+    expect(otherPeopleMatchesClause(count)).toBe(expected);
+  });
+
+  test.each([
+    { count: 0, expected: "" },
+    { count: 1, expected: "; 1 row in hidden repositories does" },
+    { count: 3, expected: "; 3 rows in hidden repositories do" },
+  ])("hiddenRepoMatchesClause($count)", ({ count, expected }) => {
+    expect(hiddenRepoMatchesClause(count)).toBe(expected);
+  });
+
+  test.each([
+    {
+      label: "unfiltered query",
+      term: "logo",
+      person: null,
+      hidden: { elsewhere: 0, unseen: 0 },
+      expected: "No row on this page matches “logo”.",
+    },
+    {
+      label: "person filter with singular elsewhere",
+      term: "logo",
+      person: "Kim",
+      hidden: { elsewhere: 1, unseen: 0 },
+      expected:
+        "No row for Kim on this page matches “logo”; 1 row of other people does: choose All to see it.",
+    },
+    {
+      label: "plural elsewhere and plural unseen",
+      term: "logo",
+      person: "Kim",
+      hidden: { elsewhere: 2, unseen: 3 },
+      expected:
+        "No row for Kim on this page matches “logo”; 2 rows of other people do: choose All to see them; 3 rows in hidden repositories do.",
+    },
+    {
+      label: "singular unseen only",
+      term: "logo",
+      person: null,
+      hidden: { elsewhere: 0, unseen: 1 },
+      expected: "No row on this page matches “logo”; 1 row in hidden repositories does.",
+    },
+  ])("noMatchSentence formats $label", ({ term, person, hidden, expected }) => {
+    expect(noMatchSentence(term, person, hidden)).toBe(expected);
+  });
+
+  test.each([
+    { hash: "#alpha:pick-one", expected: "alpha:pick-one" },
+    { hash: "#alpha:item%20one", expected: "alpha:item one" },
+    { hash: "#%E0%A4%A", expected: "" },
+  ])("decodeHash($hash)", ({ hash, expected }) => {
+    expect(decodeHash(hash)).toBe(expected);
+  });
+
+  test.each([
+    { fragment: "alpha:gone", found: true, expected: "" },
+    { fragment: "heading-only", found: false, expected: "" },
+    {
+      fragment: "alpha:gone",
+      found: false,
+      expected:
+        "alpha:gone is no longer open: it was settled or finished, and its file is gone. Its history: git log --all -- docs/agent-work/items/gone.md in alpha.",
+    },
+  ])("goneItemNotice($fragment, $found)", ({ fragment, found, expected }) => {
+    expect(goneItemNotice(fragment, found)).toBe(expected);
+  });
+});

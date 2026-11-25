@@ -991,6 +991,10 @@ describe("admin.js", () => {
         key: () => null,
       },
     });
+    const errors: string[] = [];
+    window.addEventListener("error", (event) => {
+      errors.push((event as unknown as { error: Error }).error.message);
+    });
     window.document.write(
       readForDom(join(out, "index.html")).replace(/<script[^>]*><\/script>/g, ""),
     );
@@ -998,13 +1002,88 @@ describe("admin.js", () => {
     const toggle = window.document.querySelector("[data-admin-theme]") as DomButton;
     toggle.click();
     expect(window.document.documentElement.dataset.theme).toBe("dark");
-    const errors: string[] = [];
-    window.addEventListener("error", (event) => {
-      errors.push((event as unknown as { error: Error }).error.message);
-    });
+    expect(errors).toEqual([]);
     failWith = new window.TypeError("unexpected write failure");
     toggle.click();
     expect(errors).toEqual(["unexpected write failure"]);
+  });
+
+  test("a full store stops visit bookkeeping when saving before fails", () => {
+    const window = new Window({ url: "http://admin.localhost/index" });
+    opened.push(window);
+    const oldSeen = String(Date.now() - 2 * 36e5);
+    const deferred = JSON.stringify({ later: true, note: "", at: "2026-01-01T10:00:00.000Z" });
+    const backing = window.localStorage;
+    backing.setItem("admin-answers:seen", oldSeen);
+    backing.setItem("admin-answers:who", "Kim");
+    backing.setItem("admin-answers:versions", "{}");
+    backing.setItem("admin-answers:spoke:pick-a-logo", deferred);
+    const writes = [
+      (k: string, v: string) => backing.setItem(k, v),
+      () => {
+        throw new window.DOMException("quota full", "QuotaExceededError");
+      },
+    ];
+    let step = 0;
+    Object.defineProperty(window, "localStorage", {
+      value: {
+        get length() {
+          return backing.length;
+        },
+        getItem: (k: string) => backing.getItem(k),
+        setItem: (k: string, v: string) => writes[step++]!(k, v),
+        removeItem: (k: string) => backing.removeItem(k),
+        key: (i: number) => backing.key(i),
+      },
+    });
+    window.document.write(
+      readForDom(join(out, "index.html")).replace(/<script[^>]*><\/script>/g, ""),
+    );
+    evaluate(window, code);
+    expect(backing.getItem("admin-answers:who")).toBe("Kim");
+    expect(backing.getItem("admin-answers:seen")).toBe(oldSeen);
+    expect(backing.getItem("admin-answers:spoke:pick-a-logo")).toBe(deferred);
+    expect(window.document.querySelectorAll("[data-updated]:not([hidden])").length).toBe(0);
+  });
+
+  test("corrupt visit history stops bookkeeping without overwriting versions or marking rows", () => {
+    const oldSeen = String(Date.now() - 2 * 36e5);
+    const page = open("index", {
+      "admin-answers:seen": oldSeen,
+      "admin-answers:who": "Kim",
+      "admin-answers:versions": "{broken",
+    });
+    expect(stored(page)["admin-answers:versions"]).toBe("{broken");
+    expect(stored(page)["admin-answers:seen"]).toBe(oldSeen);
+    expect(stored(page)["admin-answers:who"]).toBe("Kim");
+    expect(page.document.querySelectorAll("[data-updated]:not([hidden])").length).toBe(0);
+  });
+
+  test("filtering without a search term does not clone rows", () => {
+    const window = new Window({ url: "http://admin.localhost/index" });
+    opened.push(window);
+    window.document.write(
+      readForDom(join(out, "index.html")).replace(/<script[^>]*><\/script>/g, ""),
+    );
+    const cloneSpy = vi.spyOn(window.HTMLElement.prototype, "cloneNode");
+    evaluate(window, code);
+    (window.document.querySelector('[data-kind-button="decision"]') as DomButton).click();
+    expect(cloneSpy).not.toHaveBeenCalled();
+    const search = window.document.getElementById("admin-search") as DomInput;
+    search.value = "variant";
+    search.dispatchEvent(new window.Event("input"));
+    expect(cloneSpy).toHaveBeenCalled();
+  });
+
+  test("a stored non-string note loads as an empty field", () => {
+    const page = open("spoke/decisions", {
+      "admin-answers:spoke:check-the-copy": JSON.stringify({
+        note: 42,
+        at: "2026-01-01T12:00:00.000Z",
+      }),
+    });
+    const field = page.document.querySelector<DomTextArea>("#spoke\\:check-the-copy textarea")!;
+    expect(field.value).toBe("");
   });
 
   test("opening a variant image gives the dialog an accessible name before it opens", () => {
