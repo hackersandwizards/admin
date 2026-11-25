@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
+import { afterAll, assert, beforeAll, describe, expect, test, vi } from "vitest";
 import {
   cpSync,
   existsSync,
@@ -842,6 +842,42 @@ describe("pages", () => {
     },
     testTimeout(60_000),
   );
+
+  test(
+    "the header repository selector does not overlap the theme switch at 390 px and 360 px",
+    async () => {
+      const spoke = await readRepo(repoFrom("spoke"));
+      const out = join(scratch(), "out");
+      await buildSite(siteData([spoke]), out);
+      const executablePath = await chromeBinaryAsync();
+      assert(executablePath, INSTALL_HINT);
+      const browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
+      try {
+        const page = await browser.newPage();
+        const gapAt = async (rel: string, width: number) => {
+          await page.setViewport({ width, height: 844 });
+          await page.goto(`file://${join(out, rel)}`, { waitUntil: "load" });
+          await page.evaluate(() => document.fonts.ready);
+          const right = await page.$eval(
+            "[popovertarget=admin-repos]",
+            (el) => el.getBoundingClientRect().right,
+          );
+          const left = await page.$eval(
+            "[data-admin-theme]",
+            (el) => el.getBoundingClientRect().left,
+          );
+          return left - right;
+        };
+        expect(await gapAt("spoke/dashboard.html", 390)).toBeGreaterThanOrEqual(0);
+        expect(await gapAt("spoke/dashboard.html", 360)).toBeGreaterThanOrEqual(0);
+        expect(await gapAt("index.html", 390)).toBeGreaterThanOrEqual(0);
+        expect(await gapAt("index.html", 360)).toBeGreaterThanOrEqual(0);
+      } finally {
+        await browser.close();
+      }
+    },
+    testTimeout(60_000),
+  );
 });
 
 describe("admin.js", () => {
@@ -860,7 +896,7 @@ describe("admin.js", () => {
     if (!storage)
       Object.defineProperty(window, "localStorage", {
         get: () => {
-          throw new Error("SecurityError: site data blocked");
+          throw new window.DOMException("site data blocked", "SecurityError");
         },
       });
     for (const [k, v] of Object.entries(storage ?? {})) window.localStorage.setItem(k, v);
@@ -976,6 +1012,136 @@ describe("admin.js", () => {
     (row.querySelector(".clear") as DomElement).click();
     expect(row.querySelector(".mark")!.textContent).toBe("");
     expect(page.document.getElementById("copy")!.textContent).not.toContain("1 answer");
+  });
+
+  test("full storage keeps the theme switch working while unexpected write errors propagate", () => {
+    const window = new Window({ url: "http://admin.localhost/index" });
+    opened.push(window);
+    let failWith: Error = new window.DOMException("quota full", "QuotaExceededError");
+    Object.defineProperty(window, "localStorage", {
+      value: {
+        length: 0,
+        getItem: () => null,
+        setItem: () => {
+          throw failWith;
+        },
+        removeItem: () => {},
+        key: () => null,
+      },
+    });
+    const errors: string[] = [];
+    window.addEventListener("error", (event) => {
+      errors.push((event as unknown as { error: Error }).error.message);
+    });
+    window.document.write(
+      readForDom(join(out, "index.html")).replace(/<script[^>]*><\/script>/g, ""),
+    );
+    evaluate(window, code);
+    const toggle = window.document.querySelector("[data-admin-theme]") as DomButton;
+    toggle.click();
+    expect(window.document.documentElement.dataset.theme).toBe("dark");
+    expect(errors).toEqual([]);
+    failWith = new window.TypeError("unexpected write failure");
+    toggle.click();
+    expect(errors).toEqual(["unexpected write failure"]);
+  });
+
+  test("a full store stops visit bookkeeping when saving before fails", () => {
+    const window = new Window({ url: "http://admin.localhost/index" });
+    opened.push(window);
+    const oldSeen = String(Date.now() - 2 * 36e5);
+    const deferred = JSON.stringify({ later: true, note: "", at: "2026-01-01T10:00:00.000Z" });
+    const backing = window.localStorage;
+    backing.setItem("admin-answers:seen", oldSeen);
+    backing.setItem("admin-answers:who", "Kim");
+    backing.setItem("admin-answers:versions", "{}");
+    backing.setItem("admin-answers:spoke:pick-a-logo", deferred);
+    const attempted: string[] = [];
+    const writeByKey: Record<string, (k: string, v: string) => void> = {
+      "admin-answers:visit": (k, v) => backing.setItem(k, v),
+      "admin-answers:before": () => {
+        throw new window.DOMException("quota full", "QuotaExceededError");
+      },
+      "admin-answers:seen": (k, v) => backing.setItem(k, v),
+      "admin-answers:versions": (k, v) => backing.setItem(k, v),
+    };
+    const storageProto = {
+      get length() {
+        return backing.length;
+      },
+      getItem: (k: string) => backing.getItem(k),
+      setItem: (k: string, v: string) => {
+        attempted.push(k);
+        writeByKey[k]!(k, v);
+      },
+      removeItem: (k: string) => backing.removeItem(k),
+      key: (i: number) => backing.key(i),
+    };
+    const fakeStorage = Object.assign(Object.create(storageProto) as Record<string, string>, {
+      "admin-answers:seen": oldSeen,
+      "admin-answers:who": "Kim",
+      "admin-answers:versions": "{}",
+      "admin-answers:spoke:pick-a-logo": deferred,
+    });
+    Object.defineProperty(window, "localStorage", { value: fakeStorage });
+    window.document.write(
+      readForDom(join(out, "index.html")).replace(/<script[^>]*><\/script>/g, ""),
+    );
+    evaluate(window, code);
+    expect(attempted).toEqual(["admin-answers:visit", "admin-answers:before"]);
+    expect(
+      window.document
+        .querySelector('[data-who-button][aria-pressed="true"]')
+        ?.getAttribute("data-who-button"),
+    ).toBe("Kim");
+    expect(backing.getItem("admin-answers:seen")).toBe(oldSeen);
+    expect(backing.getItem("admin-answers:spoke:pick-a-logo")).toBe(deferred);
+    expect(window.document.querySelectorAll("[data-updated]:not([hidden])").length).toBe(0);
+  });
+
+  test("corrupt visit history stops bookkeeping without overwriting versions or marking rows", () => {
+    const oldSeen = String(Date.now() - 2 * 36e5);
+    const page = open("index", {
+      "admin-answers:seen": oldSeen,
+      "admin-answers:who": "Kim",
+      "admin-answers:versions": "{broken",
+    });
+    expect(stored(page)["admin-answers:versions"]).toBe("{broken");
+    expect(stored(page)["admin-answers:seen"]).toBe(oldSeen);
+    expect(stored(page)["admin-answers:who"]).toBe("Kim");
+    expect(page.document.querySelectorAll("[data-updated]:not([hidden])").length).toBe(0);
+  });
+
+  test("filtering without a search term does not clone rows", () => {
+    const window = new Window({ url: "http://admin.localhost/index" });
+    opened.push(window);
+    window.document.write(
+      readForDom(join(out, "index.html")).replace(/<script[^>]*><\/script>/g, ""),
+    );
+    const cloneSpy = vi.spyOn(window.HTMLElement.prototype, "cloneNode");
+    evaluate(window, code);
+    (window.document.querySelector('[data-kind-button="decision"]') as DomButton).click();
+    expect(cloneSpy).not.toHaveBeenCalled();
+    const search = window.document.getElementById("admin-search") as DomInput;
+    search.value = "variant";
+    search.dispatchEvent(new window.Event("input"));
+    expect(cloneSpy).toHaveBeenCalled();
+  });
+
+  test.each([
+    ["a falsy stored note loads as an empty field", 0, ""],
+    ["a numeric stored note loads as written", 42, "42"],
+  ])("%s", (_label, note, expected) => {
+    const page = open("spoke/decisions", {
+      "admin-answers:seen": String(Date.now()),
+      "admin-answers:spoke:check-the-copy": JSON.stringify({
+        later: true,
+        note,
+        at: "2026-01-01T12:00:00.000Z",
+      }),
+    });
+    const field = page.document.querySelector<DomTextArea>("#spoke\\:check-the-copy textarea")!;
+    expect(field.value).toBe(expected);
   });
 
   test("opening a variant image gives the dialog an accessible name before it opens", () => {

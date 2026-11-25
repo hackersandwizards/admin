@@ -46,7 +46,15 @@
     flex: none;
   }
   .admin-where li:last-child {
+    display: flex;
     flex: 0 1 auto;
+    align-items: center;
+    min-width: 0;
+  }
+  .admin-where li:last-child::before {
+    flex: none;
+  }
+  .admin-where li:last-child > button {
     min-width: 0;
   }
   .admin-main {

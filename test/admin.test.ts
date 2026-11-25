@@ -3,7 +3,7 @@ import { cpSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { dirname, join, resolve } from "node:path";
 import { Window } from "happy-dom";
 import { peerDependenciesMeta } from "../package.json";
-import { PAGE_TYPES, siteData } from "../src/build.ts";
+import { PAGE_TYPES, script, siteData } from "../src/build.ts";
 import { findRepos } from "../src/hub.ts";
 import { parseItem } from "../src/items.ts";
 import { fetchedAt, treeSource } from "../src/git.ts";
@@ -510,9 +510,9 @@ describe("pages", () => {
     ]);
   });
 
-  test("leaving a page asks nothing: answers are stored as they are typed", () => {
-    const script = readFileSync(join(import.meta.dirname, "../site/src/admin.js"), "utf8");
-    expect(script).not.toMatch(/beforeunload/);
+  test("leaving a page asks nothing: answers are stored as they are typed", async () => {
+    const theme = readFileSync(join(import.meta.dirname, "../site/src/theme.js"), "utf8");
+    expect(`${theme}\n${await script()}`).not.toMatch(/beforeunload/);
   });
 });
 

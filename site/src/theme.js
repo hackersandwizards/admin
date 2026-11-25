@@ -5,7 +5,9 @@
 let chosen = null;
 try {
   chosen = localStorage.getItem("theme");
-} catch {}
+} catch (error) {
+  if (error?.name !== "SecurityError") throw error;
+}
 const { adminCatalog, hwNight } = document.documentElement.dataset;
 if (
   (adminCatalog === undefined || hwNight !== undefined) &&
