@@ -79,7 +79,7 @@
     border-bottom: var(--hw-hairline, 1px) solid var(--color-border);
   }
   /* A row a link opens stops below the header and the copy bar. */
-  .admin-main :is(details[id], section[id]) {
+  .admin-main :is(details, section, h1, h2, h3, h4, h5, h6)[id] {
     scroll-margin-top: calc(var(--spacing-app-header) + 6rem);
   }
   .admin-lead {

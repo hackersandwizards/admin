@@ -5,7 +5,8 @@ import ItemRow from "../components/ItemRow.astro";
 import NeedsGraph from "../components/NeedsGraph.astro";
 import WhoFilter from "../components/WhoFilter.astro";
 import Waiting from "../components/Waiting.astro";
-import { needsGraphItems } from "../../../src/build";
+import { needsGraphItems, SHELL } from "../../../src/build";
+import { reportBody, reportKey } from "../report";
 import { compareItems, imagesOf } from "../../../src/items.ts";
 import {
   data,
@@ -22,6 +23,7 @@ import {
   repoOf,
   reviewsOf,
   thumbnail,
+  UPDATED,
   type Page,
 } from "../data";
 
@@ -87,8 +89,10 @@ const settled = hub
   : [];
 const repoAgentWork = agentWork(items);
 const byPriority = (list: typeof items, p: number) => list.filter((i) => i.priority === p).length;
-const doc =
-  page.article ?? (repo && [...repo.reports, ...repo.docs].find((x) => x.path === page.doc));
+const report = repo?.reports.find((r) => r.path === page.doc);
+const doc = page.article ?? report ?? repo?.docs.find((d) => d.path === page.doc);
+const topic = page.topic && report ? items.filter((i) => i.topic === report.stem) : [];
+const topicQuestions = openQuestions(topic);
 const product = repo && page.product !== undefined ? repo.products[page.product] : undefined;
 const pins = (r: NonNullable<typeof repo>) =>
   Object.entries(r.pkg.dependencies).filter(([name]) => name.startsWith("@hackersandwizards/"));
@@ -101,7 +105,7 @@ const answersAll = page.type === "decisions" || page.type === "hub";
 // A folder of docs this small opens; a larger one waits closed.
 const FOLDER_OPEN = 10;
 // Every page with answerable rows hands its answers over from where they were given.
-const answerable = answersAll || ["dashboard", "work", "reviews"].includes(page.type);
+const answerable = answersAll || !!report || ["dashboard", "work", "reviews"].includes(page.type);
 const leads: Partial<Record<Page["type"], string>> = {
   hub: "What waits on you across every repository, most urgent first; then what other people and agents carry, and what is settled.",
   "hub-architecture": "Which version of each h&w package every repository pins.",
@@ -128,23 +132,9 @@ const leads: Partial<Record<Page["type"], string>> = {
   provenance={page.type === "doc" || page.type === "missing" ? undefined : provenance}
   stamp={repo ? repo.fetched : Date.now()}
   answersAll={answersAll}
+  titleId={doc?.titleId}
+  action={page.article?.path === SHELL.path ? "shell" : answerable}
 >
-  {answerable && (
-    <Fragment slot="action">
-      <button id="copy" type="button" class="hw-button" data-hw-copy="">
-        Copy answers
-      </button>
-      <p class="min-w-0 flex-1 basis-48 text-ui">
-        <span id="state" role="status">
-          Your answers stay in this browser until you copy them.
-        </span>
-        <span class="block text-foreground/70 max-sm:hidden">
-          Paste them into a chat with an agent, which writes each into its repository.
-        </span>
-      </p>
-    </Fragment>
-  )}
-
   {page.type === "missing" && (
     <p class="text-ui">
       <a class="hw-link" href={link("index")}>
@@ -342,11 +332,20 @@ const leads: Partial<Record<Page["type"], string>> = {
           <h2 class="mb-2 font-mono font-semibold text-heading">Latest reports</h2>
           <ul class="flex flex-col gap-1 text-ui">
             {repo.reports.slice(0, 6).map((r) => (
-              <li data-row>
+              <li
+                data-row
+                data-report
+                data-k={reportKey(repo.key, r)}
+                data-changed={r.changed}
+                data-version={r.version}
+              >
                 <a class="hw-link" href={link(repo.prefix + docSlug(r.path))}>
                   {r.title}
                 </a>{" "}
-                <span class="text-foreground/70">{r.date}</span>
+                <span class="text-foreground/70">{r.date}</span>{" "}
+                <span class="text-accent" data-updated hidden>
+                  {UPDATED}
+                </span>
               </li>
             ))}
             {!repo.reports.length && <li class="text-foreground/70">No reports yet.</li>}
@@ -496,12 +495,21 @@ const leads: Partial<Record<Page["type"], string>> = {
         <table class="hw-table w-full" hidden={!repo.reports.length}>
           <tbody>
             {repo.reports.map((r) => (
-              <tr data-row>
+              <tr
+                data-row
+                data-report
+                data-k={reportKey(repo.key, r)}
+                data-changed={r.changed}
+                data-version={r.version}
+              >
                 <td class="w-28 font-mono">{r.date}</td>
                 <td>
                   <a class="hw-link" href={link(repo.prefix + docSlug(r.path))}>
                     {r.title}
-                  </a>
+                  </a>{" "}
+                  <span class="text-accent" data-updated hidden>
+                    {UPDATED}
+                  </span>
                 </td>
               </tr>
             ))}
@@ -543,12 +551,23 @@ const leads: Partial<Record<Page["type"], string>> = {
   {page.type === "doc" && repo && doc && (
     <>
       <p class="font-mono text-micro text-foreground/70">
-        <a class="hw-link" href={fileHref(`${repo.path}/${doc.path}`)}>
+        <a class="hw-link" data-doc-source href={fileHref(`${repo.path}/${doc.path}`)}>
           {doc.path}
         </a>{" "}
         · {repo.key} HEAD {repo.head}
       </p>
-      <article class="prose hw-prose [&_img]:rounded-brand" set:html={doc.html} />
+      {topicQuestions.length > 0 && (
+        <section class="flex flex-col gap-2">
+          <h2 class="font-mono font-semibold text-heading">Open questions</h2>
+          <ItemGroups items={topicQuestions} />
+        </section>
+      )}
+      <NeedsGraph svg={page.topicGraph} items={topic} from={page.path} open />
+      <ItemGroups items={topic.filter((i) => i.status !== "open")} title="Assumed and decided" />
+      <article
+        class="prose hw-prose [&_img]:rounded-brand"
+        set:html={report ? reportBody(repo.key, report) : doc.html}
+      />
     </>
   )}
 

@@ -18,6 +18,7 @@ import {
 import elements from "../brand-elements.json";
 import { findRepos, uniqueKeys } from "./hub.ts";
 import { MISSING, NOTICE, policy } from "../site/src/data.ts";
+import { reportBody } from "../site/src/report.ts";
 import {
   docSlug,
   encodeFile,
@@ -30,6 +31,7 @@ import {
   readRepo,
   THUMB_BOXES,
   type Doc,
+  type Report,
   type RepoData,
   when,
 } from "./repo.ts";
@@ -129,10 +131,13 @@ export function linker(repos: RepoData[]) {
     return html;
   };
   const pages = (html: string) =>
-    html.replace(/href="(file:\/\/[^"?#]*)([?#][^"]*)?"/g, (link, file: string, rest = "") => {
-      const to = pageOf.get(file);
-      return to ? `href="${to}${rest}"` : link;
-    });
+    html.replace(
+      /(?<!data-doc-source )href="(file:\/\/[^"?#]*)([?#][^"]*)?"/g,
+      (link, file: string, rest = "") => {
+        const to = pageOf.get(file);
+        return to ? `href="${to}${rest}"` : link;
+      },
+    );
   return { files, pages };
 }
 
@@ -144,7 +149,7 @@ type Site = {
   links: ReturnType<typeof linker>;
   // A doc page's path to its doc, each repository's shells by their paths, and the doc pages
   // filled so far.
-  docs: Map<string, { repo: RepoData; doc: Doc }>;
+  docs: Map<string, { repo: RepoData; doc: Doc | Report }>;
   shells: Map<string, string>;
   filled: Map<string, Buffer>;
 };
@@ -215,12 +220,20 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
     const done = site.filled.get(name);
     if (done) return done;
     const { repo, doc } = hit;
+    const report = "stem" in doc ? doc : undefined;
     const { links } = site;
     const shell = site.shells.get(shellPath(`${repo.key}/`, name.split("/").length))!;
     // As Astro escapes, so a filled page is the page a build renders.
     const escape = (text: string) => Bun.escapeHTML(text).replaceAll("&#x27;", "&#39;");
     const page = Buffer.from(
       shell
+        .replace(
+          /<div class="admin-action bg-background" data-shell-action(?:="[^"]*")?>[\s\S]*?<\/div>/,
+          (bar) => (report ? bar.replace(/ data-shell-action(?:="[^"]*")?/, "") : ""),
+        )
+        .replace(` id="${SHELL.titleId}"`, () =>
+          doc.titleId ? ` id="${escape(doc.titleId)}"` : "",
+        )
         // The file link ends in the mark, after the repository's part the shell already holds.
         .replaceAll(`/${SHELL.path}"`, () => `/${escape(encodeFile(doc.path))}"`)
         .replaceAll(SHELL.path, () => escape(doc.path))
@@ -229,7 +242,9 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
           `"${SHELL.name}.html"`,
           () => `"${encodeURIComponent(name.split("/").pop()!)}.html"`,
         )
-        .replace(SHELL.html, () => links.files(links.pages(doc.html))),
+        .replace(SHELL.html, () =>
+          links.files(links.pages(report ? reportBody(repo.key, report) : doc.html)),
+        ),
     );
     site.filled.set(name, page);
     return page;

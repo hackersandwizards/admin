@@ -96,6 +96,15 @@ const OWN = new Set(
 );
 const isAnswer = (k) => !!k && k.startsWith(STORE) && !OWN.has(k);
 const items = [...document.querySelectorAll("details.item[data-k]")];
+const comments = [...document.querySelectorAll("details[data-comment][data-k]")];
+const answerRows = [...items, ...comments];
+const report = document.querySelector("article [data-report]");
+const reportVersions = new Map(
+  [...document.querySelectorAll("[data-report][data-version]")].map((r) => [
+    r.dataset.k,
+    r.dataset.version,
+  ]),
+);
 // A page that names every item of its repositories knows which answers lost their item.
 const live = new Set(document.body.dataset.answers?.split(" ").filter(Boolean));
 const liveRepos = new Set([...live].map((k) => k.split(":")[0]));
@@ -105,8 +114,10 @@ for (let i = storage.length - 1; i >= 0; i--) {
   if (!isAnswer(k)) continue;
   const id = k.slice(STORE.length);
   const a = read(id);
-  if (liveRepos.has(id.split(":")[0]) && !live.has(id))
-    if (!a || !a.at || a.at <= copied) storage.removeItem(k);
+  const gone = !id.includes("#") && liveRepos.has(id.split(":")[0]) && !live.has(id);
+  const edited =
+    a?.report && reportVersions.has(a.report) && reportVersions.get(a.report) !== a.version;
+  if ((gone || edited) && (!a || !a.at || a.at <= copied)) storage.removeItem(k);
 }
 // A visit is a run of page views under an hour apart: an item whose file changed since the one
 // before says so on its row, and what changed: its question or options, or the rest of its file.
@@ -148,7 +159,8 @@ try {
     if (since && (file ? file !== r.dataset.version : Number(r.dataset.changed) * 1000 > since)) {
       if (mark) {
         mark.hidden = false;
-        if (file)
+        if (r.hasAttribute("data-report")) mark.textContent = "Changed since your last visit";
+        else if (file)
           mark.textContent = `${MARKS[asked && asked !== r.dataset.asked ? "asked" : "edited"]} ·`;
       }
       updatedSince = since;
@@ -156,7 +168,7 @@ try {
     versions[r.dataset.k] = `${r.dataset.version} ${r.dataset.asked || ""}`;
   }
   for (const k of Object.keys(versions))
-    if (liveRepos.has(k.split(":")[0]) && !live.has(k)) delete versions[k];
+    if (!k.startsWith("#") && liveRepos.has(k.split(":")[0]) && !live.has(k)) delete versions[k];
   storage.setItem(STORE + "versions", JSON.stringify(versions));
 } catch {
   /* storage blocked: no row says what changed */
@@ -212,6 +224,7 @@ function mark(d, a) {
               a.stance,
               n > 1 ? `${n} picked` : a.option ? label(d, a.option) || a.option : "",
               a.done ? "done" : "",
+              a.report ? "comment" : "",
             ]
               .filter(Boolean)
               .join(", ") || "note"
@@ -286,6 +299,10 @@ function save(d) {
           at: new Date().toISOString(),
         }
       : null;
+  if (a && d.hasAttribute("data-comment")) {
+    a.report = report.dataset.k;
+    a.version = report.dataset.version;
+  }
   if (write(d.dataset.k, a)) mark(d, a);
   state();
 }
@@ -352,7 +369,7 @@ function state(relabel = true) {
             .join(", ") + "."
         : `All ${keys.length} copied at ${hhmm(since)}.`;
 }
-for (const d of items) {
+for (const d of answerRows) {
   load(d);
   // A question put off holds no answer, and an answer takes it up again.
   d.addEventListener("change", (e) => {
@@ -401,7 +418,7 @@ copy?.addEventListener("hw-copy", (e) => {
   } catch {
     /* storage blocked: the copy still happened */
   }
-  for (const d of items) mark(d, read(d.dataset.k));
+  for (const d of answerRows) mark(d, read(d.dataset.k));
   state(false);
 });
 
@@ -548,7 +565,7 @@ function apply(picked = false) {
     const marked = new Set(
       [...document.querySelectorAll("[data-updated]:not([hidden])")]
         .map((m) => m.closest("[data-k]"))
-        .filter((r) => !away(r))
+        .filter((r) => !r.hasAttribute("data-report") && !away(r))
         .map((r) => r.dataset.k),
     ).size;
     since.hidden = !marked;
@@ -620,7 +637,7 @@ addEventListener("keydown", (e) => {
 // Another tab's write reloads only what it changed, so a note being typed here keeps its text;
 // a copy there marks the rows copied. A null key is storage cleared.
 addEventListener("storage", (e) => {
-  for (const d of items)
+  for (const d of answerRows)
     if (e.key === null || e.key === STORE + d.dataset.k) load(d);
     else if (e.key === STORE + "copied") mark(d, read(d.dataset.k));
   state();

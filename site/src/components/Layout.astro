@@ -23,6 +23,8 @@ import {
 interface Props {
   page: Page;
   lead?: string;
+  titleId?: string;
+  action?: boolean | "shell";
   provenance?: string;
   /** The time the provenance line ends on: a repository's fetch, or the hub's build. admin-serve
    * brings it up to date on each request (stamp in serve.ts). */
@@ -33,7 +35,16 @@ interface Props {
   /** What went wrong, where admin-serve fills it in on each page: the catalog shows it here. */
   notice?: string;
 }
-const { page, lead, provenance, stamp, answersAll = false, notice = NOTICE } = Astro.props;
+const {
+  page,
+  lead,
+  titleId,
+  action,
+  provenance,
+  stamp,
+  answersAll = false,
+  notice = NOTICE,
+} = Astro.props;
 const d = data();
 const repo = repoOf(page.repo);
 type Repo = NonNullable<typeof repo>;
@@ -225,11 +236,24 @@ const entries = [
         </nav>
       </aside>
       <main class="admin-main pb-16">
-        <h1>{page.title}</h1>
+        <h1 id={titleId}>{page.title}</h1>
         {lead && <p class="admin-lead">{lead}</p>}
-        {Astro.slots.has("action") && (
-          <div class="admin-action bg-background">
-            <slot name="action" />
+        {action && (
+          <div
+            class="admin-action bg-background"
+            data-shell-action={action === "shell" || undefined}
+          >
+            <button id="copy" type="button" class="hw-button" data-hw-copy="">
+              Copy answers
+            </button>
+            <p class="min-w-0 flex-1 basis-48 text-ui">
+              <span id="state" role="status">
+                Your answers stay in this browser until you copy them.
+              </span>
+              <span class="block text-foreground/70 max-sm:hidden">
+                Paste them into a chat with an agent, which writes each into its repository.
+              </span>
+            </p>
           </div>
         )}
         <div

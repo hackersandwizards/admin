@@ -395,7 +395,7 @@ describe("hub", () => {
     expect(by["docs/setext.md"]!.title).toBe("Setext title");
     expect(by["docs/none.md"]!.title).toBe("docs/none.md");
     expect(by["docs/image.md"]!.title).toBe("docs/image.md");
-    expect(by["docs/image.md"]!.html).toContain("<h1><img");
+    expect(by["docs/image.md"]!.html).toContain('<h1 id="logo"><img');
     for (const d of ["fenced", "setext"]) expect(by[`docs/${d}.md`]!.html).not.toContain("<h1");
   });
 

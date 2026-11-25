@@ -19,6 +19,7 @@ priority: 2 # 1 to 3, 1 costs most if missed; not on a goal
 owner: Alex # who answers, or for work who moves next
 area: product # optional, free text
 needs: [check-the-copy] # optional, item ids in this repository
+topic: 2026-01-15-sample-topic # optional, report filename without .md
 recommended: a # optional, an option key; a list where multiple is true
 multiple: false # optional, true lets the person pick several options
 options:
@@ -45,6 +46,7 @@ The question's context, in Markdown.
 
 `admin-check` enforces:
 
+- A `topic` uses the form `YYYY-MM-DD-<topic>` and names a report in this repository's `docs/agent-work/`.
 - `kind`, `status` and, except on a goal, `priority` and `owner` are present and valid. Unknown
   fields and a top-level field written twice are defects.
 - An open decision has at least two options. A request to look at something is `kind: review`.

@@ -225,7 +225,7 @@ describe("needs graph", () => {
       .mockReturnValue('<pre><code class="language-mermaid">flowchart LR</code></pre>');
     try {
       expect(await fixture()).not.toHaveProperty("needsSvg");
-      expect(render).toHaveBeenCalledOnce();
+      expect(render).toHaveBeenCalledTimes(2);
     } finally {
       render.mockRestore();
     }
@@ -671,9 +671,44 @@ describe("Mermaid in Markdown", () => {
 });
 
 describe("admin-check", () => {
+  test.each([
+    ["2026-01-15-missing", "topic report docs/agent-work/2026-01-15-missing.md not found"],
+    ["draft", "topic must be text in YYYY-MM-DD-<topic> form"],
+    ["[2026-01-15-sample-topic]", "topic must be text in YYYY-MM-DD-<topic> form"],
+  ])("admin-check refuses topic %s", (topic, problem) => {
+    const path = "docs/agent-work/items/draft.md";
+    const text = `---\nkind: work\nstatus: open\npriority: 1\nowner: an agent\ntopic: ${topic}\n---\n# Draft\n`;
+    const { defects } = readItems({ paths: [path], read: () => text });
+    expect(defects.join("\n")).toContain(`${path}: ${problem}`);
+  });
+
+  test("admin-check accepts the exact name of a dated report in the same repository", () => {
+    const topic = "2026-01-15-First draft";
+    const path = "docs/agent-work/items/draft.md";
+    const files: Record<string, string> = {
+      [path]: `---\nkind: work\nstatus: open\npriority: 1\nowner: an agent\ntopic: ${topic}\n---\n# Draft\n`,
+      [`docs/agent-work/${topic}.md`]: "# First draft\n",
+    };
+    const { items, defects } = readItems({
+      paths: Object.keys(files),
+      read: (file) => files[file],
+    });
+    expect(defects).toEqual([]);
+    expect(items[0]?.topic).toBe(topic);
+  });
+
+  test("Markdown headings have distinct ids in a document and none in an item", () => {
+    const text = "# Copy\n\n## Same\n\n## Same\n\n### Same-1\n";
+    const ids = (item: boolean) =>
+      [...renderMarkdown("/r", "docs/a.md", text, item).matchAll(/id="([^"]*)"/g)].map((m) => m[1]);
+    expect(ids(false)).toEqual(["section-copy", "same", "same-1", "same-1-1"]);
+    expect(ids(true)).toEqual([]);
+  });
+
   test("the spoke fixture is clean", () => {
     const { items, defects } = readItems(treeSource(join(FIX, "spoke")));
     expect(defects).toEqual([]);
+    expect(items.find((i) => i.id === "pick-a-variant")?.topic).toBe("2026-01-15-sample-topic");
     expect(items.map((i) => i.id).sort()).toEqual([
       "ask-the-printer",
       "cache-folder",
@@ -946,8 +981,8 @@ describe("repository data", () => {
         { id: "ship", title: "Ship the samples", changed: time },
       ]);
       expect(committed.docs).toEqual([
-        { path: "docs/next.md", title: "Next note", html: "<p>Two</p>\n" },
-        { path: "docs/note.md", title: "First note", html: "<p>Café</p>\n" },
+        { path: "docs/next.md", title: "Next note", titleId: "next-note", html: "<p>Two</p>\n" },
+        { path: "docs/note.md", title: "First note", titleId: "first-note", html: "<p>Café</p>\n" },
       ]);
       expect(committed.pkg).toMatchObject({ name: "paint", version: "1.0.0" });
       expect(committed.defects).toEqual([]);
@@ -1041,20 +1076,32 @@ describe("repository data", () => {
       { path: "scripts/other.sh", comment: "Export samples" },
     ]);
     expect(repo.docs).toEqual([
-      { path: "docs/guide.md", title: "Tool & guide", html: "<p>Instructions</p>\n" },
-      { path: "README.md", title: "Read me", html: "<p>Start</p>\n" },
+      {
+        path: "docs/guide.md",
+        title: "Tool & guide",
+        titleId: "tool-guide",
+        html: "<p>Instructions</p>\n",
+      },
+      { path: "README.md", title: "Read me", titleId: "read-me", html: "<p>Start</p>\n" },
     ]);
     expect(repo.reports).toEqual([
       {
         path: "docs/agent-work/2026-01-15-next.md",
+        stem: "2026-01-15-next",
         date: "2026-01-15",
         title: "2026-01-15-next",
+        changed: undefined,
+        version: Bun.hash("Planning").toString(36),
         html: "<p>Planning</p>\n",
       },
       {
         path: `${report}.md`,
         date: "2026-01-14",
         title: "Sample review",
+        titleId: "sample-review",
+        stem: "2026-01-14-paint",
+        changed: undefined,
+        version: Bun.hash("# Sample review\n\nComparison").toString(36),
         html: "<p>Comparison</p>\n",
       },
     ]);

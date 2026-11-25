@@ -1,6 +1,7 @@
 ---
 kind: work
 status: open
+topic: 2026-01-15-sample-topic
 priority: 1
 owner: Ivo
 ---

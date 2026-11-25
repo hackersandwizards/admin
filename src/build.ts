@@ -46,6 +46,8 @@ export type Page = {
   type: (typeof PAGE_TYPES)[number];
   repo?: string;
   doc?: string;
+  topic?: true;
+  topicGraph?: string;
   // A doc page's own doc, where no list of the repository holds it: the shell's marks.
   article?: Doc;
   product?: number;
@@ -278,13 +280,21 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
     add({ path: "architecture", type: "architecture", title: "Architecture" });
     add({ path: "checks", type: "checks", title: "Checks" });
     add({ path: "log", type: "log", title: "Log" });
-    for (const d of [...r.reports, ...r.docs])
+    const topics = Map.groupBy(items, (i) => i.topic);
+    for (const d of [...r.reports, ...r.docs]) {
+      const topic = "stem" in d && typeof d.stem === "string" ? (topics.get(d.stem) ?? []) : [];
+      const topicGraph = topic.some((i) => i.kind === "work" || i.kind === "goal")
+        ? needsGraph(topic)
+        : undefined;
       add({
         path: docSlug(d.path),
         type: "doc",
         doc: d.path,
         title: d.title,
+        topic: topic.length ? true : undefined,
+        topicGraph,
       });
+    }
     const { workFiles: _, ...rest } = r;
     const connected = needsGraphItems(items);
     const needsSvg = connected.length ? needsGraph(connected) : undefined;
@@ -293,22 +303,20 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
   return { version, people, others, repos: out, pages };
 }
 
-// The hub builds no doc page: it fills a doc into its repository's shell on request, a doc page
-// built once per folder depth with these marks in place of the doc, so that a build covers the list
-// pages alone. The depth decides every relative link of a page, so a shell's links hold for each
-// doc at its depth.
 export const SHELL = {
   name: "admin-shell-name",
   path: "admin-shell-path",
   title: "admin-shell-title",
+  titleId: "admin-shell-anchor",
   html: "admin-shell-html",
 };
 export const shellPath = (prefix: string, depth: number) =>
   `${prefix}_shell/${"_/".repeat(depth - 3)}${SHELL.name}`;
 
 export function shelled(data: SiteData): SiteData {
-  const docs = data.pages.filter((p) => p.type === "doc");
-  const pages = data.pages.filter((p) => p.type !== "doc");
+  const docs = data.pages.filter((p) => p.type === "doc" && !p.topic);
+  const pages = data.pages.filter((p) => p.type !== "doc" || p.topic);
+  const topicDocs = new Set(pages.filter((p) => p.topic).map((p) => p.path));
   const repos = data.repos.map((r) => {
     for (const depth of new Set(
       docs.filter((p) => p.repo === r.key).map((p) => p.path.split("/").length),
@@ -322,7 +330,9 @@ export function shelled(data: SiteData): SiteData {
       });
     return {
       ...r,
-      reports: r.reports.map((d) => ({ ...d, html: "" })),
+      reports: r.reports.map((d) =>
+        topicDocs.has(r.prefix + docSlug(d.path)) ? d : { ...d, html: "" },
+      ),
       docs: r.docs.map((d) => ({ ...d, html: "" })),
     };
   });

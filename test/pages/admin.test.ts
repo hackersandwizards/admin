@@ -23,6 +23,7 @@ import {
   type HTMLDialogElement as DomDialog,
   type HTMLElement as DomElement,
   type HTMLInputElement as DomInput,
+  type HTMLTextAreaElement as DomTextArea,
 } from "happy-dom";
 import { buildSite, script, siteData } from "../../src/build.ts";
 import { uniqueKeys } from "../../src/hub.ts";
@@ -43,6 +44,8 @@ const testTimeout = (ms: number) =>
   ms * (Number(process.env.SCAFFOLDING_TEST_TIMEOUT_MS || 5000) / 5000);
 
 // Each build draws its own nonce, so pages from two builds compare without it.
+const SAMPLE_REPORT = "spoke/doc/docs/agent-work/2026-01-15-sample-topic";
+const COMMENT = "spoke:2026-01-15-sample-topic#next";
 const sansNonce = (html: string) => html.replace(/nonce(-|=")[\w-]+/g, "nonce$1");
 
 // Happy DOM's raw-text parser stops at SVG style elements and drops the rest of the page.
@@ -187,13 +190,15 @@ describe("pages", () => {
       expect(pages).toContain("products-1.html");
       expect(pages).toContain("doc/docs/agent-work/2026-01-15-sample-topic.html");
       const plainDocs = readFileSync(join(out, "plain/docs.html"), "utf8");
-      for (const [title, to] of [
-        ["Start here", "doc/docs/index"],
-        ["Guide", "doc/docs/guide/index"],
+      for (const [title, id, to] of [
+        ["Start here", "start-here", "doc/docs/index"],
+        ["Guide", "guide", "doc/docs/guide/index"],
       ] as const) {
         const link = plainDocs.match(new RegExp(`href="([^"]+)">\\s*${title}`))![1]!;
         expect(link.startsWith(to)).toBe(true);
-        expect(readFileSync(join(out, "plain", link), "utf8")).toContain(`<h1>${title}</h1>`);
+        expect(readFileSync(join(out, "plain", link), "utf8")).toContain(
+          `<h1 id="${id}">${title}</h1>`,
+        );
       }
       for (const page of [
         "index.html",
@@ -222,7 +227,8 @@ describe("pages", () => {
       expect(doc).toContain('<a class="hw-link" href=');
       expect(doc).not.toMatch(/<a [^>]*not-prose/);
       // The title shows above the article, so the article opens on what follows it.
-      expect(doc).toMatch(/<article[^>]*><p>A report/);
+      expect(doc).toMatch(/<article[^>]*><p[^>]*data-report[\s\S]*?<\/nav><p>A report/);
+      expect(doc.match(/<article[^>]*>[\s\S]*?<\/article>/)?.[0]).not.toContain("<h1");
       const sheets = [...doc.matchAll(/href="([^"]+\.css)"/g)]
         .map(([, css]) => readFileSync(resolve(dirname(docPath), css!), "utf8"))
         .join("");
@@ -562,6 +568,99 @@ describe("pages", () => {
   );
 
   test(
+    "Chrome copies a comment from a served report below the copy bar without CSP violations",
+    async () => {
+      const repo = repoFrom("spoke");
+      const stem = "2026-01-15-sample-topic";
+      const item = `docs/agent-work/items/${stem}.md`;
+      writeFileSync(
+        join(repo, item),
+        `---\nkind: review\nstatus: open\npriority: 1\nowner: Alex\ntopic: ${stem}\n---\n# Check the sample file\n`,
+      );
+      sh(repo, "git", "add", item);
+      commit(repo, "Add sample question");
+      const hub = createHub({ root: dirname(repo) });
+      const executablePath = await chromeBinaryAsync();
+      if (!executablePath) throw new Error(INSTALL_HINT);
+      const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: hub.fetch });
+      try {
+        const browser = await puppeteer.launch({
+          executablePath,
+          headless: true,
+          args: NO_KEYCHAIN,
+        });
+        try {
+          await browser
+            .defaultBrowserContext()
+            .overridePermissions(server.url.origin, [
+              "clipboard-read",
+              "clipboard-sanitized-write",
+            ]);
+          const page = await browser.newPage();
+          await page.setViewport({ width: 390, height: 844 });
+          await page.evaluateOnNewDocument(() => {
+            document.addEventListener("securitypolicyviolation", (event) => {
+              console.error("CSP violation:", event.violatedDirective, event.blockedURI);
+            });
+          });
+          const violations: string[] = [];
+          page.on("console", (message) => {
+            if (message.text().startsWith("CSP violation:")) violations.push(message.text());
+          });
+          const response = await page.goto(new URL(SAMPLE_REPORT, server.url).href);
+          expect(response?.status()).toBe(200);
+          await page.click('nav[aria-label="Contents"] a[href="#next"]');
+          await page.waitForFunction(() => {
+            const bar = document.querySelector(".admin-action")!.getBoundingClientRect();
+            const heading = document.getElementById("next")!.getBoundingClientRect();
+            return (
+              location.hash === "#next" && heading.top >= bar.bottom && heading.bottom < innerHeight
+            );
+          });
+          const fold = '[data-k="' + COMMENT + '"]';
+          await page.click(fold + " summary");
+          await page.type(fold + " textarea", "why   dotted?");
+          await page.bringToFront();
+          await page.click("#copy");
+          await page.waitForFunction(() =>
+            document.querySelector("#state")?.textContent?.includes("copied at"),
+          );
+          expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+            "Answers from the admin pages:\nspoke:2026-01-15-sample-topic#next: why dotted?",
+          );
+          const row = 'details.item[id="spoke:' + stem + '"]';
+          await page.click(row + " summary");
+          await page.type(row + " textarea", "ready");
+          expect(await page.$eval("#copy", (b) => b.getAttribute("data-hw-copy"))).toBe(
+            `Answers from the admin pages:\nspoke:${stem}: ready`,
+          );
+          await page.reload();
+          expect(
+            await page.$eval(row + " textarea", (field) => (field as HTMLTextAreaElement).value),
+          ).toBe("ready");
+          expect(
+            await page.$eval(fold + " textarea", (field) => (field as HTMLTextAreaElement).value),
+          ).toBe("why   dotted?");
+          expect(
+            await page.evaluate((key) => {
+              const versions = JSON.parse(
+                localStorage.getItem("admin-answers:versions")!,
+              ) as Record<string, string>;
+              return [versions[key], versions["#" + key]];
+            }, "spoke:" + stem),
+          ).toEqual([expect.any(String), expect.any(String)]);
+          expect(violations).toEqual([]);
+        } finally {
+          await browser.close();
+        }
+      } finally {
+        await server.stop(true);
+      }
+    },
+    testTimeout(60_000),
+  );
+
+  test(
     "Mermaid fits its labels, follows the page theme, and causes no CSP violations",
     async () => {
       const repo = await readRepo(repoFrom("spoke"));
@@ -587,7 +686,7 @@ describe("pages", () => {
         });
         await page.setViewport({ width: 390, height: 844 });
         await page.goto(`file://${out}/spoke/doc/docs/agent-work/2026-01-15-sample-topic.html`);
-        const diagram = await page.locator(".admin-diagram > svg").waitHandle();
+        const diagram = await page.locator("article .admin-diagram > svg").waitHandle();
         const view = await diagram.evaluate(async (svg) => {
           await document.fonts.ready;
           const { width, height } = svg.getBoundingClientRect();
@@ -1400,6 +1499,100 @@ describe("admin.js", () => {
     ).toBe("Kim");
   });
 
+  const commentField = (w: Window) =>
+    w.document.querySelector<DomTextArea>("#next + [data-comment] textarea")!;
+  const typeComment = (w: Window) => {
+    const field = commentField(w);
+    field.value = "why   dotted?\n  Any reason?";
+    field.dispatchEvent(new w.Event("input", { bubbles: true }));
+  };
+  const commentKey = "admin-answers:" + COMMENT;
+  const copiedComment = (w: Window): Record<string, string> => ({
+    ...stored(w),
+    "admin-answers:copied": new Date(Date.now() + 1000).toISOString(),
+  });
+
+  test("a heading comment copies exactly one line, survives reload, and resets", () => {
+    const first = open(SAMPLE_REPORT, {});
+    expect(first.document.querySelector("#next + [data-comment]")?.hasAttribute("open")).toBe(
+      false,
+    );
+    typeComment(first);
+    const copy = first.document.getElementById("copy")!;
+    expect(copy.getAttribute("data-hw-copy")).toBe(
+      "Answers from the admin pages:\nspoke:2026-01-15-sample-topic#next: why dotted? Any reason?",
+    );
+    expect(copy.textContent).toBe("Copy 1 answer");
+    const back = open(SAMPLE_REPORT, copiedComment(first));
+    expect(commentField(back).value).toBe("why   dotted?\n  Any reason?");
+    expect(back.document.querySelector('[data-k="' + COMMENT + '"] .mark')?.textContent).toBe(
+      "✓ comment · copied",
+    );
+    expect(back.document.getElementById("copy")?.textContent).toBe("Copy 1 answer again");
+    (back.document.querySelector('[data-k="' + COMMENT + '"] .clear') as DomElement).click();
+    expect(stored(back)[commentKey]).toBeUndefined();
+  });
+
+  test("a copied comment stays until the report version changes", () => {
+    const first = open(SAMPLE_REPORT, {});
+    typeComment(first);
+    const copied = copiedComment(first);
+    const same = open(SAMPLE_REPORT, copied);
+    expect(stored(same)[commentKey]).toBe(copied[commentKey]);
+    const written = {
+      ...(JSON.parse(copied[commentKey]!) as Record<string, unknown>),
+      version: "earlier",
+    };
+    const changed = open(SAMPLE_REPORT, { ...copied, [commentKey]: JSON.stringify(written) });
+    expect(commentField(changed).value).toBe("");
+    expect(stored(changed)[commentKey]).toBeUndefined();
+    const unsent = open(SAMPLE_REPORT, { ...stored(first), [commentKey]: JSON.stringify(written) });
+    expect(commentField(unsent).value).toContain("why");
+  });
+
+  test("a visit to the hub or Decisions keeps a copied comment and the report's change mark", () => {
+    const first = open(SAMPLE_REPORT, {});
+    typeComment(first);
+    const storage = copiedComment(first);
+    const versions = JSON.parse(storage["admin-answers:versions"]!) as Record<string, string>;
+    const key = "#spoke:2026-01-15-sample-topic";
+    expect(versions[key]).toBeTruthy();
+    const hub = open("index", storage);
+    const decisions = open("spoke/decisions", stored(hub));
+    expect(stored(hub)[commentKey]).toBe(storage[commentKey]);
+    expect(stored(decisions)[commentKey]).toBe(storage[commentKey]);
+    const old = Date.now() - 2 * 36e5;
+    const back = open(SAMPLE_REPORT, {
+      ...stored(decisions),
+      "admin-answers:seen": String(old),
+      "admin-answers:versions": JSON.stringify({ ...versions, [key]: "old-report-hash" }),
+    });
+    const after = open("index", stored(back));
+    const marked = open(SAMPLE_REPORT, stored(after));
+    expect(
+      marked.document.querySelector("[data-report] [data-updated]:not([hidden])")?.textContent,
+    ).toBe("Changed since your last visit");
+    const afterVersions = JSON.parse(stored(after)["admin-answers:versions"]!) as Record<
+      string,
+      string
+    >;
+    expect(afterVersions[key]).toBe(versions[key]);
+  });
+
+  test("a report row says it changed since the visit before on Docs and Latest reports", () => {
+    const old = Date.now() - 2 * 36e5;
+    for (const path of ["spoke/docs", "spoke/dashboard"]) {
+      const mark = (w: Window) => w.document.querySelector("[data-report] [data-updated]")!;
+      expect(mark(open(path, {})).hasAttribute("hidden")).toBe(true);
+      const back = open(path, { "admin-answers:seen": String(old) });
+      expect(mark(back).hasAttribute("hidden")).toBe(false);
+      expect(mark(back).textContent).toBe("Changed since your last visit");
+      const first = stored(open(path, {}));
+      const versions = JSON.parse(first["admin-answers:versions"]!) as Record<string, string>;
+      expect(versions["#spoke:2026-01-15-sample-topic"]).toBeTruthy();
+    }
+  });
+
   test("an item changed since the visit before says so; a first visit marks nothing", () => {
     const shown = (w: Window) =>
       w.document.querySelectorAll("[data-row] [data-updated]:not([hidden])").length;
@@ -1841,7 +2034,7 @@ describe("serve", () => {
   );
 
   test(
-    "serves each doc page from its depth's shell, as a full build renders it",
+    "serves the topic report as built and fills other reports and docs from shells",
     async () => {
       // A path with characters a page escapes in its attributes.
       const plain = repoFrom("spoke");
@@ -1853,6 +2046,9 @@ describe("serve", () => {
         "README.md":
           "# Read me\n\nSee [setup](docs/guide/index.md#setup) and [notes](docs/c%23-notes.md).\n",
         "docs/guide/index.md": "# Guide\n\n## Setup\n",
+        "docs/agent-work/2026-01-14-standalone.md":
+          "# Standalone\n\n" +
+          ["One", "Two", "Three", "Four", "Five"].map((h) => `## ${h}\n\n`).join(""),
         "docs/c#-notes.md": "# C# notes & more\n",
         "docs/50% off.md": "# Half off\n",
         "docs/rock & roll's.md": "# Rock and roll\n",
@@ -1871,7 +2067,9 @@ describe("serve", () => {
         );
         const page = await get(link![1]!);
         expect([doc.path, page.status]).toEqual([doc.path, 200]);
-        expect(await page.text()).toContain(`<h1>${Bun.escapeHTML(doc.title)}</h1>`);
+        expect(await page.text()).toContain(
+          `<h1 id="${doc.titleId}">${Bun.escapeHTML(doc.title)}</h1>`,
+        );
       }
       const readme = await (await get("/spoke/doc/README")).text();
       // A link to another doc opens its page, the fragment kept.
@@ -1893,6 +2091,54 @@ describe("serve", () => {
         302,
         "http://admin.localhost/spoke/doc/README?x=1",
       ]);
+      const docFor = async (path: string) => {
+        const doc = new Window().document;
+        doc.body.innerHTML = domMarkup.transform(await (await get(path)).text());
+        return doc;
+      };
+      const topic = await docFor("/" + SAMPLE_REPORT);
+      const options = topic.querySelector('details.item[id="spoke:pick-a-variant"]');
+      expect(options).not.toBeNull();
+      expect(options!.querySelector('input[data-option][value="a"]')).not.toBeNull();
+      expect(options!.querySelector(".pick")?.textContent).toContain("Pick recommended");
+      const graph = topic.querySelector("details:has(figure.admin-diagram)")!;
+      expect(graph.hasAttribute("open")).toBe(true);
+      expect(graph.querySelectorAll("svg .node")).toHaveLength(4);
+      expect(graph.querySelectorAll("svg .edge")).toHaveLength(2);
+      const settled = topic.getElementById("spoke:cache-folder")!;
+      expect(settled.closest("[data-group]")?.querySelector("summary")?.textContent).toContain(
+        "Assumed and decided",
+      );
+      const topicHtml = topic.querySelector("#admin-content")!.innerHTML;
+      expect(topicHtml.indexOf("Open questions")).toBeLessThan(
+        topicHtml.indexOf("What waits on what"),
+      );
+      expect(topicHtml.indexOf("What waits on what")).toBeLessThan(
+        topicHtml.indexOf("Assumed and decided"),
+      );
+      expect(topicHtml.indexOf("Assumed and decided")).toBeLessThan(topicHtml.indexOf("<article"));
+      const contents = [...topic.querySelectorAll('nav[aria-label="Contents"] a')];
+      expect(contents).toHaveLength(6);
+      expect(contents.map((a) => a.getAttribute("href"))).toEqual(
+        [...topic.querySelectorAll("article h2")].map((h) => "#" + h.id),
+      );
+      expect(topic.querySelector("article h3 + [data-comment]")).not.toBeNull();
+      expect(topic.querySelector("article [data-report]")?.textContent).toContain("Last changed");
+
+      const standalone = await docFor("/spoke/doc/docs/agent-work/2026-01-14-standalone");
+      expect(standalone.querySelectorAll("article h2")).toHaveLength(5);
+      expect(standalone.querySelector('nav[aria-label="Contents"]')).toBeNull();
+      expect(standalone.querySelectorAll("[data-comment]")).toHaveLength(5);
+      expect(standalone.getElementById("copy")).not.toBeNull();
+      expect(standalone.querySelector("article [data-report]")?.textContent).toContain(
+        "Last changed",
+      );
+      expect(standalone.querySelector("details.item, .admin-diagram")).toBeNull();
+
+      const ordinary = await docFor("/spoke/doc/docs/guide/index.md");
+      expect(ordinary.getElementById("copy")).toBeNull();
+      expect(ordinary.querySelector("[data-comment]")).toBeNull();
+
       // A doc filled into its shell is the page a full build renders, served with the same links:
       // the article's links to docs open their pages, the line above it opens the file.
       const out = join(scratch(), "out");
@@ -1902,6 +2148,7 @@ describe("serve", () => {
         "README",
         "docs/guide/index.md",
         "docs/agent-work/2026-01-15-sample-topic",
+        "docs/agent-work/2026-01-14-standalone",
         "docs/rock & roll's",
       ]) {
         const built = readFileSync(join(out, `spoke/doc/${page}.html`), "utf8");
@@ -1912,11 +2159,7 @@ describe("serve", () => {
           nonce,
           nonce,
         ]);
-        expect(sansNonce(got)).toBe(
-          sansNonce(
-            served.files(built.replace(/<article[\s\S]*<\/article>/, (a) => served.pages(a))),
-          ),
-        );
+        expect(sansNonce(got)).toBe(sansNonce(served.files(served.pages(built))));
       }
       // A doc's slug may itself end in .html, which only the hub's shells serve: Astro builds none.
       writeFileSync(join(repo, "docs/page.html.md"), "# Named like a page\n");

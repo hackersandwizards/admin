@@ -1,6 +1,7 @@
 ---
 kind: decision
 status: open
+topic: 2026-01-15-sample-topic
 priority: 1
 area: product
 due: 2026-02-01

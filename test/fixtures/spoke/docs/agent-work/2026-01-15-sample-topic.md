@@ -35,3 +35,23 @@ bun run check
 flowchart LR
   draft["Draft sample"] --> sort["Sort by date"] --> archive["Archive samples"]
 ```
+
+## Files
+
+The SVGs are beside this report.
+
+## Sorting
+
+The sample files sort by date.
+
+## Checks
+
+Open both variants before choosing one.
+
+### Review
+
+Check that the labels fit at phone width.
+
+## Archive
+
+Keep the chosen variant with the report.

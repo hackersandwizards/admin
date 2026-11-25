@@ -1,6 +1,7 @@
 ---
 kind: decision
 status: assumed
+topic: 2026-01-15-sample-topic
 priority: 3
 owner: Alex
 needs: [pick-a-variant]

@@ -97,9 +97,14 @@ function walk(root: string, dir: string): string[] {
   });
 }
 
-export type Report = { path: string; date: string; title: string; html: string };
+export type Report = Doc & {
+  stem: string;
+  date: string;
+  changed?: number;
+  version: string;
+};
 export type Review = { dir: string; images: string[]; report?: string };
-export type Doc = { path: string; title: string; html: string };
+export type Doc = { path: string; title: string; titleId?: string; html: string };
 export type ScriptFile = { path: string; comment: string };
 export type Commit = { hash: string; time: number; subject: string };
 // No href: the configured one had a scheme other than http(s), so the label shows as text.
@@ -248,7 +253,7 @@ const SCHEME = /^[a-z][\w+.-]*:/i;
 // named ones Bun's renderer and hand-written HTML put there, apos in lower case only and the rest
 // in lower or upper case.
 const NAMED: Record<string, string> = { amp: "&", quot: '"', lt: "<", gt: ">", apos: "'" };
-const entities = (v: string) =>
+export const entities = (v: string) =>
   v.replace(
     /&(?:#[xX]([\da-fA-F]+);?|#(\d+);?|(amp|AMP|quot|QUOT|lt|LT|gt|GT|apos);)/g,
     (_, hex?: string, dec?: string, name?: string) =>
@@ -363,18 +368,33 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
         }
       })
     : text;
+  const used = new Set<string>();
+  const headings = new HTMLRewriter().on("h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]", {
+    element(el) {
+      const slug = entities(el.getAttribute("id")!) || "section";
+      const base = /^(?:admin-|copy$|state$|theme-toggle$|(?:sun|moon)-icon$)/.test(slug)
+        ? `section-${slug}`
+        : slug;
+      let id = base;
+      for (let n = 1; used.has(id); n++) id = `${base}-${n}`;
+      used.add(id);
+      el.setAttribute("id", Bun.escapeHTML(id));
+    },
+  });
   let index = 0;
   let documentId: string;
+  const rendered = Bun.markdown.html(
+    body,
+    item ? { noHtmlSpans: true, noHtmlBlocks: true } : { headings: { ids: true } },
+  );
   const html = withElements(
-    Bun.markdown
-      .html(body, item ? { noHtmlSpans: true, noHtmlBlocks: true } : {})
-      .replace(
-        /<pre><code class="language-mermaid">([^<]*)<\/code><\/pre>/g,
-        (_, source: string) => {
-          documentId ??= Bun.hash(JSON.stringify([repo, path, text])).toString(36);
-          return diagram(source, `mermaid-${documentId}-${++index}-`);
-        },
-      ),
+    (item ? rendered : headings.transform(rendered)).replace(
+      /<pre><code class="language-mermaid">([^<]*)<\/code><\/pre>/g,
+      (_, source: string) => {
+        documentId ??= Bun.hash(JSON.stringify([repo, path, text])).toString(36);
+        return diagram(source, `mermaid-${documentId}-${++index}-`);
+      },
+    ),
   );
   return links
     .transform(html)
@@ -407,7 +427,8 @@ function titled(repo: string, path: string, text: string, fallback: string) {
   const title = h1?.[1] && entities(plain(h1[1]));
   // An h1 without text, such as a lone image, stays in the article.
   if (!h1 || !title) return { path, title: fallback, html };
-  return { path, title, html: html.replace(h1[0], "") };
+  const titleId = h1[0].match(/^<h1[^>]*?\sid="([^"]*)"/)?.[1];
+  return { path, title, titleId: titleId && entities(titleId), html: html.replace(h1[0], "") };
 }
 
 function firstComment(text: string) {
@@ -491,9 +512,9 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
         const [hash, time, ...s] = l.split("\t");
         return { hash: hash!, time: Number(time), subject: s.join("\t") };
       });
-  const [src, itemsLog, head, behind, trackingLog, log, fetched] = await Promise.all([
+  const [src, workLog, head, behind, trackingLog, log, fetched] = await Promise.all([
     source ?? headSource(repo),
-    gitAsync(repo, ["log", "--format=@%ct", "--name-only", "--", ITEMS_DIR]),
+    gitAsync(repo, ["log", "-z", "--format=@%ct", "--name-only", "--", WORK_DIR]),
     gitAsync(repo, ["rev-parse", "--short", "HEAD"]),
     gitBytes(repo, ["rev-list", "--count", "HEAD..@{push}"]),
     commits("-n", "60", "--", WORK_DIR),
@@ -568,17 +589,17 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
 
   const changed = new Map<string, number>();
   let t = 0;
-  for (const line of itemsLog.split("\n")) {
+  for (const line of workLog.split("\0").map((entry) => entry.replace(/^\n/, ""))) {
     if (line.startsWith("@")) t = Number(line.slice(1));
     else if (line && !changed.has(line)) changed.set(line, t);
   }
+  const change = (path: string, text: string) => ({
+    changed: changed.get(path),
+    version: Bun.hash(text).toString(36),
+  });
   const withChange = items.map((i) => {
     const path = `${ITEMS_DIR}/${i.id}.md`;
-    return {
-      ...i,
-      changed: changed.get(path),
-      version: Bun.hash(src.read(path) ?? "").toString(36),
-    };
+    return { ...i, ...change(path, src.read(path) ?? "") };
   });
 
   const tracking = src.paths.filter(
@@ -587,8 +608,9 @@ export async function readRepo(repo: string, source?: Source): Promise<RepoData>
   const reports = tracking
     .filter((p) => /^docs\/agent-work\/\d{4}-\d{2}-\d{2}-[^/]+\.md$/.test(p))
     .map((p) => {
-      const page = titled(repo, p, src.read(p) ?? "", basename(p, ".md"));
-      return { ...page, date: basename(p).slice(0, 10) };
+      const text = src.read(p) ?? "";
+      const stem = basename(p, ".md");
+      return { ...titled(repo, p, text, stem), stem, date: stem.slice(0, 10), ...change(p, text) };
     })
     .sort((a, b) => b.date.localeCompare(a.date) || a.path.localeCompare(b.path));
   const reviewDirs = new Map<string, string[]>();
