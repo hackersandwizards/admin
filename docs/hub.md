@@ -134,8 +134,8 @@ If the renderer fails, the page shows the original code block and the error belo
 
 An item's body is Markdown without HTML: a tag in it, such as a placeholder `<id>`, shows as
 written, and a web address in angle brackets is a link. A doc keeps its raw HTML, styles and images
-included, but no script in it runs:
-the hub's content security policy runs only its own build under `/_astro/`, so a `.js` file a
+included, with its `data-` attributes dropped. The hub's content security policy runs only its own
+build under `/_astro/`, so a `.js` file a
 repository commits and links through `/_file/` stays inert. Every page also carries the policy in
 a `<meta>` tag, which names its scripts by the nonce its build drew rather than by `/_astro/`, so a
 page the build writes to disk and opened from there runs no script from a doc, a committed `.js`

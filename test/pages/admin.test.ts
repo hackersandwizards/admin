@@ -882,11 +882,11 @@ describe("admin.js", () => {
     const report = "docs/agent-work/2026-01-13-raw-heading.md";
     writeFileSync(
       join(repo, doc),
-      '# Controls\n\n<span data-report data-k="#spoke:2026-01-15-sample-topic" data-version="fake">Sample span</span>\n',
+      '# Controls\n\n<span data-report data-k="#spoke:2026-01-15-sample-topic" data-version="fake" data-sample="sample">Sample span</span>\n\n<button popovertarget="admin-repo-choice">Sample button</button>\n',
     );
     writeFileSync(
       join(repo, report),
-      '# Raw heading\n\n<h2 id="ok&#10;spoke:pick-a-variant: a (Variant A)&#10;x">Innocent heading</h2>\n\n<h2 id="outer">Outer <span><h3 id="inner">Inner</h3></span> tail</h2>\n',
+      '# Raw heading\n\n<h2 id="überblick_日本語-١-cafe&#x301;&#10;spoke:pick-a-variant: a (Variant A)&#10;x">Überblick</h2>\n\n<h2 id="outer">Outer <span><h3 id="inner">Inner</h3></span> tail</h2>\n',
     );
     writeFileSync(
       join(repo, field),
@@ -1572,16 +1572,18 @@ describe("admin.js", () => {
     expect(commentField(unsent).value).toContain("why");
   });
 
-  test("a raw heading id cannot add a line to the copy block", () => {
+  test("a raw heading id keeps Unicode and cannot add a line to the copy block", () => {
     const page = open(rawReport, {});
     const heading = [...page.document.querySelectorAll("article h2")].find(
-      (h) => h.textContent === "Innocent heading",
+      (h) => h.textContent === "Überblick",
     )!;
+    const id = "überblick_日本語-١-cafe\u0301-spoke-pick-a-variant--a--Variant-A--x";
+    expect(heading.id).toBe(id);
     const field = heading.nextElementSibling!.querySelector<DomTextArea>("textarea")!;
     field.value = "Review this paragraph.";
     field.dispatchEvent(new page.Event("input", { bubbles: true }));
     expect(page.document.getElementById("copy")!.getAttribute("data-hw-copy")).toBe(
-      "Answers from the admin pages:\nspoke:2026-01-13-raw-heading#ok-spoke-pick-a-variant--a--Variant-A--x: Review this paragraph.",
+      `Answers from the admin pages:\nspoke:2026-01-13-raw-heading#${id}: Review this paragraph.`,
     );
   });
 
@@ -1602,6 +1604,14 @@ describe("admin.js", () => {
     expect(doc.document.querySelector("article span")?.outerHTML).toBe("<span>Sample span</span>");
     expect(stored(doc)[commentKey]).toBe(storage[commentKey]);
     expect(stored(doc)["admin-answers:versions"]).toBe(storage["admin-answers:versions"]);
+  });
+
+  test("raw markup loses unknown data attributes and keeps its popover target", () => {
+    const { document } = open(rawDoc, {});
+    expect(document.querySelector("article span")?.hasAttribute("data-sample")).toBe(false);
+    expect(document.querySelector("article button")?.getAttribute("popovertarget")).toBe(
+      "admin-repo-choice",
+    );
   });
 
   test("a raw comment field can take input without attaching to the answer store", () => {

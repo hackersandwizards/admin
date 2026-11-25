@@ -355,17 +355,6 @@ const links = new HTMLRewriter()
   });
 
 const ADMIN_ID = /^(?:admin-|copy$|state$|theme-toggle$|(?:sun|moon)-icon$)/;
-const ADMIN_DATA = new Set(
-  `data-admin-catalog data-admin-theme data-alt data-answers data-asked data-assumed
-   data-assumed-count data-changed data-comment data-count data-dev data-dev-state data-done
-   data-group data-hw-copy data-hw-night data-k data-kind data-kind-button data-kind-count
-   data-label data-later data-option data-option-row data-repo data-repo-all data-repo-box
-   data-repo-count data-repo-none data-repo-off data-repo-row data-repo-said data-report
-   data-row data-stale data-stance data-status data-theme data-updated data-updated-count
-   data-v data-version data-who data-who-button data-who-count data-who-group data-zoom`.split(
-    /\s+/,
-  ),
-);
 
 // Front matter is a leading YAML mapping between --- lines; a leading rule renders, since "---"
 // above a paragraph is no mapping. An item's body has no front matter and no HTML: a placeholder
@@ -386,9 +375,7 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
     .on("*", {
       element(el) {
         for (const [name] of [...el.attributes])
-          if (ADMIN_DATA.has(name.toLowerCase())) el.removeAttribute(name);
-        if (el.getAttribute("popovertarget") === "admin-repo-choice")
-          el.removeAttribute("popovertarget");
+          if (name.toLowerCase().startsWith("data-")) el.removeAttribute(name);
         const id = el.getAttribute("id");
         if (id && !/^h[1-6]$/.test(el.tagName) && ADMIN_ID.test(entities(id)))
           el.removeAttribute("id");
@@ -396,7 +383,8 @@ export function renderMarkdown(repo: string, path: string, text: string, item = 
     })
     .on("h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]", {
       element(el) {
-        const slug = entities(el.getAttribute("id")!).replace(/[^\w-]/g, "-") || "section";
+        const slug =
+          entities(el.getAttribute("id")!).replace(/[^\p{L}\p{M}\p{N}_-]/gu, "-") || "section";
         const base = ADMIN_ID.test(slug) ? `section-${slug}` : slug;
         let id = base;
         for (let n = 1; used.has(id); n++) id = `${base}-${n}`;
