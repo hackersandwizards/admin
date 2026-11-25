@@ -106,7 +106,7 @@ function prerequisiteSummary(items: Item[]) {
   const waitingOn = new Map<string, string[]>();
   const waitingCount = new Map<string, number>();
   for (const item of items) {
-    if (item.status !== "open" || !item.needs?.length) continue;
+    if (!item.needs?.length) continue;
     const seen = new Set([item.id]);
     const pending = [...item.needs];
     const open: string[] = [];
@@ -119,7 +119,7 @@ function prerequisiteSummary(items: Item[]) {
       if (target.needs) pending.push(...target.needs);
       if (target.status === "open") {
         open.push(id);
-        waitingCount.set(id, (waitingCount.get(id) ?? 0) + 1);
+        if (item.status === "open") waitingCount.set(id, (waitingCount.get(id) ?? 0) + 1);
       }
     }
     waitingOn.set(item.id, open.sort());

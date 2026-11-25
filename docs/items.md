@@ -63,8 +63,8 @@ The question's context, in Markdown.
 - Work and goals are only ever `open`.
 - `needs` is an optional list of item ids as strings. Every id names an existing item in this
   repository. An item cannot need itself or close a cycle. Remove a prerequisite from `needs` when
-  you delete its finished item. The hub shows the open prerequisites an open item waits on,
-  directly or through other items, and how many open items wait on it. Only `open` items count.
+  you delete its finished item. The hub shows which open prerequisites an item waits on,
+  directly or through other items. Each open prerequisite shows how many open items wait on it.
 - `due` is a calendar day as an ISO date. `order` and `evidence` are optional.
 - A table, such as scores per criterion, goes in the body as Markdown.
 - No `GOAL.md` and no file under `docs/tracking/` remains.
