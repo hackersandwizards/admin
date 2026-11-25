@@ -102,9 +102,10 @@ describe("serve hub pinning on one site", () => {
     expect(await response.text()).toBe("not committed");
   });
 
-  test("falls through to 404 for an absent /_astro/ asset", async () => {
+  test("falls through to the hub 404 page for an absent /_astro/ asset", async () => {
     const response = await hub.fetch(new Request("http://admin.localhost/_astro/absent.js"));
     expect(response.status).toBe(404);
+    expect(await response.text()).toContain("Nothing on the hub answers at /_astro/absent.js:");
   });
 
   test("returns an animated PNG unmodified instead of resizing to WebP", async () => {
@@ -206,14 +207,17 @@ describe("serve hub failure, concurrency, and rescan pinning", () => {
   );
 
   test(
-    "concurrent pages() requests share one build",
+    "two concurrent page fetch requests during one build cause one build",
     async () => {
       const repo = repoFrom("spoke");
       const counter = countBuildSpawns();
       try {
         const hub = createHub({ root: dirname(repo) });
-        const [first, second] = await Promise.all([hub.pages(), hub.pages()]);
-        expect(first).toBe(second);
+        const [home, dashboard] = await Promise.all([
+          hub.fetch(new Request("http://admin.localhost/")),
+          hub.fetch(new Request("http://admin.localhost/spoke/dashboard")),
+        ]);
+        expect([home.status, dashboard.status]).toEqual([200, 200]);
         expect(counter.calls()).toBe(1);
       } finally {
         counter.restore();
@@ -223,28 +227,55 @@ describe("serve hub failure, concurrency, and rescan pinning", () => {
   );
 
   test(
-    "keeps last pages when a read fails at a new state and skips rebuild when retry still fails",
+    "a page request arriving while a build is in flight shares that build",
     async () => {
       const repo = repoFrom("spoke");
-      const second = join(dirname(repo), "second");
-      cpSync(repo, second, { recursive: true });
-      const hub = createHub({ root: dirname(repo) });
-      await hub.pages();
-      breakGoalObject(second);
-      sh(second, "git", "tag", "v-broken");
-      const afterFail = await hub.pages();
-      const dashboard = await hub.fetch(new Request("http://admin.localhost/second/dashboard"));
-      const body = await dashboard.text();
-      expect(dashboard.status).toBe(200);
-      expect(body).toContain("second could not be read:");
-      expect(body).toContain("Its pages show its last read.");
-
-      const now = Date.now;
-      Date.now = () => now() + 61_000;
+      const counter = countBuildSpawns();
       try {
-        expect(await hub.pages()).toBe(afterFail);
+        const hub = createHub({ root: dirname(repo) });
+        const building = hub.pages();
+        const page = hub.fetch(new Request("http://admin.localhost/"));
+        const [built, response] = await Promise.all([building, page]);
+        expect(built.repos).toHaveLength(1);
+        expect(response.status).toBe(200);
+        expect(counter.calls()).toBe(1);
       } finally {
-        Date.now = now;
+        counter.restore();
+      }
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "keeps last pages on failure, skips retry inside window, and retries without rebuilding at window edge",
+    async () => {
+      const base = new Date(2026, 4, 10, 12, 0, 0).getTime();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(base);
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const repo = repoFrom("spoke");
+        const second = join(dirname(repo), "second");
+        cpSync(repo, second, { recursive: true });
+        const hub = createHub({ root: dirname(repo) });
+        await hub.pages();
+        breakGoalObject(second);
+        sh(second, "git", "tag", "v-broken");
+        const afterFail = await hub.pages();
+        const dashboard = await hub.fetch(new Request("http://admin.localhost/second/dashboard"));
+        const body = await dashboard.text();
+        expect(dashboard.status).toBe(200);
+        expect(body).toContain("Its pages show its last read.");
+
+        clock.mockReturnValue(base + 59_999);
+        await hub.pages();
+        expect(errSpy).toHaveBeenCalledTimes(1);
+
+        clock.mockReturnValue(base + 60_000);
+        expect(await hub.pages()).toBe(afterFail);
+        expect(errSpy).toHaveBeenCalledTimes(2);
+      } finally {
+        clock.mockRestore();
+        errSpy.mockRestore();
       }
     },
     TIMEOUT,
@@ -253,30 +284,35 @@ describe("serve hub failure, concurrency, and rescan pinning", () => {
   test(
     "counts multiple unread repositories and drops a vanished repository after rescan",
     async () => {
-      const root = scratch();
-      const spoke = repoFrom("spoke");
-      for (const name of ["spoke", "one", "two"])
-        cpSync(spoke, join(root, name), { recursive: true });
-      breakGoalObject(join(root, "one"));
-      breakGoalObject(join(root, "two"));
-
-      const hub = createHub({ root, rescanMs: 100 });
-      const before = await (await hub.fetch(new Request("http://admin.localhost/"))).text();
-      expect(before).toContain("The hub could not read 2 repositories.");
-
-      rmSync(join(root, "two"), { recursive: true, force: true });
-      const now = Date.now;
-      Date.now = () => now() + 200;
+      const base = new Date(2026, 4, 10, 12, 0, 0).getTime();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(base);
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       try {
-        // Triggers background rescan while returning the last list.
+        const root = scratch();
+        const spoke = repoFrom("spoke");
+        for (const name of ["spoke", "one", "two"])
+          cpSync(spoke, join(root, name), { recursive: true });
+        breakGoalObject(join(root, "one"));
+        breakGoalObject(join(root, "two"));
+
+        const hub = createHub({ root, rescanMs: 100 });
+        const before = await (await hub.fetch(new Request("http://admin.localhost/"))).text();
+        expect(before).toContain("The hub could not read 2 repositories.");
+
+        rmSync(join(root, "two"), { recursive: true, force: true });
+        clock.mockReturnValue(base + 200);
         await hub.pages();
-        // Give the background findRepos scan time to complete.
-        await new Promise((r) => setTimeout(r, 500));
-        const after = await (await hub.fetch(new Request("http://admin.localhost/"))).text();
-        expect(after).toContain("The hub could not read a repository.");
-        expect(after).not.toContain("two could not be read");
+        await vi.waitFor(
+          async () => {
+            const after = await (await hub.fetch(new Request("http://admin.localhost/"))).text();
+            expect(after).toContain("The hub could not read a repository.");
+            expect(after).not.toContain("two could not be read");
+          },
+          { timeout: 5_000, interval: 25 },
+        );
       } finally {
-        Date.now = now;
+        clock.mockRestore();
+        errSpy.mockRestore();
       }
     },
     TIMEOUT,

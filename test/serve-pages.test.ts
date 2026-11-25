@@ -4,16 +4,15 @@ import { SHELL, shellPath } from "../src/build.ts";
 import { when } from "../src/display.ts";
 import type { Doc, RepoData, Report } from "../src/repo.ts";
 import {
+  createDocFiller,
   createPageDecorator,
   extractShells,
-  fillDocPage,
   formatNotice,
   indexDocs,
   linker,
   renderDocShell,
   rewriteMissingPage,
   stampTime,
-  type Site,
 } from "../src/serve-pages.ts";
 import type { Page } from "../src/site-data.ts";
 
@@ -183,25 +182,20 @@ describe("renderDocShell", () => {
   });
 });
 
-describe("fillDocPage", () => {
+describe("createDocFiller", () => {
   test("fills a doc once per build and returns undefined for an unknown doc", () => {
     const doc: Doc = { path: "README.md", title: "Readme", html: "<p>Hi</p>" };
     const repo = makeRepo({ docs: [doc] });
-    const site: Site = {
-      key: "k",
-      built: 1,
-      files: new Map(),
-      repos: [repo],
-      links: linker([repo]),
-      docs: indexDocs([repo]),
-      shells: new Map([[shellPath("demo/", 3), `<main>${SHELL.html}</main>`]]),
-      filled: new Map(),
-    };
-    expect(fillDocPage(site, "demo/doc/absent")).toBeUndefined();
-    const first = fillDocPage(site, "demo/doc/README");
+    const docPage = createDocFiller(
+      new Map([[shellPath("demo/", 3), `<main>${SHELL.html}</main>`]]),
+      indexDocs([repo]),
+      linker([repo]),
+    );
+    expect(docPage("demo/doc/absent")).toBeUndefined();
+    const first = docPage("demo/doc/README");
     assert(first, "filled doc page");
     expect(first.toString("utf8")).toBe("<main><p>Hi</p></main>");
-    expect(fillDocPage(site, "demo/doc/README")).toBe(first);
+    expect(docPage("demo/doc/README")).toBe(first);
   });
 });
 

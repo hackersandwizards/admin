@@ -1,4 +1,4 @@
-import { utimesSync, writeFileSync } from "node:fs";
+import { rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import { rejection } from "@hackersandwizards/scaffolding/rejection";
@@ -8,13 +8,12 @@ import {
   buildUnreadNotices,
   createRepoCache,
   createRepoScanner,
-  decideRepoRead,
   errorMessageOf,
+  isReadDeferred,
   RETRY_MS,
   siteStateKey,
   stateOfRepo,
   type ReadFailure,
-  type RepoMemory,
   type RepoSnapshot,
 } from "../src/serve-repos.ts";
 import { commit, scratch, sh } from "./admin-fixtures.ts";
@@ -66,56 +65,31 @@ describe("siteStateKey", () => {
   });
 });
 
-describe("decideRepoRead", () => {
-  const snap: RepoSnapshot = { state: "s1", data: sampleRepo("alpha", "/r/alpha") };
+describe("isReadDeferred", () => {
   const now = 100_000;
 
-  test.each<{ label: string; memory: RepoMemory; state: string; at: number; expected: string }>([
-    { label: "never read", memory: {}, state: "s1", at: now, expected: "read" },
-    {
-      label: "unchanged since last read",
-      memory: { read: snap },
-      state: "s1",
-      at: now,
-      expected: "keep",
-    },
-    {
-      label: "moved since last read",
-      memory: { read: snap },
-      state: "s2",
-      at: now,
-      expected: "read",
-    },
+  test.each<{ label: string; failed: ReadFailure | undefined; state: string; expected: boolean }>([
+    { label: "no prior failure", failed: undefined, state: "s1", expected: false },
     {
       label: "failed at same state within retry window",
-      memory: { failed: { state: "s2", at: now - RETRY_MS + 1, message: "err" } },
+      failed: { state: "s2", at: now - RETRY_MS + 1, message: "err" },
       state: "s2",
-      at: now,
-      expected: "defer",
+      expected: true,
     },
     {
       label: "failed at same state at exact retry boundary",
-      memory: { failed: { state: "s2", at: now - RETRY_MS, message: "err" } },
+      failed: { state: "s2", at: now - RETRY_MS, message: "err" },
       state: "s2",
-      at: now,
-      expected: "read",
+      expected: false,
     },
     {
       label: "failed at older state and now moved",
-      memory: { failed: { state: "s2", at: now - 10, message: "err" } },
+      failed: { state: "s2", at: now - 10, message: "err" },
       state: "s3",
-      at: now,
-      expected: "read",
+      expected: false,
     },
-    {
-      label: "returned to last read state despite recent failure at another state",
-      memory: { read: snap, failed: { state: "s2", at: now - 10, message: "err" } },
-      state: "s1",
-      at: now,
-      expected: "keep",
-    },
-  ])("$label -> $expected", ({ memory, state, at, expected }) => {
-    expect(decideRepoRead(memory, state, at)).toBe(expected);
+  ])("$label -> $expected", ({ failed, state, expected }) => {
+    expect(isReadDeferred(failed, state, now)).toBe(expected);
   });
 });
 
@@ -156,25 +130,39 @@ describe("attemptRepoRead", () => {
 });
 
 describe("stateOfRepo", () => {
-  test("includes refs and marks whether FETCH_HEAD exists", async () => {
-    const repo = scratch();
-    sh(repo, "git", "init", "-q", "-b", "main");
-    writeFileSync(join(repo, "README.md"), "# Hi\n");
-    sh(repo, "git", "add", "README.md");
-    commit(repo, "init");
+  test("combines refs, push tip, and fetched marker into the exact state string", async () => {
+    const origin = scratch();
+    sh(origin, "git", "init", "-q", "-b", "main");
+    writeFileSync(join(origin, "README.md"), "# Hi\n");
+    sh(origin, "git", "add", "README.md");
+    commit(origin, "init");
+    const head = sh(origin, "git", "rev-parse", "HEAD").trim();
 
-    const before = await stateOfRepo(repo);
-    expect(before.fetched).toBeUndefined();
-    expect(before.state.endsWith("\n")).toBe(true);
+    const clone = join(scratch(), "clone");
+    sh(origin, "git", "clone", "-q", origin, clone);
+    sh(clone, "git", "config", "push.default", "current");
+    const fetchHead = join(clone, ".git/FETCH_HEAD");
+    rmSync(fetchHead, { force: true });
 
-    const fetchHead = join(repo, ".git/FETCH_HEAD");
+    const refs =
+      `${head} HEAD\n` +
+      `${head} refs/heads/main\n` +
+      `${head} refs/remotes/origin/HEAD\n` +
+      `${head} refs/remotes/origin/main\n`;
+
+    expect(await stateOfRepo(clone)).toEqual({
+      state: `${refs}\n${head}\n\n`,
+      fetched: undefined,
+    });
+
     writeFileSync(fetchHead, "");
     const stamp = new Date(2026, 2, 1, 8, 30);
     utimesSync(fetchHead, stamp, stamp);
 
-    const after = await stateOfRepo(repo);
-    expect(after.fetched).toBe(stamp.getTime());
-    expect(after.state.endsWith("\nfetched")).toBe(true);
+    expect(await stateOfRepo(clone)).toEqual({
+      state: `${refs}\n${head}\n\nfetched`,
+      fetched: stamp.getTime(),
+    });
   });
 });
 
@@ -236,51 +224,41 @@ describe("createRepoScanner", () => {
 });
 
 describe("createRepoCache", () => {
-  test("reads new states, keeps cached data on failure, retries when due, and prunes vanished repos", async () => {
+  test("skips retry within the window and retries reading at the window edge", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const clock = vi.spyOn(Date, "now").mockReturnValue(10_000);
-    const states = new Map<string, { state: string; fetched: number | undefined }>([
-      ["/r/a", { state: "a1", fetched: 500 }],
-      ["/r/b", { state: "b1", fetched: undefined }],
-    ]);
-    const dataA = sampleRepo("a", "/r/a");
-    const readers = new Map<string, () => Promise<RepoData>>([
-      ["/r/a", async () => dataA],
-      [
-        "/r/b",
-        async () => {
-          throw new Error("b broken");
-        },
-      ],
-    ]);
+    const dataB = sampleRepo("b", "/r/b");
+    const reads = [
+      async () => {
+        throw new Error("b broken");
+      },
+      async () => dataB,
+    ];
+    const readOne = vi.fn(() => reads.shift()!());
     try {
-      const cache = createRepoCache(
-        (p) => readers.get(p)!(),
-        async (p) => states.get(p)!,
-      );
-      const firstProbe = await cache.probe(["/r/a", "/r/b"]);
-      const firstLoad = await cache.load(firstProbe.states);
-      const readFetched = cache.fetchedTime;
-      expect(firstLoad).toEqual({ repos: [dataA], fresh: true });
-      expect(readFetched("/r/a")).toBe(500);
-      expect(cache.unreadNotices()).toEqual([
-        { name: "b", message: "b broken", hasLastRead: false },
-      ]);
+      const cache = createRepoCache(readOne, async () => ({ state: "b1", fetched: undefined }));
+      const p1 = await cache.probe(["/r/b"]);
+      await cache.load(p1.states);
+
+      clock.mockReturnValue(10_000 + RETRY_MS - 1);
+      const within = await cache.probe(["/r/b"]);
+      expect(within.due).toBe(false);
+      expect(await cache.load(within.states)).toEqual({ repos: [], fresh: false });
+      expect(readOne).toHaveBeenCalledTimes(1);
 
       clock.mockReturnValue(10_000 + RETRY_MS);
-      const retryProbe = await cache.probe(["/r/a", "/r/b"]);
-      expect(retryProbe.due).toBe(true);
-
-      await cache.probe(["/r/a"]);
-      expect(cache.unreadNotices()).toEqual([]);
+      const atEdge = await cache.probe(["/r/b"]);
+      expect(atEdge.due).toBe(true);
+      expect(await cache.load(atEdge.states)).toEqual({ repos: [dataB], fresh: true });
     } finally {
       errSpy.mockRestore();
       clock.mockRestore();
     }
   });
 
-  test("clears unread failure when a repository returns to its last successfully read state", async () => {
+  test("keeps prior data when a later read fails and clears unread when state reverts", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const clock = vi.spyOn(Date, "now").mockReturnValue(10_000);
     let currentState = "s1";
     const dataA = sampleRepo("a", "/r/a");
     const reads = [
@@ -296,13 +274,54 @@ describe("createRepoCache", () => {
       );
       await cache.load((await cache.probe(["/r/a"])).states);
       currentState = "s2";
-      await cache.load((await cache.probe(["/r/a"])).states);
+      const afterFail = await cache.load((await cache.probe(["/r/a"])).states);
+      expect(afterFail).toEqual({ repos: [dataA], fresh: false });
       expect(cache.unreadNotices()).toEqual([
         { name: "a", message: "temp failure", hasLastRead: true },
       ]);
       currentState = "s1";
+      clock.mockClear();
+      const reverted = await cache.probe(["/r/a"]);
+      expect(reverted.due).toBe(false);
+      expect(cache.unreadNotices()).toEqual([]);
+      expect(clock).toHaveBeenCalledTimes(1);
+    } finally {
+      errSpy.mockRestore();
+      clock.mockRestore();
+    }
+  });
+
+  test("prunes vanished repositories from read, unread, and fetched caches on probe", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dataA = sampleRepo("a", "/r/a");
+    const readers = new Map<string, () => Promise<RepoData>>([
+      ["/r/a", async () => dataA],
+      [
+        "/r/b",
+        async () => {
+          throw new Error("b broken");
+        },
+      ],
+    ]);
+    const readOne = vi.fn((p: string) => readers.get(p)!());
+    const states = new Map([
+      ["/r/a", { state: "a1", fetched: 500 }],
+      ["/r/b", { state: "b1", fetched: undefined }],
+    ]);
+    try {
+      const cache = createRepoCache(readOne, async (p) => states.get(p)!);
+      await cache.load((await cache.probe(["/r/a", "/r/b"])).states);
+      const readFetched = cache.fetchedTime;
+      expect(readFetched("/r/a")).toBe(500);
+
       await cache.probe(["/r/a"]);
       expect(cache.unreadNotices()).toEqual([]);
+
+      await cache.probe([]);
+      expect(readFetched("/r/a")).toBeUndefined();
+
+      await cache.load((await cache.probe(["/r/a"])).states);
+      expect(readOne).toHaveBeenCalledTimes(3);
     } finally {
       errSpy.mockRestore();
     }

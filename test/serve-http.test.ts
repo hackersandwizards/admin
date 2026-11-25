@@ -1,16 +1,14 @@
 import { assert, describe, expect, test, vi } from "vitest";
-import elements from "../brand-elements.json";
 import { SHELL, shellPath } from "../src/build.ts";
+import { when } from "../src/display.ts";
 import type { RepoData } from "../src/repo.ts";
 import {
   astroAssetRoute,
-  catalogCsp,
   createCatalogRoute,
   createFileRoute,
   createPageRoute,
   createResponder,
   csp,
-  IMMUTABLE,
   isAllowedFetchSite,
   isCompressible,
   matchSitePage,
@@ -20,20 +18,17 @@ import {
   type PageMatch,
   type ParsedRequest,
 } from "../src/serve-http.ts";
-import { createPageDecorator, indexDocs, linker, type Site } from "../src/serve-pages.ts";
+import {
+  createDocFiller,
+  createPageDecorator,
+  indexDocs,
+  linker,
+  type Site,
+} from "../src/serve-pages.ts";
 
-const parsedFor = (url: string, gzip = false, ifNoneMatch: string | null = null): ParsedRequest => {
-  const checked = parseRequest(
-    new Request(url, {
-      headers: {
-        ...(gzip ? { "accept-encoding": "gzip" } : {}),
-        ...(ifNoneMatch ? { "if-none-match": ifNoneMatch } : {}),
-      },
-    }),
-  );
-  assert("request" in checked, `expected valid request for ${url}`);
-  return checked.request;
-};
+const CATALOG_CSP = "object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'";
+const HUB_CSP =
+  "default-src 'self'; script-src http://admin.localhost/_astro/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'self'";
 
 const makeSite = (): Site => {
   const repo: RepoData = {
@@ -56,22 +51,34 @@ const makeSite = (): Site => {
     log: [],
     pkg: { dependencies: {}, scripts: {}, bin: {} },
   };
+  const docs = indexDocs([repo]);
+  const shells = new Map([
+    [shellPath("demo/", 3), `<main>${SHELL.html}<!--admin-notice--></main>`],
+  ]);
   return {
     key: "k1",
     built: 1_000,
     files: new Map<string, Buffer>([
-      ["index.html", Buffer.from("<p>Home <!--admin-notice--></p>")],
+      ["index.html", Buffer.from("<p>Home <span data-stamp>old</span> <!--admin-notice--></p>")],
+      ["robots.txt", Buffer.from("User-agent: * <!--admin-notice-->")],
       ["demo/dashboard.html", Buffer.from("<p>Dash</p>")],
       ["_astro/app.css", Buffer.from("body{}")],
-      ["404.html", Buffer.from('<a href="index.html">Hub</a> admin-missing-path')],
+      [
+        "404.html",
+        Buffer.from('<a href="index.html">Hub</a> admin-missing-path <!--admin-notice-->'),
+      ],
     ]),
     repos: [repo],
-    links: linker([repo]),
-    docs: indexDocs([repo]),
-    shells: new Map([[shellPath("demo/", 3), `<main>${SHELL.html}</main>`]]),
-    filled: new Map(),
+    docs,
+    docPage: createDocFiller(shells, docs, linker([repo])),
   };
 };
+
+describe("csp", () => {
+  test("builds the hub content security policy for an origin", () => {
+    expect(csp("http://admin.localhost")).toBe(HUB_CSP);
+  });
+});
 
 describe("isAllowedFetchSite", () => {
   test.each([
@@ -138,10 +145,10 @@ describe("parseRequest", () => {
 
 describe("responseHeaders and isCompressible", () => {
   test("sets security and cache headers", () => {
-    expect(responseHeaders("text/html", "no-store", catalogCsp)).toEqual({
+    expect(responseHeaders("text/html", "no-store", CATALOG_CSP)).toEqual({
       "content-type": "text/html",
       "cache-control": "no-store",
-      "content-security-policy": elements.csp,
+      "content-security-policy": CATALOG_CSP,
       "x-content-type-options": "nosniff",
       "cross-origin-resource-policy": "same-origin",
       vary: "accept-encoding",
@@ -165,28 +172,93 @@ describe("responseHeaders and isCompressible", () => {
 });
 
 describe("createResponder", () => {
-  test("compresses built pages when accepted and never compresses /_file/ responses", async () => {
+  const bigHtml = "<p>hello</p>".repeat(200);
+
+  test("gzips compressible built pages when accepted and reuses cached bytes on repeat", async () => {
     const responder = createResponder();
-    const big = Buffer.from("<p>hello</p>".repeat(200));
-    const req = parsedFor("http://admin.localhost/", true);
+    const body = Buffer.from(bigHtml);
+    const req: ParsedRequest = {
+      url: new URL("http://admin.localhost/"),
+      path: "/",
+      gzip: true,
+      ifNoneMatch: null,
+    };
+    const gzipSpy = vi.spyOn(Bun, "gzipSync");
+    try {
+      const first = responder.page(req, body, "index.html");
+      const second = responder.page(req, body, "index.html");
+      expect(first.headers.get("content-encoding")).toBe("gzip");
+      expect(first.headers.get("cache-control")).toBe("no-store");
+      expect(first.headers.get("content-security-policy")).toBe(HUB_CSP);
+      expect([
+        Buffer.from(Bun.gunzipSync(await first.bytes())).toString("utf8"),
+        Buffer.from(Bun.gunzipSync(await second.bytes())).toString("utf8"),
+      ]).toEqual([bigHtml, bigHtml]);
+      expect(gzipSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      gzipSpy.mockRestore();
+    }
+  });
 
-    const pageRes = responder.page(req, big, "index.html");
-    expect(pageRes.headers.get("content-encoding")).toBe("gzip");
-    expect(pageRes.headers.get("cache-control")).toBe("no-store");
-    expect(pageRes.headers.get("content-security-policy")).toBe(csp("http://admin.localhost"));
+  test.each<{
+    label: string;
+    gzip: boolean;
+    body: Buffer;
+    name: string;
+  }>([
+    { label: "client without gzip", gzip: false, body: Buffer.from(bigHtml), name: "index.html" },
+    {
+      label: "small html under threshold",
+      gzip: true,
+      body: Buffer.from("<p>hi</p>"),
+      name: "index.html",
+    },
+    {
+      label: "binary png over threshold",
+      gzip: true,
+      body: Buffer.alloc(2000, 7),
+      name: "shot.png",
+    },
+  ])("serves $label uncompressed with exact bytes", async ({ gzip, body, name }) => {
+    const responder = createResponder();
+    const req: ParsedRequest = {
+      url: new URL("http://admin.localhost/"),
+      path: "/",
+      gzip,
+      ifNoneMatch: null,
+    };
+    const res = responder.page(req, body, name);
+    expect(res.headers.get("content-encoding")).toBeNull();
+    expect(Buffer.from(await res.bytes())).toEqual(body);
+  });
 
-    const fileRes = responder.file(req, big, "note.txt");
-    expect(fileRes.headers.get("content-encoding")).toBeNull();
-    expect(fileRes.headers.get("cache-control")).toBe("no-cache");
+  test("serves /_file/ responses uncompressed with no-cache and exact bytes", async () => {
+    const responder = createResponder();
+    const req: ParsedRequest = {
+      url: new URL("http://admin.localhost/_file/demo/note.txt"),
+      path: "/_file/demo/note.txt",
+      gzip: true,
+      ifNoneMatch: null,
+    };
+    const res = responder.file(req, Buffer.from(bigHtml), "note.txt");
+    expect(res.headers.get("content-encoding")).toBeNull();
+    expect(res.headers.get("cache-control")).toBe("no-cache");
+    expect(res.headers.get("content-security-policy")).toBe(HUB_CSP);
+    expect(await res.text()).toBe(bigHtml);
   });
 
   test("sets catalog CSP and immutable cache for catalog _astro assets", () => {
     const responder = createResponder();
-    const req = parsedFor("http://admin.localhost/catalog/_astro/a.css");
+    const req: ParsedRequest = {
+      url: new URL("http://admin.localhost/catalog/_astro/a.css"),
+      path: "/catalog/_astro/a.css",
+      gzip: false,
+      ifNoneMatch: null,
+    };
     const asset = responder.catalog(req, Buffer.from("body{}"), "_astro/a.css");
     const home = responder.catalog(req, Buffer.from("<p>hi</p>"), "index.html");
-    expect(asset.headers.get("content-security-policy")).toBe(catalogCsp);
-    expect(asset.headers.get("cache-control")).toBe(IMMUTABLE);
+    expect(asset.headers.get("content-security-policy")).toBe(CATALOG_CSP);
+    expect(asset.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(home.headers.get("cache-control")).toBe("no-store");
   });
 });
@@ -195,20 +267,24 @@ describe("astroAssetRoute", () => {
   test("serves cached /_astro/ files immutably and returns undefined for misses", () => {
     const responder = createResponder();
     const site = makeSite();
-    const hit = astroAssetRoute(
-      parsedFor("http://admin.localhost/_astro/app.css"),
-      site,
-      responder,
-    );
+    const cssReq: ParsedRequest = {
+      url: new URL("http://admin.localhost/_astro/app.css"),
+      path: "/_astro/app.css",
+      gzip: false,
+      ifNoneMatch: null,
+    };
+    const missReq: ParsedRequest = {
+      url: new URL("http://admin.localhost/_astro/missing.css"),
+      path: "/_astro/missing.css",
+      gzip: false,
+      ifNoneMatch: null,
+    };
+    const hit = astroAssetRoute(cssReq, site, responder);
     assert(hit, "expected asset hit");
     expect(hit.status).toBe(200);
-    expect(hit.headers.get("cache-control")).toBe(IMMUTABLE);
-    expect(
-      astroAssetRoute(parsedFor("http://admin.localhost/_astro/missing.css"), site, responder),
-    ).toBeUndefined();
-    expect(
-      astroAssetRoute(parsedFor("http://admin.localhost/_astro/app.css"), undefined, responder),
-    ).toBeUndefined();
+    expect(hit.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(astroAssetRoute(missReq, site, responder)).toBeUndefined();
+    expect(astroAssetRoute(cssReq, undefined, responder)).toBeUndefined();
   });
 });
 
@@ -217,7 +293,12 @@ describe("serveRepoFile and createFileRoute", () => {
     const responder = createResponder();
     const body = Buffer.from("sample bytes");
     const first = await serveRepoFile(
-      parsedFor("http://admin.localhost/_file/demo/note.txt"),
+      {
+        url: new URL("http://admin.localhost/_file/demo/note.txt"),
+        path: "/_file/demo/note.txt",
+        gzip: false,
+        ifNoneMatch: null,
+      },
       body,
       responder,
     );
@@ -225,7 +306,12 @@ describe("serveRepoFile and createFileRoute", () => {
     expect(first.headers.get("etag")).toBe('"1fbmfdrc7cn9z"');
 
     const repeat = await serveRepoFile(
-      parsedFor("http://admin.localhost/_file/demo/note.txt", false, '"1fbmfdrc7cn9z"'),
+      {
+        url: new URL("http://admin.localhost/_file/demo/note.txt"),
+        path: "/_file/demo/note.txt",
+        gzip: false,
+        ifNoneMatch: '"1fbmfdrc7cn9z"',
+      },
       body,
       responder,
     );
@@ -233,7 +319,7 @@ describe("serveRepoFile and createFileRoute", () => {
     expect(repeat.headers.get("etag")).toBe('"1fbmfdrc7cn9z"');
   });
 
-  test("ignores non-/_file/ paths, returns 404 when missing, and serves resolved files", async () => {
+  test("ignores non-/_file/ paths synchronously, returns 404 when missing, and serves resolved files", async () => {
     const responder = createResponder();
     const site = makeSite();
     const known = new Map<string, Buffer>([["/r/demo:a.txt", Buffer.from("ok")]]);
@@ -242,18 +328,35 @@ describe("serveRepoFile and createFileRoute", () => {
       responder,
       async (repo, p) => known.get(`${repo}:${p}`),
     );
-    expect(await route(parsedFor("http://admin.localhost/demo/dashboard"))).toBeUndefined();
-    const miss = await route(parsedFor("http://admin.localhost/_file/demo/absent.txt"));
+    expect(
+      route({
+        url: new URL("http://admin.localhost/demo/dashboard"),
+        path: "/demo/dashboard",
+        gzip: false,
+        ifNoneMatch: null,
+      }),
+    ).toBeUndefined();
+    const miss = await route({
+      url: new URL("http://admin.localhost/_file/demo/absent.txt"),
+      path: "/_file/demo/absent.txt",
+      gzip: false,
+      ifNoneMatch: null,
+    });
     assert(miss, "missing response");
     expect(miss.status).toBe(404);
-    const hit = await route(parsedFor("http://admin.localhost/_file/demo/a.txt"));
+    const hit = await route({
+      url: new URL("http://admin.localhost/_file/demo/a.txt"),
+      path: "/_file/demo/a.txt",
+      gzip: false,
+      ifNoneMatch: null,
+    });
     assert(hit, "found response");
     expect(await hit.text()).toBe("ok");
   });
 });
 
 describe("createCatalogRoute", () => {
-  test("redirects bare /catalog with query, serves nested pages, and returns 404 for unknown paths", async () => {
+  test("ignores other paths synchronously, redirects /catalog with query, serves nested pages, and 404s unknown paths", async () => {
     const responder = createResponder();
     const files = new Map<string, Buffer>([
       ["index.html", Buffer.from("<p>Catalog</p>")],
@@ -261,32 +364,56 @@ describe("createCatalogRoute", () => {
     ]);
     const route = createCatalogRoute(async () => files, responder);
 
-    expect(await route(parsedFor("http://admin.localhost/"))).toBeUndefined();
-    const redirect = await route(parsedFor("http://admin.localhost/catalog?q=1"));
+    expect(
+      route({ url: new URL("http://admin.localhost/"), path: "/", gzip: false, ifNoneMatch: null }),
+    ).toBeUndefined();
+    const redirect = await route({
+      url: new URL("http://admin.localhost/catalog?q=1"),
+      path: "/catalog",
+      gzip: false,
+      ifNoneMatch: null,
+    });
     assert(redirect, "redirect response");
     expect([redirect.status, redirect.headers.get("location")]).toEqual([
       302,
       "http://admin.localhost/catalog/?q=1",
     ]);
-    const story = await route(parsedFor("http://admin.localhost/catalog/stories/a"));
+    const story = await route({
+      url: new URL("http://admin.localhost/catalog/stories/a"),
+      path: "/catalog/stories/a",
+      gzip: false,
+      ifNoneMatch: null,
+    });
     assert(story, "story response");
     expect(await story.text()).toBe("<p>Story</p>");
-    const miss = await route(parsedFor("http://admin.localhost/catalog/missing"));
+    const miss = await route({
+      url: new URL("http://admin.localhost/catalog/missing"),
+      path: "/catalog/missing",
+      gzip: false,
+      ifNoneMatch: null,
+    });
     assert(miss, "miss response");
     expect(miss.status).toBe(404);
   });
 
-  test("caches a failed catalog build as 503", async () => {
+  test("caches a failed catalog build as 503 with the same body on repeat requests", async () => {
     const load = vi.fn(async () => {
       throw new Error("catalog build failed: boom");
     });
     const route = createCatalogRoute(load, createResponder());
-    const first = await route(parsedFor("http://admin.localhost/catalog/"));
-    const second = await route(parsedFor("http://admin.localhost/catalog/"));
+    const req: ParsedRequest = {
+      url: new URL("http://admin.localhost/catalog/"),
+      path: "/catalog/",
+      gzip: false,
+      ifNoneMatch: null,
+    };
+    const first = await route(req);
+    const second = await route(req);
     assert(first, "first 503");
     assert(second, "second 503");
-    expect(first.status).toBe(503);
+    expect([first.status, second.status]).toEqual([503, 503]);
     expect(await first.text()).toContain("catalog build failed: boom");
+    expect(await second.text()).toContain("catalog build failed: boom");
     expect(load).toHaveBeenCalledTimes(1);
   });
 });
@@ -336,27 +463,81 @@ describe("matchSitePage", () => {
 });
 
 describe("createPageRoute", () => {
-  test("serves built pages, doc shells, redirects, and rewritten 404", async () => {
+  test.each([
+    {
+      label: "strip-slash redirect",
+      url: "http://admin.localhost/demo/dashboard/?who=A",
+      path: "/demo/dashboard/",
+      location: "http://admin.localhost/demo/dashboard?who=A",
+    },
+    {
+      label: "dashboard redirect",
+      url: "http://admin.localhost/demo?who=A",
+      path: "/demo",
+      location: "http://admin.localhost/demo/dashboard?who=A",
+    },
+  ])("handles $label with 302", async ({ url, path, location }) => {
     const site = makeSite();
+    const route = createPageRoute(
+      async () => site,
+      createPageDecorator(() => undefined),
+      createResponder(),
+    );
+    const res = await route({ url: new URL(url), path, gzip: false, ifNoneMatch: null });
+    expect([res.status, res.headers.get("location")]).toEqual([302, location]);
+  });
+
+  test.each([
+    {
+      label: "stamped and noticed HTML file",
+      url: "http://admin.localhost/",
+      path: "/",
+      expectedBody: `<p>Home <span data-stamp>${when(Date.UTC(2026, 2, 10, 9, 5))}</span> <p>Warn</p></p>`,
+    },
+    {
+      label: "unmodified non-HTML built file",
+      url: "http://admin.localhost/robots.txt",
+      path: "/robots.txt",
+      expectedBody: "User-agent: * <!--admin-notice-->",
+    },
+    {
+      label: "filled doc page with notice",
+      url: "http://admin.localhost/demo/doc/README",
+      path: "/demo/doc/README",
+      expectedBody: "<main><p>Doc body</p><p>Warn</p></main>",
+    },
+  ])("responds with $label", async ({ url, path, expectedBody }) => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 2, 10, 9, 5));
+    try {
+      const site = makeSite();
+      const decorator = createPageDecorator(() => undefined);
+      decorator.setNotice("<p>Warn</p>");
+      const route = createPageRoute(async () => site, decorator, createResponder());
+      const res = await route({ url: new URL(url), path, gzip: false, ifNoneMatch: null });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe(expectedBody);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test("starts loading the site synchronously and returns rewritten 404 with notice for missing paths", async () => {
+    const site = makeSite();
+    const loadSite = vi.fn(async () => site);
     const decorator = createPageDecorator(() => undefined);
     decorator.setNotice("<p>Warn</p>");
-    const route = createPageRoute(async () => site, decorator, createResponder());
+    const route = createPageRoute(loadSite, decorator, createResponder());
 
-    const home = await route(parsedFor("http://admin.localhost/"));
-    expect(await home.text()).toBe("<p>Home <p>Warn</p></p>");
-
-    const doc = await route(parsedFor("http://admin.localhost/demo/doc/README"));
-    expect(await doc.text()).toBe("<main><p>Doc body</p></main>");
-
-    const dash = await route(parsedFor("http://admin.localhost/demo?who=A"));
-    expect([dash.status, dash.headers.get("location")]).toEqual([
-      302,
-      "http://admin.localhost/demo/dashboard?who=A",
-    ]);
-
-    const missing = await route(parsedFor("http://admin.localhost/missing/x"));
+    const pending = route({
+      url: new URL("http://admin.localhost/missing/x"),
+      path: "/missing/x",
+      gzip: false,
+      ifNoneMatch: null,
+    });
+    expect(loadSite).toHaveBeenCalledTimes(1);
+    const missing = await pending;
     expect(missing.status).toBe(404);
-    expect(await missing.text()).toBe('<a href="/index.html">Hub</a> /missing/x');
+    expect(await missing.text()).toBe('<a href="/index.html">Hub</a> /missing/x <p>Warn</p>');
   });
 
   test("answers 503 when loading the site fails", async () => {
@@ -367,7 +548,12 @@ describe("createPageRoute", () => {
       createPageDecorator(() => undefined),
       createResponder(),
     );
-    const response = await route(parsedFor("http://admin.localhost/"));
+    const response = await route({
+      url: new URL("http://admin.localhost/"),
+      path: "/",
+      gzip: false,
+      ifNoneMatch: null,
+    });
     expect(response.status).toBe(503);
     expect(await response.text()).toContain(
       "The hub could not build its pages: build failed: boom.",

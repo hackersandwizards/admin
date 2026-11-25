@@ -5,12 +5,11 @@ import {
   BuildError,
   createHub,
   createSiteStore,
-  decideSiteBuild,
+  isBuildDeferred,
   loadSiteForFile,
   type BuildFailure,
-  type SiteBuildAction,
 } from "../src/serve.ts";
-import { linker, type Site } from "../src/serve-pages.ts";
+import type { Site } from "../src/serve-pages.ts";
 import { createRepoCache, RETRY_MS } from "../src/serve-repos.ts";
 import { scratch } from "./admin-fixtures.ts";
 
@@ -49,77 +48,56 @@ const makeSite = (key: string, repos: RepoData[]): Site => ({
   built: 1_000,
   files: new Map(),
   repos,
-  links: linker(repos),
   docs: new Map(),
-  shells: new Map(),
-  filled: new Map(),
+  docPage: () => undefined,
 });
 
-describe("decideSiteBuild", () => {
+describe("isBuildDeferred", () => {
   const now = 200_000;
-  const recentFailure: BuildFailure = {
+  const failure = (at: number): BuildFailure => ({
     key: "k2",
-    at: now - RETRY_MS + 1,
+    at,
     message: "build failed: boom",
-    isBuildError: true,
-  };
-  const expiredFailure: BuildFailure = {
-    key: "k2",
-    at: now - RETRY_MS,
-    message: "build failed: boom",
-    isBuildError: true,
-  };
+    error: new BuildError("build failed: boom"),
+  });
 
-  test.each<{
-    label: string;
-    current: { siteKey?: string; failed?: BuildFailure };
-    target: { key: string; fresh: boolean };
-    expected: SiteBuildAction;
-  }>([
-    { label: "initial build", current: {}, target: { key: "k1", fresh: false }, expected: "build" },
+  test.each<{ label: string; failed: BuildFailure | undefined; key: string; expected: boolean }>([
+    { label: "no prior failure", failed: undefined, key: "k1", expected: false },
     {
-      label: "matching site key with no fresh repo",
-      current: { siteKey: "k1" },
-      target: { key: "k1", fresh: false },
-      expected: "reuse",
+      label: "matching key within retry window",
+      failed: failure(now - RETRY_MS + 1),
+      key: "k2",
+      expected: true,
     },
     {
-      label: "matching site key with fresh repo read",
-      current: { siteKey: "k1" },
-      target: { key: "k1", fresh: true },
-      expected: "build",
+      label: "matching key at exact retry boundary",
+      failed: failure(now - RETRY_MS),
+      key: "k2",
+      expected: false,
     },
     {
-      label: "settled failure with existing site keeps stale site",
-      current: { siteKey: "k1", failed: recentFailure },
-      target: { key: "k2", fresh: false },
-      expected: "reuse",
+      label: "different key within retry window",
+      failed: failure(now - 10),
+      key: "k3",
+      expected: false,
     },
-    {
-      label: "settled failure without any site rethrows",
-      current: { failed: recentFailure },
-      target: { key: "k2", fresh: false },
-      expected: "rethrow",
-    },
-    {
-      label: "expired failure retries build",
-      current: { siteKey: "k1", failed: expiredFailure },
-      target: { key: "k2", fresh: false },
-      expected: "build",
-    },
-    {
-      label: "settled failure rebuilds early when a repo became fresh",
-      current: { siteKey: "k1", failed: recentFailure },
-      target: { key: "k2", fresh: true },
-      expected: "build",
-    },
-  ])("$label -> $expected", ({ current, target, expected }) => {
-    expect(decideSiteBuild(current, target, now)).toBe(expected);
+  ])("$label -> $expected", ({ failed, key, expected }) => {
+    expect(isBuildDeferred(failed, key, now)).toBe(expected);
+  });
+});
+
+describe("BuildError", () => {
+  test("preserves Error name, message, and console formatting", () => {
+    const err = new BuildError("build failed: TypeError: boom");
+    expect(err.name).toBe("Error");
+    expect(err.message).toBe("build failed: TypeError: boom");
+    expect(String(err)).toBe("Error: build failed: TypeError: boom");
+    expect(Bun.inspect(err).split("\n")).toContain("error: build failed: TypeError: boom");
   });
 });
 
 describe("createSiteStore", () => {
-  test("rethrows BuildError during retry window on initial failure and clears failure once build succeeds", async () => {
+  test("logs Error line, rethrows BuildError during retry window, and clears failure on recovery", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const clock = vi.spyOn(Date, "now").mockReturnValue(50_000);
     const repo = makeRepo("a", "/r/a");
@@ -137,13 +115,13 @@ describe("createSiteStore", () => {
     try {
       const store = createSiteStore(async () => ["/r/a"], repoCache, build);
       expect(await rejection(store.refresh())).toContain("build failed: exit 1");
+      expect(String(errSpy.mock.calls[0]![0])).toBe("Error: build failed: exit 1");
       const cachedErr = await store.refresh().catch((e: unknown) => e);
       expect(cachedErr).toBeInstanceOf(BuildError);
       expect(build).toHaveBeenCalledTimes(1);
 
       clock.mockReturnValue(50_000 + RETRY_MS);
-      const built = await store.refresh();
-      expect(built.repos).toEqual([repo]);
+      await store.refresh();
       expect(store.buildFailure()).toBeUndefined();
     } finally {
       errSpy.mockRestore();
@@ -173,11 +151,37 @@ describe("createSiteStore", () => {
       state = "s2";
       clock.mockReturnValue(20_000);
       expect(await store.refresh()).toBe(first);
+      expect(await store.refresh()).toBe(first);
+      expect(build).toHaveBeenCalledTimes(2);
       expect(store.buildFailure()).toEqual({
         at: 20_000,
         message: "build failed: TypeError: boom",
         builtAt: 1_000,
       });
+    } finally {
+      errSpy.mockRestore();
+      clock.mockRestore();
+    }
+  });
+
+  test("rethrows plain Error (not BuildError) during retry window after a non-BuildError failure", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const clock = vi.spyOn(Date, "now").mockReturnValue(10_000);
+    const repo = makeRepo("a", "/r/a");
+    const repoCache = createRepoCache(
+      async () => repo,
+      async () => ({ state: "s1", fetched: undefined }),
+    );
+    const build = vi.fn(async () => {
+      throw new TypeError("unexpected boom");
+    });
+    try {
+      const store = createSiteStore(async () => ["/r/a"], repoCache, build);
+      await rejection(store.refresh());
+      const cached = await store.refresh().catch((e: unknown) => e);
+      expect(cached).toBeInstanceOf(Error);
+      expect(cached).not.toBeInstanceOf(BuildError);
+      expect((cached as Error).message).toBe("unexpected boom");
     } finally {
       errSpy.mockRestore();
       clock.mockRestore();
