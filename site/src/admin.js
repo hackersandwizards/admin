@@ -2,6 +2,7 @@
 // script, not a module, so a page opened from disk loads it; a file of its own, since admin-serve's
 // Content-Security-Policy runs no inline script.
 import { enhance } from "@hackersandwizards/brand/elements/behaviour.ts";
+import { browserStorage, createStore } from "./storage.ts";
 
 enhance();
 
@@ -21,32 +22,9 @@ document.addEventListener(
   true,
 );
 
-// A browser that blocks site data throws on localStorage itself: the page then keeps its state
-// for this visit only, and every control still works.
-class Memory {
-  getItem(k) {
-    return Object.hasOwn(this, k) ? this[k] : null;
-  }
-  setItem(k, v) {
-    this[k] = String(v);
-  }
-  removeItem(k) {
-    delete this[k];
-  }
-  key(i) {
-    return Object.keys(this)[i] ?? null;
-  }
-  get length() {
-    return Object.keys(this).length;
-  }
-}
-const storage = (() => {
-  try {
-    return window.localStorage;
-  } catch {
-    return new Memory();
-  }
-})();
+const STORE =
+  "adminCatalog" in document.documentElement.dataset ? "admin-catalog:" : "admin-answers:";
+const store = createStore(browserStorage(), STORE);
 
 // The header's theme switch: the moon by day, the sun by night (header.css), the choice stored
 // under "theme", which theme.js reads before the first paint. On a catalog state's page the
@@ -67,34 +45,11 @@ if (adminCatalog === undefined || hwNight !== undefined)
   themeToggle?.addEventListener("click", () => {
     const theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = theme;
-    try {
-      storage.setItem("theme", theme);
-    } catch {}
+    store.setRaw("theme", theme);
   });
 
-const STORE =
-  "adminCatalog" in document.documentElement.dataset ? "admin-catalog:" : "admin-answers:";
-const read = (k) => {
-  try {
-    return JSON.parse(storage.getItem(STORE + k)) || null;
-  } catch {
-    return null;
-  }
-};
-const write = (k, v) => {
-  try {
-    if (v) storage.setItem(STORE + k, JSON.stringify(v));
-    else storage.removeItem(STORE + k);
-    return true;
-  } catch {
-    return false;
-  }
-};
-// Keys of this browser's own state beside the answers.
-const OWN = new Set(
-  ["copied", "who", "seen", "visit", "versions", "before", "repos"].map((k) => STORE + k),
-);
-const isAnswer = (k) => !!k && k.startsWith(STORE) && !OWN.has(k);
+const read = (k) => store.readJson(k);
+const write = (k, v) => store.writeJson(k, v);
 const items = [...document.querySelectorAll("details.item[data-k]")];
 const comments = [...document.querySelectorAll("details[data-comment][data-k]")];
 const answerRows = [...items, ...comments];
@@ -108,16 +63,13 @@ const reportVersions = new Map(
 // A page that names every item of its repositories knows which answers lost their item.
 const live = new Set(document.body.dataset.answers?.split(" ").filter(Boolean));
 const liveRepos = new Set([...live].map((k) => k.split(":")[0]));
-const copied = storage.getItem(STORE + "copied") || "";
-for (let i = storage.length - 1; i >= 0; i--) {
-  const k = storage.key(i);
-  if (!isAnswer(k)) continue;
-  const id = k.slice(STORE.length);
+const copied = store.copiedAt();
+for (const id of store.answerIds()) {
   const a = read(id);
   const gone = !id.includes("#") && liveRepos.has(id.split(":")[0]) && !live.has(id);
   const edited =
     a?.report && reportVersions.has(a.report) && reportVersions.get(a.report) !== a.version;
-  if ((gone || edited) && (!a || !a.at || a.at <= copied)) storage.removeItem(k);
+  if ((gone || edited) && (!a || !a.at || a.at <= copied)) store.remove(id);
 }
 // A visit is a run of page views under an hour apart: an item whose file changed since the one
 // before says so on its row, and what changed: its question or options, or the rest of its file.
@@ -129,52 +81,44 @@ const MARKS = {
   edited: "edited",
 };
 let updatedSince = 0;
-try {
-  const now = Date.now();
-  const seen = Number(storage.getItem(STORE + "seen")) || 0;
-  const versions = JSON.parse(storage.getItem(STORE + "versions") || "{}");
-  if (now - seen > 36e5) {
-    storage.setItem(STORE + "visit", String(seen));
-    storage.setItem(STORE + "before", JSON.stringify(versions));
-    storage.removeItem(STORE + "who");
-    // A question put off is asked again: its row keeps only a note written beside it.
-    for (const k of Object.keys(storage)) {
-      const a = isAnswer(k) && read(k.slice(STORE.length));
-      if (a?.later)
-        if (a.note)
-          storage.setItem(
-            k,
-            JSON.stringify({ ...a, later: false, at: new Date(now).toISOString() }),
-          );
-        else storage.removeItem(k);
-    }
+const now = Date.now();
+const seen = Number(store.getText("seen")) || 0;
+const versions = store.readRecord("versions");
+if (now - seen > 36e5) {
+  store.setText("visit", String(seen));
+  store.writeJson("before", versions);
+  store.remove("who");
+  // A question put off is asked again: its row keeps only a note written beside it.
+  for (const id of store.answerIds()) {
+    const a = read(id);
+    if (a?.later)
+      if (a.note) write(id, { ...a, later: false, at: new Date(now).toISOString() });
+      else store.remove(id);
   }
-  storage.setItem(STORE + "seen", String(now));
-  const since = Number(storage.getItem(STORE + "visit")) || 0;
-  const before = JSON.parse(storage.getItem(STORE + "before") || "{}");
-  for (const r of document.querySelectorAll("[data-k][data-version]")) {
-    // A version stored before v1.24.0 holds the file's hash alone.
-    const [file, asked] = (before[r.dataset.k] || "").split(" ");
-    const mark = r.querySelector("[data-updated]");
-    if (since && (file ? file !== r.dataset.version : Number(r.dataset.changed) * 1000 > since)) {
-      if (mark) {
-        mark.hidden = false;
-        if (r.hasAttribute("data-report"))
-          mark.textContent =
-            r === report ? "Changed since your last visit ·" : "Changed since your last visit";
-        else if (file)
-          mark.textContent = `${MARKS[asked && asked !== r.dataset.asked ? "asked" : "edited"]} ·`;
-      }
-      updatedSince = since;
-    }
-    versions[r.dataset.k] = `${r.dataset.version} ${r.dataset.asked || ""}`;
-  }
-  for (const k of Object.keys(versions))
-    if (!k.startsWith("#") && liveRepos.has(k.split(":")[0]) && !live.has(k)) delete versions[k];
-  storage.setItem(STORE + "versions", JSON.stringify(versions));
-} catch {
-  /* storage blocked: no row says what changed */
 }
+store.setText("seen", String(now));
+const since = Number(store.getText("visit")) || 0;
+const before = store.readRecord("before");
+for (const r of document.querySelectorAll("[data-k][data-version]")) {
+  // A version stored before v1.24.0 holds the file's hash alone.
+  const [file, asked] = (before[r.dataset.k] || "").split(" ");
+  const mark = r.querySelector("[data-updated]");
+  if (since && (file ? file !== r.dataset.version : Number(r.dataset.changed) * 1000 > since)) {
+    if (mark) {
+      mark.hidden = false;
+      if (r.hasAttribute("data-report"))
+        mark.textContent =
+          r === report ? "Changed since your last visit ·" : "Changed since your last visit";
+      else if (file)
+        mark.textContent = `${MARKS[asked && asked !== r.dataset.asked ? "asked" : "edited"]} ·`;
+    }
+    updatedSince = since;
+  }
+  versions[r.dataset.k] = `${r.dataset.version} ${r.dataset.asked || ""}`;
+}
+for (const k of Object.keys(versions))
+  if (!k.startsWith("#") && liveRepos.has(k.split(":")[0]) && !live.has(k)) delete versions[k];
+store.writeJson("versions", versions);
 const hhmm = (iso) =>
   new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 const moment = (iso) =>
@@ -184,7 +128,7 @@ const moment = (iso) =>
     hour: "2-digit",
     minute: "2-digit",
   });
-const copiedAt = () => storage.getItem(STORE + "copied") || "";
+const copiedAt = () => store.copiedAt();
 const label = (d, key) =>
   d?.querySelector(`input[data-option][value="${CSS.escape(key)}"]`)?.dataset.label;
 const picked = (a) => (a?.option ? a.option.split(",") : []);
@@ -311,9 +255,8 @@ function save(d) {
 const answered = () => {
   const order = [...new Set([...document.querySelectorAll("[data-k]")].map((r) => r.dataset.k))];
   const at = (k) => (order.includes(k) ? order.indexOf(k) : order.length);
-  return Object.keys(storage)
-    .filter(isAnswer)
-    .map((k) => k.slice(STORE.length))
+  return store
+    .answerIds()
     .filter((k) => read(k) && !read(k).later)
     .sort((a, b) => at(a) - at(b));
 };
@@ -415,11 +358,7 @@ copy?.addEventListener("click", () => {
 copy?.addEventListener("hw-copy", (e) => {
   pending = Math.max(0, pending - 1);
   if (!e.detail?.ok) return;
-  try {
-    if (pressedAt > copiedAt()) storage.setItem(STORE + "copied", pressedAt);
-  } catch {
-    /* storage blocked: the copy still happened */
-  }
+  if (pressedAt > copiedAt()) store.setText("copied", pressedAt);
   for (const d of answerRows) mark(d, read(d.dataset.k));
   state(false);
 });
@@ -429,7 +368,7 @@ const search = document.getElementById("admin-search");
 // rows unseen. The filter starts on the first person, the hub's user where they answer a question.
 const buttons = [...document.querySelectorAll("[data-who-button]")];
 const kinds = [...document.querySelectorAll("[data-kind-button]")];
-const stored = storage.getItem(STORE + "who");
+const stored = store.getText("who");
 let who = buttons.some((b) => b.dataset.whoButton === stored)
   ? stored
   : buttons[0]?.dataset.whoButton || "all";
@@ -591,11 +530,7 @@ function apply(picked = false) {
 for (const b of buttons)
   b.addEventListener("click", () => {
     who = b.dataset.whoButton;
-    try {
-      storage.setItem(STORE + "who", who);
-    } catch {
-      /* storage blocked: the filter still applies on this page */
-    }
+    store.setText("who", who);
     apply(true);
   });
 for (const b of kinds)

@@ -858,7 +858,7 @@ describe("admin.js", () => {
     if (!storage)
       Object.defineProperty(window, "localStorage", {
         get: () => {
-          throw new Error("SecurityError: site data blocked");
+          throw new window.DOMException("site data blocked", "SecurityError");
         },
       });
     for (const [k, v] of Object.entries(storage ?? {})) window.localStorage.setItem(k, v);
@@ -974,6 +974,37 @@ describe("admin.js", () => {
     (row.querySelector(".clear") as DomElement).click();
     expect(row.querySelector(".mark")!.textContent).toBe("");
     expect(page.document.getElementById("copy")!.textContent).not.toContain("1 answer");
+  });
+
+  test("full storage keeps the theme switch working while unexpected write errors propagate", () => {
+    const window = new Window({ url: "http://admin.localhost/index" });
+    opened.push(window);
+    let failWith: Error = new window.DOMException("quota full", "QuotaExceededError");
+    Object.defineProperty(window, "localStorage", {
+      value: {
+        length: 0,
+        getItem: () => null,
+        setItem: () => {
+          throw failWith;
+        },
+        removeItem: () => {},
+        key: () => null,
+      },
+    });
+    window.document.write(
+      readForDom(join(out, "index.html")).replace(/<script[^>]*><\/script>/g, ""),
+    );
+    evaluate(window, code);
+    const toggle = window.document.querySelector("[data-admin-theme]") as DomButton;
+    toggle.click();
+    expect(window.document.documentElement.dataset.theme).toBe("dark");
+    const errors: string[] = [];
+    window.addEventListener("error", (event) => {
+      errors.push((event as unknown as { error: Error }).error.message);
+    });
+    failWith = new window.TypeError("unexpected write failure");
+    toggle.click();
+    expect(errors).toEqual(["unexpected write failure"]);
   });
 
   test("opening a variant image gives the dialog an accessible name before it opens", () => {
