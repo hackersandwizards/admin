@@ -99,6 +99,20 @@ describe("loadItemFile", () => {
       ),
     ).toThrow("disk full");
   });
+
+  test("validates an item before normalizing it", () => {
+    const text =
+      "---\nkind: goal\nstatus: open\ntopic: 2026-01-15-sample\nrecommended:\n  toString: 1\n---\n# Goal";
+    expect(() =>
+      loadItemFile(
+        "order-check",
+        () => text,
+        () => {
+          throw new Error("defects-first");
+        },
+      ),
+    ).toThrow("defects-first");
+  });
 });
 
 describe("legacyPathDefects", () => {

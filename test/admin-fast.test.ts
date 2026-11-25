@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Window, type Element as DomEl, type Node as DomNode } from "happy-dom";
-import { describe, expect, test, vi } from "vitest";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 import { tableScroll as brandTableScroll } from "@hackersandwizards/brand/elements/table.ts";
 import { needsGraph, needsGraphItems, siteData } from "../src/build.ts";
 import * as diagrams from "../src/repo.ts";
@@ -70,51 +70,97 @@ describe("needs graph", () => {
     return doc;
   };
 
-  test("the fixture draws every needs edge and distinguishes ready, waiting, and settled items", async () => {
-    const { items, needsSvg } = await fixture();
-    const graph = graphDocument(needsSvg);
-    expect(needsGraphItems(items).map((item) => item.id)).toEqual([
-      "pick-a-variant",
-      "work-wire-the-gate",
-      "check-the-copy",
-      "name-the-command",
-      "cache-folder",
-      "goal",
-    ]);
-    const nodes = [...graph.querySelectorAll(".node")].map((node) => {
-      const rect = node.querySelector("rect")!;
-      return {
-        id: node.getAttribute("data-id"),
-        shape: node.getAttribute("data-shape"),
-        ratio: Number(rect.getAttribute("rx")) / (Number(rect.getAttribute("height")) / 2),
-      };
+  describe("spoke fixture graph", () => {
+    let graph: ReturnType<typeof graphDocument>;
+    let connected: ReturnType<typeof needsGraphItems>;
+    const itemByNode = new Map<string, string>();
+    const nodeByItem = new Map<string, DomEl>();
+
+    beforeAll(async () => {
+      const { items, needsSvg } = await fixture();
+      graph = graphDocument(needsSvg);
+      connected = needsGraphItems(items);
+      const idByTitle = new Map(connected.map((item) => [item.title, item.id]));
+      for (const node of graph.querySelectorAll(".node")) {
+        const itemId = idByTitle.get(node.getAttribute("data-label")!)!;
+        itemByNode.set(node.getAttribute("data-id")!, itemId);
+        nodeByItem.set(itemId, node);
+      }
     });
-    const anyNumber: unknown = expect.any(Number);
-    expect(nodes).toEqual([
-      { id: "n0", shape: "stadium", ratio: 1 },
-      { id: "n1", shape: "rectangle", ratio: 0 },
-      { id: "n2", shape: "rectangle", ratio: 0 },
-      { id: "n3", shape: "rounded", ratio: anyNumber },
-      { id: "n4", shape: "rounded", ratio: anyNumber },
-      { id: "n5", shape: "stadium", ratio: 1 },
-    ]);
-    const roundedRatios = [nodes[3]!.ratio, nodes[4]!.ratio];
-    expect(Math.min(...roundedRatios)).toBeGreaterThan(0);
-    expect(Math.max(...roundedRatios)).toBeLessThan(1);
-    const edges = [...graph.querySelectorAll(".edge")].map((edge) => ({
-      from: edge.getAttribute("data-from"),
-      to: edge.getAttribute("data-to"),
-      style: edge.getAttribute("data-style"),
-      dashed: edge.hasAttribute("stroke-dasharray"),
-    }));
-    expect(edges).toEqual([
-      { from: "n2", to: "n1", style: "solid", dashed: false },
-      { from: "n4", to: "n1", style: "dotted", dashed: true },
-      { from: "n3", to: "n1", style: "dotted", dashed: true },
-      { from: "n0", to: "n2", style: "solid", dashed: false },
-      { from: "n5", to: "n3", style: "solid", dashed: false },
-      { from: "n0", to: "n4", style: "solid", dashed: false },
-    ]);
+
+    test("numbers graph nodes n0..n5 in the order of needsGraphItems", () => {
+      expect(
+        [...graph.querySelectorAll(".node")].map((node) => [
+          node.getAttribute("data-id"),
+          node.getAttribute("data-label"),
+        ]),
+      ).toEqual(connected.map((item, index) => [`n${index}`, item.title]));
+    });
+
+    test("assigns stadium, rectangle, and rounded shapes to ready, waiting, and settled items", () => {
+      expect(
+        [...nodeByItem.entries()]
+          .map(([id, node]) => [id, node.getAttribute("data-shape")] as const)
+          .toSorted(([a], [b]) => a.localeCompare(b)),
+      ).toEqual([
+        ["cache-folder", "rounded"],
+        ["check-the-copy", "rectangle"],
+        ["goal", "stadium"],
+        ["name-the-command", "rounded"],
+        ["pick-a-variant", "stadium"],
+        ["work-wire-the-gate", "rectangle"],
+      ]);
+    });
+
+    test("draws every needs edge with solid open and dotted settled styles", () => {
+      expect(
+        [...graph.querySelectorAll(".edge")]
+          .map((edge) => ({
+            from: itemByNode.get(edge.getAttribute("data-from")!),
+            to: itemByNode.get(edge.getAttribute("data-to")!),
+            style: edge.getAttribute("data-style"),
+            dashed: edge.hasAttribute("stroke-dasharray"),
+          }))
+          .toSorted((a, b) => `${a.from}->${a.to}`.localeCompare(`${b.from}->${b.to}`)),
+      ).toEqual([
+        { from: "cache-folder", to: "work-wire-the-gate", style: "dotted", dashed: true },
+        { from: "check-the-copy", to: "work-wire-the-gate", style: "solid", dashed: false },
+        { from: "goal", to: "name-the-command", style: "solid", dashed: false },
+        { from: "name-the-command", to: "work-wire-the-gate", style: "dotted", dashed: true },
+        { from: "pick-a-variant", to: "cache-folder", style: "solid", dashed: false },
+        { from: "pick-a-variant", to: "check-the-copy", style: "solid", dashed: false },
+      ]);
+    });
+
+    test.each(["goal", "pick-a-variant"])(
+      "draws ready stadium %s with corner radius equal to half its height",
+      (id) => {
+        const rect = nodeByItem.get(id)!.querySelector("rect")!;
+        const radius = Number(rect.getAttribute("rx"));
+        const halfHeight = Number(rect.getAttribute("height")) / 2;
+        expect(halfHeight).toBeGreaterThan(0);
+        expect(radius).toBe(halfHeight);
+      },
+    );
+
+    test.each(["check-the-copy", "work-wire-the-gate"])(
+      "draws waiting rectangle %s with corner radius 0",
+      (id) => {
+        const rect = nodeByItem.get(id)!.querySelector("rect")!;
+        expect(Number(rect.getAttribute("rx"))).toBe(0);
+      },
+    );
+
+    test.each(["cache-folder", "name-the-command"])(
+      "draws settled rounded node %s with corner radius strictly between 0 and half its height",
+      (id) => {
+        const rect = nodeByItem.get(id)!.querySelector("rect")!;
+        const radius = Number(rect.getAttribute("rx"));
+        const halfHeight = Number(rect.getAttribute("height")) / 2;
+        expect(radius).toBeGreaterThan(0);
+        expect(radius).toBeLessThan(halfHeight);
+      },
+    );
   });
 
   test("the prerequisite stands on the left in the Mermaid source and the SVG", async () => {

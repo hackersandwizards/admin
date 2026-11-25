@@ -137,6 +137,28 @@ describe("itemDefects ordering", () => {
   ])("reports status and kind rules in order for %s", (_label, item, expected) => {
     expect(itemDefects(item as unknown as Item, () => true)).toEqual(expected);
   });
+
+  test("checks core fields before reading options", () => {
+    const item = {
+      ...baseDecision,
+      priority: {
+        toString() {
+          throw new Error("core-first");
+        },
+      },
+      options: [
+        {
+          key: {
+            toString() {
+              throw new Error("options-first");
+            },
+          },
+          label: "A",
+        },
+      ],
+    } as unknown as Item;
+    expect(() => itemDefects(item, () => true)).toThrow("core-first");
+  });
 });
 
 describe("priorityDefects", () => {

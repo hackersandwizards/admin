@@ -30,7 +30,8 @@ export function loadItemFile(
 ): { item?: Item; defects: string[] } {
   try {
     const item = parseItem(id, read() ?? "");
-    return { item: usable(item), defects: itemDefects(item, exists) };
+    const defects = itemDefects(item, exists);
+    return { item: usable(item), defects };
   } catch (e) {
     if (!(e instanceof ItemError)) throw e;
     return { defects: [e.message] };

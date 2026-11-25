@@ -225,14 +225,17 @@ export function imageDefects(
 }
 
 export function itemDefects(item: Item, exists: (path: string) => boolean): string[] {
-  const { keys, defects: optionErrors } = parseOptions(item.options);
-  return [
+  const beforeOptions = [
     ...coreFieldDefects(item),
     ...textFieldDefects(item),
     ...dueDefects(item.due),
     ...topicDefects(item.topic, exists),
     ...parseNeeds(item.needs).defects,
     ...openKindDefects(item.kind, item.status),
+  ];
+  const { keys, defects: optionErrors } = parseOptions(item.options);
+  return [
+    ...beforeOptions,
     ...optionErrors,
     ...openDecisionDefects(item.kind, item.status, keys.length),
     ...recommendationDefects(item.recommended, item.multiple, keys),

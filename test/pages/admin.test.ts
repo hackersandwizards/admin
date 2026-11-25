@@ -2366,7 +2366,8 @@ describe("serve", () => {
     ])(
       "gives copy and comment controls only to plain dated report names ($label)",
       ({ stem, expected }) => {
-        const { html } = responses.get(stem)!;
+        const { status, html } = responses.get(stem)!;
+        expect(status).toBe(200);
         expect(html.includes('id="copy"')).toBe(expected);
         expect(html.includes("data-comment data-k")).toBe(expected);
       },
@@ -2375,7 +2376,9 @@ describe("serve", () => {
     test.each(datedReports)(
       "omits the topic graph on $label without work or a goal for a plain topic",
       ({ stem }) => {
-        expect(responses.get(stem)!.html).not.toContain("What waits on what");
+        const { status, html } = responses.get(stem)!;
+        expect(status).toBe(200);
+        expect(html).not.toContain("What waits on what");
       },
     );
 
