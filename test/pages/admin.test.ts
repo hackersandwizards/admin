@@ -172,15 +172,20 @@ describe("pages", () => {
       expect(waiting).toContain("Waiting on pick-a-variant");
     });
 
-    test("the hub's Agents on it section collapses agent items as links without textareas or person attributes", () => {
-      expect(hubHtml.indexOf("Sort the sample files")).toBeGreaterThan(
-        hubHtml.indexOf("Agents on it"),
-      );
+    test("the hub's Agents on it section puts agent items inside a collapsed disclosure", () => {
+      const headingAt = hubHtml.indexOf("Agents on it");
+      expect(headingAt).toBeGreaterThan(0);
+      expect(hubHtml.indexOf("Sort the sample files")).toBeGreaterThan(headingAt);
+      const agents = hubHtml.slice(headingAt, hubHtml.indexOf("Repositories"));
+      expect(agents).toMatch(/<details[^>]*data-group/);
+      expect(agents).not.toMatch(/<details[^>]*data-group[^>]* open/);
+    });
+
+    test("the hub's Agents on it rows link to their work rows without textareas or person attributes", () => {
       const agents = hubHtml.slice(
         hubHtml.indexOf("Agents on it"),
         hubHtml.indexOf("Repositories"),
       );
-      expect(agents).not.toMatch(/<details[^>]*data-group[^>]* open/);
       expect(agents).toContain('href="spoke/work.html#spoke:sort-the-samples"');
       expect(agents).not.toContain("<textarea");
       expect(agents).not.toMatch(/<div[^>]*data-row[^>]*data-who/);
@@ -315,25 +320,36 @@ describe("pages", () => {
       expect(docHtml).not.toContain("<table>");
     });
 
-    test("a built report keeps the title above the article and renders prose links without not-prose", () => {
-      expect(docHtml).toContain('<a class="hw-link" href=');
-      expect(docHtml).not.toMatch(/<a [^>]*not-prose/);
+    test("a built report renders its heading above the article and opens the article on what follows it", () => {
+      expect(docHtml).toMatch(/<h1[^>]*>Sample topic<\/h1>/);
+      expect(docHtml.indexOf("<h1")).toBeLessThan(docHtml.indexOf("<article"));
       // The title shows above the article, so the article opens on what follows it.
       expect(docHtml).toMatch(/<article[^>]*><p[^>]*data-report[\s\S]*?<\/nav><p>A report/);
       const article = docHtml.match(/<article[^>]*>[\s\S]*?<\/article>/);
-      assert(article, "report should contain an article element");
-      expect(article[0]).not.toContain("<h1");
+      expect(article).not.toBeNull();
+      expect(article![0]).not.toContain("<h1");
     });
 
-    test("a built report loads typography styles, resolves local images and links back to the hub", () => {
+    test("a built report renders prose links with hw-link and without not-prose", () => {
+      expect(docHtml).toContain('<a class="hw-link" href=');
+      expect(docHtml).not.toMatch(/<a [^>]*not-prose/);
+    });
+
+    test("a built report loads the typography plugin stylesheet", () => {
       const sheets = [...docHtml.matchAll(/href="([^"]+\.css)"/g)]
         .map(([, css]) => readFileSync(resolve(dirname(docPath), css!), "utf8"))
         .join("");
       // Typography's plugin is loaded: without it, prose styles nothing.
       expect(sheets).toContain(".prose :where(p)");
+    });
+
+    test("a built report resolves relative images to repository file URLs", () => {
       expect(docHtml).toContain(
         `file://${repo}/docs/agent-work/2026-01-15-sample-topic/variant-a.svg`,
       );
+    });
+
+    test("a built report's breadcrumb links back to the hub", () => {
       expect(where(docHtml)).toContain('href="../../../../index.html"');
     });
 
@@ -406,7 +422,7 @@ describe("pages", () => {
       const other = {
         ...spoke,
         key: "other",
-        label: "other",
+        label: "Zebra repo",
         path: `${spoke.path}-other`,
         behind: 2,
         fetched: 1_700_000_000,
@@ -421,27 +437,38 @@ describe("pages", () => {
       reviews = readFileSync(join(out, "spoke/reviews.html"), "utf8");
     }, testTimeout(60_000));
 
-    test("the hub ranks items across repositories, labels each item with its repository, and includes priority columns", () => {
-      expect(html.indexOf('id="other:early"')).toBeLessThan(html.indexOf('id="spoke:late"'));
+    test("the hub ranks items across every repository in one order", () => {
+      const earlyAt = html.indexOf('id="other:early"');
+      const lateAt = html.indexOf('id="spoke:late"');
+      expect(earlyAt).toBeGreaterThan(0);
+      expect(earlyAt).toBeLessThan(lateAt);
+    });
+
+    test("each row and item link on the hub names its repository by label", () => {
       // A line linking to an item names its repository by label too.
       const kimsLink = html.match(/<div[^>]*data-k="spoke:kims"[\s\S]*?<\/div>/);
-      assert(kimsLink, "hub should render Waiting on others link for spoke:kims");
-      expect(kimsLink[0]).toContain("Sample spoke · ");
+      expect(kimsLink).not.toBeNull();
+      expect(kimsLink![0]).toContain("Sample spoke · ");
       // Each row names its repository.
       const earlySummary = html.match(/id="other:early"[\s\S]*?<\/summary>/);
-      assert(earlySummary, "hub should render summary for other:early");
-      expect(earlySummary[0]).toContain("other · to do");
+      expect(earlySummary).not.toBeNull();
+      expect(earlySummary![0]).toContain("Zebra repo · to do");
+    });
+
+    test("the hub's Repositories table includes the Decide P2 column", () => {
       expect(html).toContain("Decide P2");
     });
 
-    test("the Repositories table lists repositories by label and names the top item across every owner", () => {
+    test("the Repositories table sorts repositories by label rather than key", () => {
       // Repositories list by the name a person reads.
-      expect(html.indexOf('data-repo-row="other"')).toBeLessThan(
-        html.indexOf('data-repo-row="spoke"'),
-      );
+      const repoRows = [...html.matchAll(/data-repo-row="([^"]+)"/g)].map((m) => m[1]);
+      expect(repoRows).toEqual(["spoke", "other"]);
+    });
+
+    test("the Repositories table names each repository's top-ranked item across every owner", () => {
       const spokeRow = html.match(/<tr data-row data-repo-row="spoke">[\s\S]*?<\/tr>/);
-      assert(spokeRow, "Repositories table should render a row for spoke");
-      expect(spokeRow[0]).toContain(`<td class="max-w-md max-sm:hidden">${kimsTitle}</td>`);
+      expect(spokeRow).not.toBeNull();
+      expect(spokeRow![0]).toContain(`<td class="max-w-md max-sm:hidden">${kimsTitle}</td>`);
     });
 
     test.each([
@@ -658,10 +685,10 @@ describe("pages", () => {
         const doc = new Window().document;
         doc.body.innerHTML = readForDom(workPath);
         const fold = doc.querySelector("details:has(figure.admin-diagram)");
-        assert(fold, "Work page should render needs graph disclosure");
-        const links = [...fold.querySelectorAll("svg a")];
-        expect(fold.hasAttribute("open")).toBe(false);
-        expect(fold.querySelectorAll("svg .node")).toHaveLength(6);
+        expect(fold).not.toBeNull();
+        const links = [...fold!.querySelectorAll("svg a")];
+        expect(fold!.hasAttribute("open")).toBe(false);
+        expect(fold!.querySelectorAll("svg .node")).toHaveLength(6);
         expect(links.map((link) => link.getAttribute("href")).sort()).toEqual([
           "decisions.html#spoke:cache-folder",
           "decisions.html#spoke:check-the-copy",
@@ -680,17 +707,35 @@ describe("pages", () => {
           const link = doc.querySelector(
             `details:has(figure.admin-diagram) svg a[href="${file}#${id}"]`,
           );
-          assert(link, `needs graph should link to ${file}#${id}`);
-          expect(link.querySelectorAll(".node")).toHaveLength(1);
-          const label = link.querySelector(".node text");
-          assert(label, `node ${id} should contain a text label`);
-          expect(label.textContent).toBe(title);
+          expect(link).not.toBeNull();
+          expect(link!.querySelectorAll(".node")).toHaveLength(1);
+          expect(link!.querySelector(".node text")!.textContent).toBe(title);
           const target = new Window().document;
           target.body.innerHTML = readForDom(join(dirname(workPath), file));
           const row = target.getElementById(id);
-          assert(row, `target ${file}#${id} should exist`);
-          expect(row.hasAttribute("data-row")).toBe(true);
+          expect(row).not.toBeNull();
+          expect(row!.hasAttribute("data-row")).toBe(true);
         },
+      );
+
+      test(
+        "the CSP observer records a violation when a built page attempts an unnonced inline script",
+        async () => {
+          const { page, violations } = await openPage();
+          try {
+            await page.goto(`file://${workPath}`);
+            await page.evaluate(() => {
+              const inline = document.createElement("script");
+              inline.textContent = "window.__cspControl = true";
+              document.body.append(inline);
+            });
+            await new Promise((r) => setTimeout(r, 50));
+            expect(violations).toEqual(["CSP violation: script-src-elem inline"]);
+          } finally {
+            await page.close();
+          }
+        },
+        testTimeout(60_000),
       );
 
       test(
@@ -775,46 +820,137 @@ describe("pages", () => {
       }, testTimeout(60_000));
 
       test.each(viewports)(
-        "a hash-linked row opens below the copy bar on $label ($width px)",
+        "a hash-linked row opens below the copy bar inside the viewport on $label ($width px)",
         async ({ width, height }) => {
-          const page = await browser.newPage();
+          const context = await browser.createBrowserContext();
           try {
+            const page = await context.newPage();
             await page.setViewport({ width, height });
             // A page long enough that the row can reach the top, as on a full repository's page.
             await page.goto(`file://${out}/spoke/work.html`);
-            const [bar, row] = await page.evaluate(() => {
-              document.body.append(
-                Object.assign(document.createElement("div"), { style: "height:200vh" }),
-              );
-              location.hash = "#spoke:ask-the-printer";
-              return [
-                document.querySelector(".admin-action")!.getBoundingClientRect().bottom,
-                document.getElementById("spoke:ask-the-printer")!.getBoundingClientRect().top,
-              ];
-            });
-            expect(row!).toBeGreaterThanOrEqual(bar!);
+            const row = await page.evaluate(
+              () =>
+                new Promise<{ open: boolean; belowBar: boolean; inView: boolean }>((resolve) => {
+                  document.body.append(
+                    Object.assign(document.createElement("div"), { style: "height:200vh" }),
+                  );
+                  addEventListener(
+                    "hashchange",
+                    () =>
+                      requestAnimationFrame(() => {
+                        const el = document.getElementById(
+                          "spoke:ask-the-printer",
+                        ) as HTMLDetailsElement;
+                        const bar = document
+                          .querySelector(".admin-action")!
+                          .getBoundingClientRect();
+                        const rect = el.getBoundingClientRect();
+                        const summary = el.firstElementChild!.getBoundingClientRect();
+                        resolve({
+                          open: el.open,
+                          belowBar: rect.top >= bar.bottom,
+                          inView: summary.bottom <= innerHeight,
+                        });
+                      }),
+                    { once: true },
+                  );
+                  location.hash = "#spoke:ask-the-printer";
+                }),
+            );
+            expect(row).toEqual({ open: true, belowBar: true, inView: true });
           } finally {
-            await page.close();
+            await context.close();
           }
         },
         testTimeout(60_000),
       );
 
-      test.each(viewports)(
-        "every person and kind filter button fits inside the viewport on $label ($width px)",
-        async ({ width, height }) => {
-          const page = await browser.newPage();
+      test(
+        "every person and kind filter button fits inside the viewport on phone (390 px)",
+        async () => {
+          const context = await browser.createBrowserContext();
           try {
-            await page.setViewport({ width, height });
+            const page = await context.newPage();
+            await page.setViewport({ width: 390, height: 844 });
             await page.goto(`file://${out}/index.html`);
-            const cut = await page.evaluate(() =>
-              [...document.querySelectorAll("[data-who-button], [data-kind-button]")]
-                .filter((b) => b.getBoundingClientRect().right > innerWidth)
-                .map((b) => b.textContent!.trim()),
-            );
-            expect(cut).toEqual([]);
+            const buttons = await page.evaluate(() => {
+              const shown = [
+                ...document.querySelectorAll(
+                  "[data-who-button]:not([hidden]), [data-kind-button]:not([hidden])",
+                ),
+              ];
+              return {
+                labels: shown.map((b) => b.textContent!.trim().replace(/\s+/g, " ")),
+                cut: shown
+                  .filter((b) => b.getBoundingClientRect().right > innerWidth)
+                  .map((b) => b.textContent!.trim()),
+              };
+            });
+            expect(buttons.labels).toEqual([
+              "Alex3",
+              "Sam2",
+              "Annabelle1",
+              "Bartholomew1",
+              "Constance1",
+              "Dorothea1",
+              "Evangeline1",
+              "Kim1",
+              "All11",
+              "All3",
+              "To decide2",
+              "To do1",
+            ]);
+            expect(buttons.cut).toEqual([]);
           } finally {
-            await page.close();
+            await context.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+
+      test(
+        "with All stored, every person and kind filter button including Review fits inside the viewport on desktop (1440 px)",
+        async () => {
+          const context = await browser.createBrowserContext();
+          try {
+            const page = await context.newPage();
+            await page.setViewport({ width: 1440, height: 900 });
+            await page.goto(`file://${out}/index.html`);
+            await page.evaluate(() => {
+              localStorage.setItem("admin-answers:who", "all");
+            });
+            await page.reload();
+            const buttons = await page.evaluate(() => {
+              const shown = [
+                ...document.querySelectorAll(
+                  "[data-who-button]:not([hidden]), [data-kind-button]:not([hidden])",
+                ),
+              ];
+              return {
+                labels: shown.map((b) => b.textContent!.trim().replace(/\s+/g, " ")),
+                cut: shown
+                  .filter((b) => b.getBoundingClientRect().right > innerWidth)
+                  .map((b) => b.textContent!.trim()),
+              };
+            });
+            expect(buttons.labels).toEqual([
+              "Alex3",
+              "Sam2",
+              "Annabelle1",
+              "Bartholomew1",
+              "Constance1",
+              "Dorothea1",
+              "Evangeline1",
+              "Kim1",
+              "All11",
+              "All11",
+              "To decide2",
+              "To review2",
+              "To do7",
+            ]);
+            expect(buttons.cut).toEqual([]);
+          } finally {
+            await context.close();
           }
         },
         testTimeout(60_000),
@@ -823,8 +959,9 @@ describe("pages", () => {
       test.each(viewports)(
         "a settled row's closed line clamps to at most two lines on $label ($width px)",
         async ({ width, height }) => {
-          const page = await browser.newPage();
+          const context = await browser.createBrowserContext();
           try {
+            const page = await context.newPage();
             await page.setViewport({ width, height });
             await page.goto(`file://${out}/index.html`);
             // A settled row's closed line holds two lines at most, however long its text.
@@ -840,17 +977,18 @@ describe("pages", () => {
             expect(lines).toBeGreaterThan(0.5);
             expect(lines).toBeLessThan(2.5);
           } finally {
-            await page.close();
+            await context.close();
           }
         },
         testTimeout(60_000),
       );
 
       test.each(viewports)(
-        "a row without a recommendation or answer leaves no empty gap where Reset sits on $label ($width px)",
+        "a row without a recommendation or answer keeps the gap across Reset equal to the row gap on $label ($width px)",
         async ({ width, height }) => {
-          const page = await browser.newPage();
+          const context = await browser.createBrowserContext();
           try {
+            const page = await context.newPage();
             await page.setViewport({ width, height });
             // A row without a recommendation or an answer leaves no empty line where Reset waits: the
             // next line sits one gap below the one before.
@@ -867,7 +1005,7 @@ describe("pages", () => {
             });
             expect(gaps[0]).toBeCloseTo(gaps[1]!);
           } finally {
-            await page.close();
+            await context.close();
           }
         },
         testTimeout(60_000),
@@ -897,125 +1035,165 @@ describe("pages", () => {
         if (server) await server.stop(true);
       });
 
-      const copyCommentStage = async () => {
-        const context = await browser.createBrowserContext();
+      const jumpToNextStage = async (
+        context: Awaited<ReturnType<typeof browser.createBrowserContext>>,
+      ) => {
         await context.overridePermissions(server.url.origin, [
           "clipboard-read",
           "clipboard-sanitized-write",
         ]);
         const { page, violations } = await openPage(context);
         await page.setViewport({ width: 390, height: 844 });
-        await page.goto(new URL(SAMPLE_REPORT, server.url).href);
-        await page.click(`${fold} summary`);
-        await page.type(`${fold} textarea`, "why   dotted?");
-        await page.bringToFront();
-        await page.click("#copy");
-        await page.waitForFunction(() =>
-          document.querySelector("#state")!.textContent!.includes("copied at"),
+        const response = await page.goto(new URL(SAMPLE_REPORT, server.url).href);
+        await page.click('nav[aria-label="Contents"] a[href="#next"]');
+        await page.waitForFunction(() => location.hash === "#next");
+        await page.waitForFunction(
+          () =>
+            document.getElementById("next")!.getBoundingClientRect().top >=
+            document.querySelector(".admin-action")!.getBoundingClientRect().bottom,
         );
-        const clipboard = await page.evaluate(() => navigator.clipboard.readText());
-        return { context, page, violations, clipboard };
+        await page.waitForFunction(
+          () => document.getElementById("next")!.getBoundingClientRect().bottom < innerHeight,
+        );
+        const pos = await page.evaluate(() => {
+          const bar = document.querySelector(".admin-action")!.getBoundingClientRect();
+          const heading = document.getElementById("next")!.getBoundingClientRect();
+          return {
+            hash: location.hash,
+            belowBar: heading.top >= bar.bottom,
+            inView: heading.bottom < innerHeight,
+          };
+        });
+        return { page, violations, status: response!.status(), pos };
       };
 
-      test(
-        "clicking a served report's Contents link scrolls the heading below the copy bar without CSP violations",
-        async () => {
-          const context = await browser.createBrowserContext();
-          try {
-            const { page, violations } = await openPage(context);
-            await page.setViewport({ width: 390, height: 844 });
-            const response = await page.goto(new URL(SAMPLE_REPORT, server.url).href);
-            assert(response, "served report should return a response");
-            expect(response.status()).toBe(200);
-            await page.click('nav[aria-label="Contents"] a[href="#next"]');
-            await page.waitForFunction(() => location.hash === "#next");
-            const pos = await page.evaluate(
-              () =>
-                new Promise<{
-                  top: number;
-                  bottom: number;
-                  barBottom: number;
-                  viewportHeight: number;
-                }>((resolve) =>
-                  requestAnimationFrame(() => {
-                    const bar = document.querySelector(".admin-action")!.getBoundingClientRect();
-                    const heading = document.getElementById("next")!.getBoundingClientRect();
-                    resolve({
-                      top: heading.top,
-                      bottom: heading.bottom,
-                      barBottom: bar.bottom,
-                      viewportHeight: innerHeight,
-                    });
-                  }),
-                ),
-            );
-            expect(pos.top).toBeGreaterThanOrEqual(pos.barBottom);
-            expect(pos.bottom).toBeLessThan(pos.viewportHeight);
-            expect(violations).toEqual([]);
-          } finally {
-            await context.close();
-          }
-        },
-        testTimeout(60_000),
-      );
+      const copyCommentStage = async (
+        context: Awaited<ReturnType<typeof browser.createBrowserContext>>,
+      ) => {
+        const stage = await jumpToNextStage(context);
+        await stage.page.click(`${fold} summary`);
+        await stage.page.type(`${fold} textarea`, "why   dotted?");
+        await stage.page.bringToFront();
+        await stage.page.click("#copy");
+        await stage.page.waitForFunction(() =>
+          document.querySelector("#state")!.textContent!.includes("copied at"),
+        );
+        const clipboard = await stage.page.evaluate(() => navigator.clipboard.readText());
+        return { ...stage, clipboard };
+      };
 
-      test(
-        "copying a report comment writes the normalised line to the clipboard without CSP violations",
-        async () => {
-          const stage = await copyCommentStage();
-          try {
-            expect(stage.clipboard).toBe(
-              "Answers from the admin pages:\nspoke:2026-01-15-sample-topic#next: why dotted?",
-            );
-            expect(stage.violations).toEqual([]);
-          } finally {
-            await stage.context.close();
-          }
-        },
-        testTimeout(60_000),
-      );
+      const answerItemStage = async (
+        context: Awaited<ReturnType<typeof browser.createBrowserContext>>,
+      ) => {
+        const stage = await copyCommentStage(context);
+        await stage.page.click(`${row} summary`);
+        await stage.page.type(`${row} textarea`, "ready");
+        const copyAttr = await stage.page.$eval("#copy", (b) => b.getAttribute("data-hw-copy"));
+        return { ...stage, copyAttr };
+      };
 
-      describe("after answering the report's item and reloading", () => {
+      describe("after clicking Contents #next", () => {
+        let context: Awaited<ReturnType<typeof browser.createBrowserContext>> | undefined;
+        let status = 0;
+        let pos = { hash: "", belowBar: false, inView: false };
+        let violations: string[] = [];
+
+        afterAll(async () => {
+          if (context) await context.close();
+        });
+
+        beforeAll(async () => {
+          context = await browser.createBrowserContext();
+          const stage = await jumpToNextStage(context);
+          status = stage.status;
+          pos = stage.pos;
+          violations = stage.violations;
+        }, testTimeout(60_000));
+
+        test("serves the report with status 200 and scrolls #next below the copy bar without CSP violations", () => {
+          expect(status).toBe(200);
+          expect(pos).toEqual({ hash: "#next", belowBar: true, inView: true });
+          expect(violations).toEqual([]);
+        });
+      });
+
+      describe("after copying a report comment", () => {
+        let context: Awaited<ReturnType<typeof browser.createBrowserContext>> | undefined;
+        let clipboard = "";
+        let violations: string[] = [];
+
+        afterAll(async () => {
+          if (context) await context.close();
+        });
+
+        beforeAll(async () => {
+          context = await browser.createBrowserContext();
+          const stage = await copyCommentStage(context);
+          clipboard = stage.clipboard;
+          violations = stage.violations;
+        }, testTimeout(60_000));
+
+        test("writes the normalised comment line to the clipboard without CSP violations", () => {
+          expect(clipboard).toBe(
+            "Answers from the admin pages:\nspoke:2026-01-15-sample-topic#next: why dotted?",
+          );
+          expect(violations).toEqual([]);
+        });
+      });
+
+      describe("after answering the report's item", () => {
+        let context: Awaited<ReturnType<typeof browser.createBrowserContext>> | undefined;
         let copyAttr: string | null = null;
+
+        afterAll(async () => {
+          if (context) await context.close();
+        });
+
+        beforeAll(async () => {
+          context = await browser.createBrowserContext();
+          const stage = await answerItemStage(context);
+          copyAttr = stage.copyAttr;
+        }, testTimeout(60_000));
+
+        test("queues only the new item answer for Copy", () => {
+          expect(copyAttr).toBe(`Answers from the admin pages:\nspoke:${stem}: ready`);
+        });
+      });
+
+      describe("after reloading the report with #next", () => {
+        let context: Awaited<ReturnType<typeof browser.createBrowserContext>> | undefined;
         let rowValue = "";
         let commentValue = "";
         let versions: [string | undefined, string | undefined] = [undefined, undefined];
         let violations: string[] = [];
 
-        beforeAll(async () => {
-          const stage = await copyCommentStage();
-          try {
-            const { page } = stage;
-            await page.click(`${row} summary`);
-            await page.type(`${row} textarea`, "ready");
-            copyAttr = await page.$eval("#copy", (b) => b.getAttribute("data-hw-copy"));
-            await page.reload();
-            rowValue = await page.$eval(
-              `${row} textarea`,
-              (field) => (field as HTMLTextAreaElement).value,
-            );
-            commentValue = await page.$eval(
-              `${fold} textarea`,
-              (field) => (field as HTMLTextAreaElement).value,
-            );
-            versions = await page.evaluate((key) => {
-              const stored = JSON.parse(localStorage.getItem("admin-answers:versions")!) as Record<
-                string,
-                string
-              >;
-              return [stored[key], stored[`#${key}`]] as [string | undefined, string | undefined];
-            }, `spoke:${stem}`);
-            violations = stage.violations;
-          } finally {
-            await stage.context.close();
-          }
-        }, testTimeout(60_000));
-
-        test("answering the report's item after copying a comment queues only the new answer for Copy", () => {
-          expect(copyAttr).toBe(`Answers from the admin pages:\nspoke:${stem}: ready`);
+        afterAll(async () => {
+          if (context) await context.close();
         });
 
-        test("reloading restores both the item answer and the report comment with version stamps and no CSP violations", () => {
+        beforeAll(async () => {
+          context = await browser.createBrowserContext();
+          const stage = await answerItemStage(context);
+          await stage.page.reload();
+          rowValue = await stage.page.$eval(
+            `${row} textarea`,
+            (field) => (field as HTMLTextAreaElement).value,
+          );
+          commentValue = await stage.page.$eval(
+            `${fold} textarea`,
+            (field) => (field as HTMLTextAreaElement).value,
+          );
+          versions = await stage.page.evaluate((key) => {
+            const stored = JSON.parse(localStorage.getItem("admin-answers:versions")!) as Record<
+              string,
+              string
+            >;
+            return [stored[key], stored[`#${key}`]] as [string | undefined, string | undefined];
+          }, `spoke:${stem}`);
+          violations = stage.violations;
+        }, testTimeout(60_000));
+
+        test("restores both the item answer and the report comment with version stamps and no CSP violations", () => {
           expect(rowValue).toBe("ready");
           expect(commentValue).toBe("why   dotted?");
           expect(versions).toEqual([expect.any(String), expect.any(String)]);
@@ -1129,7 +1307,7 @@ describe("pages", () => {
       });
 
       test(
-        "renders a work item's Mermaid diagram and prerequisite summary without CSP violations",
+        "renders a work item's Mermaid diagram without CSP violations",
         async () => {
           const { page, violations } = await openPage();
           try {
@@ -1141,12 +1319,6 @@ describe("pages", () => {
                 (svg) => svg.textContent,
               ),
             ).toContain("Dated folders");
-            expect(
-              await page.$eval(
-                '[id="spoke:work-wire-the-gate"] > summary',
-                (row) => row.textContent,
-              ),
-            ).toContain("Waiting on check-the-copy, goal, pick-a-variant");
             expect(violations).toEqual([]);
           } finally {
             await page.close();
@@ -1239,76 +1411,169 @@ describe("pages", () => {
         expect(linker([data]).pages(`href="${match[1]!}"`)).toBe('href="/r/doc/docs/q%26a"');
       });
 
-      test(
-        "opening x.html from disk runs theme.js and admin.js while blocking doc scripts and form posts",
-        async () => {
-          const context = await browser.createBrowserContext();
-          try {
-            const page = await context.newPage();
-            await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
-            const requests: string[] = [];
-            page.on("request", (r) => {
-              requests.push(r.url());
-            });
-            await page.goto(`file://${out}/r/doc/docs/x.html`, { waitUntil: "load" });
-            await page.keyboard.press("/");
-            const ran = await page.evaluate(() => [
-              document.title,
-              document.documentElement.dataset.theme,
-              document.activeElement!.id,
-            ]);
-            // theme.js darkens the page, admin.js focuses the search on "/".
-            expect(ran).toEqual(["X · r · Admin", "dark", "admin-search"]);
-            await page.click("#post");
-            await new Promise((r) => setTimeout(r, 300));
-            expect(requests.filter((u) => u.startsWith("https:"))).toEqual([]);
-          } finally {
-            await context.close();
-          }
-        },
-        testTimeout(60_000),
-      );
+      const openDiskPageStage = async (
+        context: Awaited<ReturnType<typeof browser.createBrowserContext>>,
+      ) => {
+        const page = await context.newPage();
+        await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+        const requests: string[] = [];
+        page.on("request", (r) => {
+          requests.push(r.url());
+        });
+        await page.goto(`file://${out}/r/doc/docs/x.html`, { waitUntil: "load" });
+        await page.keyboard.press("/");
+        // theme.js darkens the page, admin.js focuses the search on "/".
+        const initial = await page.evaluate(() => ({
+          title: document.title,
+          theme: document.documentElement.dataset.theme,
+          activeId: document.activeElement!.id,
+        }));
+        return { page, requests, initial };
+      };
 
-      test(
-        "toggling the theme on a disk page stores the choice across a reload despite dark system preference",
-        async () => {
-          const context = await browser.createBrowserContext();
-          try {
-            const page = await context.newPage();
-            await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
-            await page.goto(`file://${out}/r/doc/docs/x.html`, { waitUntil: "load" });
-            // The header's theme switch turns the page and stores the choice, which outlasts a reload
-            // and the system's theme.
-            await page.click("#theme-toggle");
-            const theme = () =>
-              page.evaluate(() => [
-                document.documentElement.dataset.theme,
-                document.getElementById("theme-toggle")!.getAttribute("aria-pressed"),
-                localStorage.getItem("theme"),
-              ]);
-            expect(await theme()).toEqual(["light", "false", "light"]);
-            await page.reload({ waitUntil: "load" });
-            expect(await theme()).toEqual(["light", "false", "light"]);
-          } finally {
-            await context.close();
-          }
-        },
-        testTimeout(60_000),
-      );
+      const readThemeState = (page: Awaited<ReturnType<typeof browser.newPage>>) =>
+        page.evaluate(() => [
+          document.documentElement.dataset.theme,
+          document.getElementById("theme-toggle")!.getAttribute("aria-pressed"),
+          localStorage.getItem("theme"),
+        ]);
 
-      test(
-        "an unclosed script attribute in a doc cannot hijack the hub's nonce",
-        async () => {
-          const page = await browser.newPage();
-          try {
-            await page.goto(`file://${out}/r/doc/docs/y.html`, { waitUntil: "load" });
-            expect(await page.title()).not.toContain("|file");
-          } finally {
-            await page.close();
-          }
-        },
-        testTimeout(60_000),
-      );
+      const toggleThemeStage = async (
+        context: Awaited<ReturnType<typeof browser.createBrowserContext>>,
+      ) => {
+        const stage = await openDiskPageStage(context);
+        // The header's theme switch turns the page and stores the choice, which outlasts a reload
+        // and the system's theme.
+        await stage.page.click("#theme-toggle");
+        const afterToggle = await readThemeState(stage.page);
+        return { ...stage, afterToggle };
+      };
+
+      const reloadAfterThemeStage = async (
+        context: Awaited<ReturnType<typeof browser.createBrowserContext>>,
+      ) => {
+        const stage = await toggleThemeStage(context);
+        await stage.page.reload({ waitUntil: "load" });
+        const afterReload = await readThemeState(stage.page);
+        return { ...stage, afterReload };
+      };
+
+      const submitFormStage = async (
+        context: Awaited<ReturnType<typeof browser.createBrowserContext>>,
+      ) => {
+        const stage = await reloadAfterThemeStage(context);
+        await stage.page.click("#post");
+        await new Promise((r) => setTimeout(r, 300));
+        return stage;
+      };
+
+      describe("on initial dark load of x.html from disk", () => {
+        let context: Awaited<ReturnType<typeof browser.createBrowserContext>> | undefined;
+        let initial: { title: string; theme: string | undefined; activeId: string } = {
+          title: "",
+          theme: undefined,
+          activeId: "",
+        };
+
+        afterAll(async () => {
+          if (context) await context.close();
+        });
+
+        beforeAll(async () => {
+          context = await browser.createBrowserContext();
+          const stage = await openDiskPageStage(context);
+          initial = stage.initial;
+        }, testTimeout(60_000));
+
+        test("blocks inline, external and onerror doc scripts on x.html", () => {
+          expect(initial.title).toBe("X · r · Admin");
+        });
+
+        test("darkens x.html to follow the system theme before paint", () => {
+          expect(initial.theme).toBe("dark");
+        });
+
+        test("focuses the search input when / is pressed on x.html", () => {
+          expect(initial.activeId).toBe("admin-search");
+        });
+      });
+
+      describe("after toggling the theme switch on x.html", () => {
+        let context: Awaited<ReturnType<typeof browser.createBrowserContext>> | undefined;
+        let afterToggle: (string | null | undefined)[] = [];
+
+        afterAll(async () => {
+          if (context) await context.close();
+        });
+
+        beforeAll(async () => {
+          context = await browser.createBrowserContext();
+          const stage = await toggleThemeStage(context);
+          afterToggle = stage.afterToggle;
+        }, testTimeout(60_000));
+
+        test("turns the page light and stores the choice in localStorage", () => {
+          expect(afterToggle).toEqual(["light", "false", "light"]);
+        });
+      });
+
+      describe("after reloading x.html with the stored light theme", () => {
+        let context: Awaited<ReturnType<typeof browser.createBrowserContext>> | undefined;
+        let afterReload: (string | null | undefined)[] = [];
+
+        afterAll(async () => {
+          if (context) await context.close();
+        });
+
+        beforeAll(async () => {
+          context = await browser.createBrowserContext();
+          const stage = await reloadAfterThemeStage(context);
+          afterReload = stage.afterReload;
+        }, testTimeout(60_000));
+
+        test("keeps the stored light theme despite dark system preference", () => {
+          expect(afterReload).toEqual(["light", "false", "light"]);
+        });
+      });
+
+      describe("after submitting a doc form on the reloaded light page", () => {
+        let context: Awaited<ReturnType<typeof browser.createBrowserContext>> | undefined;
+        let requests: string[] = [];
+
+        afterAll(async () => {
+          if (context) await context.close();
+        });
+
+        beforeAll(async () => {
+          context = await browser.createBrowserContext();
+          const stage = await submitFormStage(context);
+          requests = stage.requests;
+        }, testTimeout(60_000));
+
+        test("blocks form posts and sends no https request across reload and submit", () => {
+          expect(requests.filter((u) => u.startsWith("https:"))).toEqual([]);
+        });
+      });
+
+      describe("after navigating from x.html to y.html", () => {
+        let context: Awaited<ReturnType<typeof browser.createBrowserContext>> | undefined;
+        let title = "";
+
+        afterAll(async () => {
+          if (context) await context.close();
+        });
+
+        beforeAll(async () => {
+          context = await browser.createBrowserContext();
+          const stage = await submitFormStage(context);
+          await stage.page.goto(`file://${out}/r/doc/docs/y.html`, { waitUntil: "load" });
+          title = await stage.page.title();
+        }, testTimeout(60_000));
+
+        test("an unclosed script attribute in a doc cannot hijack the hub's nonce", () => {
+          expect(title).not.toContain("|file");
+        });
+      });
     });
   });
 });
@@ -3470,11 +3735,18 @@ describe("catalog", () => {
   });
 
   test(
-    "the hub home page links to /catalog/ and /catalog redirects with a trailing slash",
+    "the hub home page links to /catalog/",
     async () => {
       const hubPage = await get("/");
       expect(hubPage.status).toBe(200);
       expect(await hubPage.text()).toMatch(/<a href="\/catalog\/"[^>]*>\s*Catalog\s*</);
+    },
+    testTimeout(60_000),
+  );
+
+  test(
+    "GET /catalog redirects to /catalog/ with 302",
+    async () => {
       const bare = await get("/catalog");
       expect([bare.status, bare.headers.get("location")]).toEqual([
         302,
@@ -3511,16 +3783,22 @@ describe("catalog", () => {
     testTimeout(60_000),
   );
 
-  test(
-    "the needs-graph story links all six connected items",
-    async () => {
-      const graphPath = "/catalog/stories/Items/needs-graph/graph/";
+  describe("needs-graph story links", () => {
+    const graphPath = "/catalog/stories/Items/needs-graph/graph/";
+    let graphStatus = 0;
+    let graphHrefs: string[] = [];
+
+    beforeAll(async () => {
       const graph = await get(graphPath);
-      expect(graph.status).toBe(200);
-      const hrefs = [...(await graph.text()).matchAll(/href="([^"]+)"><g class="node"/g)]
-        .map(([, href]) => href!)
-        .sort();
-      expect(hrefs).toEqual([
+      graphStatus = graph.status;
+      graphHrefs = [...(await graph.text()).matchAll(/href="([^"]+)"><g class="node"/g)].map(
+        ([, href]) => href!,
+      );
+    }, testTimeout(60_000));
+
+    test("renders links for all six connected items", () => {
+      expect(graphStatus).toBe(200);
+      expect([...graphHrefs].sort()).toEqual([
         "../../../Pages/decisions/default/#spoke:cache-folder",
         "../../../Pages/decisions/default/#spoke:check-the-copy",
         "../../../Pages/decisions/default/#spoke:name-the-command",
@@ -3528,26 +3806,40 @@ describe("catalog", () => {
         "../../../Pages/work/default/#spoke:goal",
         "../../../Pages/work/default/#spoke:work-wire-the-gate",
       ]);
-    },
-    testTimeout(60_000),
-  );
+    });
 
-  test.each([
-    { pathname: "/catalog/stories/Pages/decisions/default/", id: "spoke:cache-folder" },
-    { pathname: "/catalog/stories/Pages/decisions/default/", id: "spoke:check-the-copy" },
-    { pathname: "/catalog/stories/Pages/decisions/default/", id: "spoke:name-the-command" },
-    { pathname: "/catalog/stories/Pages/decisions/default/", id: "spoke:pick-a-variant" },
-    { pathname: "/catalog/stories/Pages/work/default/", id: "spoke:goal" },
-    { pathname: "/catalog/stories/Pages/work/default/", id: "spoke:work-wire-the-gate" },
-  ])(
-    "needs-graph story link $id resolves to its target story page",
-    async ({ pathname, id }) => {
-      const row = await get(pathname);
-      expect(row.status).toBe(200);
-      expect(await row.text()).toContain(`id="${id}"`);
-    },
-    testTimeout(60_000),
-  );
+    test.each([
+      {
+        page: "decisions",
+        ids: [
+          "spoke:cache-folder",
+          "spoke:check-the-copy",
+          "spoke:name-the-command",
+          "spoke:pick-a-variant",
+        ],
+      },
+      {
+        page: "work",
+        ids: ["spoke:goal", "spoke:work-wire-the-gate"],
+      },
+    ])(
+      "follows the rendered needs-graph links for $page to a 200 page holding every linked row",
+      async ({ ids }) => {
+        const matched = graphHrefs.filter((href) => ids.includes(href.split("#")[1]!));
+        const pathnames = [
+          ...new Set(
+            matched.map((href) => new URL(href, `http://admin.localhost${graphPath}`).pathname),
+          ),
+        ];
+        expect(pathnames).toHaveLength(1);
+        const row = await get(pathnames[0]!);
+        expect(row.status).toBe(200);
+        const html = await row.text();
+        expect(ids.filter((id) => !html.includes(`id="${id}"`))).toEqual([]);
+      },
+      testTimeout(60_000),
+    );
+  });
 
   test(
     "returns 404 for a missing catalog page",
