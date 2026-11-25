@@ -117,11 +117,21 @@ describe("pages", () => {
     testTimeout(60_000),
   );
 
-  test(
-    "build pages that open from disk",
-    async () => {
-      const repo = repoFrom("spoke");
-      const out = join(dirname(repo), "out");
+  describe("built pages that open from disk", () => {
+    let repo = "";
+    let out = "";
+    let hubHtml = "";
+    let dashboardHtml = "";
+    let decisionsHtml = "";
+    let docPath = "";
+    let docHtml = "";
+    let plainDocsHtml = "";
+    const where = (html: string) => html.match(/<nav[^>]*aria-label="Where"[\s\S]*?<\/nav>/)![0];
+    const repos = (html: string) => html.match(/<div id="admin-repos"[\s\S]*?<\/div>/)![0];
+
+    beforeAll(async () => {
+      repo = repoFrom("spoke");
+      out = join(dirname(repo), "out");
       // A second repo without catalog or products, for the switcher's fallbacks.
       const plain = repoFrom("legacy", "plain");
       // A doc named index.md ends its page's path in "index", which Astro reads as the folder's own.
@@ -131,148 +141,252 @@ describe("pages", () => {
       sh(plain, "git", "add", "-A");
       commit(plain, "d");
       await buildSite(siteData([await readRepo(repo), await readRepo(plain)]), out);
-      const html = readFileSync(join(out, "index.html"), "utf8");
-      expect(html).toContain("Which variant ships?");
+      hubHtml = readFileSync(join(out, "index.html"), "utf8");
+      dashboardHtml = readFileSync(join(out, "spoke/dashboard.html"), "utf8");
+      decisionsHtml = readFileSync(join(out, "spoke/decisions.html"), "utf8");
+      docPath = join(out, "spoke/doc/docs/agent-work/2026-01-15-sample-topic.html");
+      docHtml = readFileSync(docPath, "utf8");
+      plainDocsHtml = readFileSync(join(out, "plain/docs.html"), "utf8");
+    }, testTimeout(60_000));
+
+    test("the hub lists open items and puts settled items after Repositories", () => {
+      expect(hubHtml).toContain("Which variant ships?");
+      // Settled items come last, after the repositories.
+      expect(hubHtml.indexOf(">Settled</h2>")).toBeGreaterThan(
+        hubHtml.indexOf(">Repositories</h2>"),
+      );
+      expect(hubHtml.indexOf('id="spoke:name-the-command"')).toBeGreaterThan(
+        hubHtml.indexOf(">Settled</h2>"),
+      );
+    });
+
+    test("the hub's Waiting on others section links each person's item to its row and names prerequisites", () => {
       // Waiting on others links a person's item to its row; an agent's item shows under its own
       // heading, collapsed, as a link to its row, and no person filter hides it.
-      const waiting = html.slice(html.indexOf("Waiting on others"), html.indexOf("Agents on it"));
+      const waiting = hubHtml.slice(
+        hubHtml.indexOf("Waiting on others"),
+        hubHtml.indexOf("Agents on it"),
+      );
       expect(waiting).toContain('href="spoke/work.html#spoke:ask-the-printer"');
       expect(waiting).toContain('href="spoke/decisions.html#spoke:check-the-copy"');
       expect(waiting).toContain("Waiting on pick-a-variant");
-      expect(html.indexOf("Sort the sample files")).toBeGreaterThan(html.indexOf("Agents on it"));
-      const agents = html.slice(html.indexOf("Agents on it"), html.indexOf("Repositories"));
+    });
+
+    test("the hub's Agents on it section collapses agent items as links without textareas or person attributes", () => {
+      expect(hubHtml.indexOf("Sort the sample files")).toBeGreaterThan(
+        hubHtml.indexOf("Agents on it"),
+      );
+      const agents = hubHtml.slice(
+        hubHtml.indexOf("Agents on it"),
+        hubHtml.indexOf("Repositories"),
+      );
       expect(agents).not.toMatch(/<details[^>]*data-group[^>]* open/);
       expect(agents).toContain('href="spoke/work.html#spoke:sort-the-samples"');
       expect(agents).not.toContain("<textarea");
       expect(agents).not.toMatch(/<div[^>]*data-row[^>]*data-who/);
-      // Settled items come last, after the repositories.
-      expect(html.indexOf(">Settled</h2>")).toBeGreaterThan(html.indexOf(">Repositories</h2>"));
-      expect(html.indexOf('id="spoke:name-the-command"')).toBeGreaterThan(
-        html.indexOf(">Settled</h2>"),
-      );
-      const dashboard = readFileSync(join(out, "spoke/dashboard.html"), "utf8");
-      expect(dashboard).toContain("Sort the sample files");
-      // Most urgent lists the hub's user's own rows; other people's wait under their own heading.
-      const [from, to] = [">Most urgent</h2>", "Waiting on others"].map((x) =>
-        dashboard.indexOf(x),
-      );
-      expect(0 < from! && from! < to!).toBe(true);
-      const urgent = dashboard.slice(from, to);
-      expect(urgent).toContain("data-who=");
-      const { others } = siteData([await readRepo(repo), await readRepo(plain)]);
-      expect(others.length).toBeGreaterThan(0);
-      for (const who of others) expect(urgent).not.toContain(`data-who="${who}"`);
+    });
+
+    test("the hub's Repositories table keeps three columns visible on a phone", () => {
       // On a phone the repositories table keeps three columns; the most urgent item goes under the
       // repository's name.
-      const table = html.slice(html.indexOf(">Repositories</h2>"));
+      const table = hubHtml.slice(hubHtml.indexOf(">Repositories</h2>"));
       expect(
         table
           .slice(0, table.indexOf("</thead>"))
           .match(/<th(?=[\s>])(?![^>]*max-sm:hidden)[^>]*>/g),
       ).toHaveLength(3);
+    });
+
+    test("a repository dashboard lists agent work and limits Most urgent to the hub user's own rows", () => {
+      expect(dashboardHtml).toContain("Sort the sample files");
+      // Most urgent lists the hub's user's own rows; other people's wait under their own heading.
+      const from = dashboardHtml.indexOf(">Most urgent</h2>");
+      const to = dashboardHtml.indexOf("Waiting on others");
+      expect(from).toBeGreaterThan(0);
+      expect(to).toBeGreaterThan(from);
+      const urgent = dashboardHtml.slice(from, to);
+      const urgentOwners = [...urgent.matchAll(/data-who="([^"]+)"/g)].map((m) => m[1]);
+      expect(urgentOwners).toEqual(["Alex", "Alex", "Alex"]);
+    });
+
+    test("the build writes a repository's Decisions, Work, product and report pages", () => {
       expect(readFileSync(join(out, "spoke/work.html"), "utf8")).toContain(
         'id="spoke:ask-the-printer"',
       );
       const pages = readdirSync(join(out, "spoke"), { recursive: true }) as string[];
       expect(pages).toContain("decisions.html");
-      const rendered = new Window().document;
-      rendered.body.innerHTML = readForDom(join(out, "spoke/decisions.html"));
-      const summary = (id: string) =>
-        rendered.getElementById(`spoke:${id}`)?.firstElementChild?.textContent;
-      expect(summary("pick-a-variant")).toContain("2 open items wait on this");
-      expect(summary("check-the-copy")).toContain("1 open item waits on this");
-      expect(summary("cache-folder")).toContain("Waiting on pick-a-variant");
-      expect(summary("cache-folder")).not.toMatch(/waits? on this/);
-      expect(summary("name-the-command")).toContain("Waiting on goal");
-      expect(summary("name-the-command")).not.toMatch(/waits? on this/);
-      rendered.body.innerHTML = readForDom(join(out, "spoke/work.html"));
-      expect(summary("goal")).toContain("1 open item waits on this");
-      expect(summary("work-wire-the-gate")).toContain(
-        "Waiting on check-the-copy, goal, pick-a-variant",
-      );
       expect(pages).toContain("products-1.html");
       expect(pages).toContain("doc/docs/agent-work/2026-01-15-sample-topic.html");
-      const plainDocs = readFileSync(join(out, "plain/docs.html"), "utf8");
-      for (const [title, id, to] of [
-        ["Start here", "start-here", "doc/docs/index"],
-        ["Guide", "guide", "doc/docs/guide/index"],
-      ] as const) {
-        const link = plainDocs.match(new RegExp(`href="([^"]+)">\\s*${title}`))![1]!;
-        expect(link.startsWith(to)).toBe(true);
-        expect(readFileSync(join(out, "plain", link), "utf8")).toContain(
-          `<h1 id="${id}">${title}</h1>`,
-        );
-      }
-      for (const page of [
-        "index.html",
-        "spoke/decisions.html",
-        "spoke/doc/docs/agent-work/2026-01-15-sample-topic.html",
-      ]) {
-        const text = readFileSync(join(out, page), "utf8");
-        // Every script is a classic file script: no module, which a page from disk cannot load, and
-        // nothing inline, which the pages' policy refuses; each carries the build's nonce.
-        const nonce = text.match(/script-src 'nonce-([\w-]+)'/)![1];
-        expect(text).toMatch(/<script nonce=/);
-        for (const [tag] of text.matchAll(/<script[^>]*>/g))
-          expect(tag).toMatch(new RegExp(`^<script nonce="${nonce}" src="[^"]+">$`));
-        expect(text).not.toContain('"/_astro/');
-        for (const [, ref] of text.matchAll(/(?:href|src)="([^"]*_astro\/[^"]+)"/g))
-          expect(existsSync(resolve(dirname(join(out, page)), ref!))).toBe(true);
-      }
-      const docPath = join(out, "spoke/doc/docs/agent-work/2026-01-15-sample-topic.html");
-      const doc = readFileSync(docPath, "utf8");
-      expect(doc).toContain('<article class="prose hw-prose');
-      for (const el of ["hw-quote", "hw-code"]) expect(doc).toContain(`class="${el} not-prose"`);
-      expect(doc).toContain(
+    });
+
+    test.each([
+      {
+        page: "spoke/decisions.html",
+        id: "pick-a-variant",
+        label: "2 open items wait on this",
+        waitsOnThis: true,
+      },
+      {
+        page: "spoke/decisions.html",
+        id: "check-the-copy",
+        label: "1 open item waits on this",
+        waitsOnThis: true,
+      },
+      {
+        page: "spoke/decisions.html",
+        id: "cache-folder",
+        label: "Waiting on pick-a-variant",
+        waitsOnThis: false,
+      },
+      {
+        page: "spoke/decisions.html",
+        id: "name-the-command",
+        label: "Waiting on goal",
+        waitsOnThis: false,
+      },
+      {
+        page: "spoke/work.html",
+        id: "goal",
+        label: "1 open item waits on this",
+        waitsOnThis: true,
+      },
+      {
+        page: "spoke/work.html",
+        id: "work-wire-the-gate",
+        label: "Waiting on check-the-copy, goal, pick-a-variant",
+        waitsOnThis: false,
+      },
+    ])("row $id on $page shows its prerequisite summary", ({ page, id, label, waitsOnThis }) => {
+      const rendered = new Window().document;
+      rendered.body.innerHTML = readForDom(join(out, page));
+      const row = rendered.getElementById(`spoke:${id}`);
+      assert(row, `row spoke:${id} should exist on ${page}`);
+      const summary = row.firstElementChild;
+      assert(summary, `summary for spoke:${id} should exist on ${page}`);
+      const text = summary.textContent;
+      expect(text).toContain(label);
+      expect(/waits? on this/.test(text)).toBe(waitsOnThis);
+    });
+
+    test.each([
+      { title: "Start here", id: "start-here", to: "doc/docs/index" },
+      { title: "Guide", id: "guide", to: "doc/docs/guide/index" },
+    ])("index.md doc $title in plain links to $to and renders its heading", ({ title, id, to }) => {
+      const match = plainDocsHtml.match(new RegExp(`href="([^"]+)">\\s*${title}`));
+      assert(match, `link for ${title} should exist on plain/docs.html`);
+      const link = match[1]!;
+      expect(link.startsWith(to)).toBe(true);
+      expect(readFileSync(join(out, "plain", link), "utf8")).toContain(
+        `<h1 id="${id}">${title}</h1>`,
+      );
+    });
+
+    test.each([
+      "index.html",
+      "spoke/decisions.html",
+      "spoke/doc/docs/agent-work/2026-01-15-sample-topic.html",
+    ])("%s loads only classic nonced file scripts and existing relative _astro assets", (page) => {
+      const text = readFileSync(join(out, page), "utf8");
+      // Every script is a classic file script: no module, which a page from disk cannot load, and
+      // nothing inline, which the pages' policy refuses; each carries the build's nonce.
+      const nonceMatch = text.match(/script-src 'nonce-([\w-]+)'/);
+      assert(nonceMatch, `${page} should declare a script-src nonce`);
+      const validScript = new RegExp(`^<script nonce="${nonceMatch[1]}" src="[^"]+">$`);
+      const scriptTags = [...text.matchAll(/<script[^>]*>/g)].map(([tag]) => tag);
+      expect(scriptTags.length).toBeGreaterThan(0);
+      expect(scriptTags.filter((tag) => !validScript.test(tag))).toEqual([]);
+      expect(text).not.toContain('"/_astro/');
+      const assetRefs = [...text.matchAll(/(?:href|src)="([^"]*_astro\/[^"]+)"/g)].map(
+        ([, ref]) => ref!,
+      );
+      expect(assetRefs.length).toBeGreaterThan(0);
+      expect(
+        assetRefs.filter((ref) => !existsSync(resolve(dirname(join(out, page)), ref))),
+      ).toEqual([]);
+    });
+
+    test("a built report renders prose with brand quote, code and table wrappers", () => {
+      expect(docHtml).toContain('<article class="prose hw-prose');
+      expect(docHtml).toContain('class="hw-quote not-prose"');
+      expect(docHtml).toContain('class="hw-code not-prose"');
+      expect(docHtml).toContain(
         '<div class="hw-table-scroll" tabindex="0" role="region" aria-label="Scores by reader"><table class="hw-table not-prose">',
       );
-      expect(doc).not.toContain("<table>");
-      expect(doc).toContain('<a class="hw-link" href=');
-      expect(doc).not.toMatch(/<a [^>]*not-prose/);
+      expect(docHtml).not.toContain("<table>");
+    });
+
+    test("a built report keeps the title above the article and renders prose links without not-prose", () => {
+      expect(docHtml).toContain('<a class="hw-link" href=');
+      expect(docHtml).not.toMatch(/<a [^>]*not-prose/);
       // The title shows above the article, so the article opens on what follows it.
-      expect(doc).toMatch(/<article[^>]*><p[^>]*data-report[\s\S]*?<\/nav><p>A report/);
-      expect(doc.match(/<article[^>]*>[\s\S]*?<\/article>/)?.[0]).not.toContain("<h1");
-      const sheets = [...doc.matchAll(/href="([^"]+\.css)"/g)]
+      expect(docHtml).toMatch(/<article[^>]*><p[^>]*data-report[\s\S]*?<\/nav><p>A report/);
+      const article = docHtml.match(/<article[^>]*>[\s\S]*?<\/article>/);
+      assert(article, "report should contain an article element");
+      expect(article[0]).not.toContain("<h1");
+    });
+
+    test("a built report loads typography styles, resolves local images and links back to the hub", () => {
+      const sheets = [...docHtml.matchAll(/href="([^"]+\.css)"/g)]
         .map(([, css]) => readFileSync(resolve(dirname(docPath), css!), "utf8"))
         .join("");
       // Typography's plugin is loaded: without it, prose styles nothing.
       expect(sheets).toContain(".prose :where(p)");
-      expect(doc).toContain(`file://${repo}/docs/agent-work/2026-01-15-sample-topic/variant-a.svg`);
-      const where = (html: string) => html.match(/<nav[^>]*aria-label="Where"[\s\S]*?<\/nav>/)![0];
-      const repos = (html: string) => html.match(/<div id="admin-repos"[\s\S]*?<\/div>/)![0];
-      expect(where(doc)).toContain('href="../../../../index.html"');
-      expect(repos(doc)).toContain('href="../../../../plain/docs.html"');
-      const decisions = readFileSync(join(out, "spoke/decisions.html"), "utf8");
+      expect(docHtml).toContain(
+        `file://${repo}/docs/agent-work/2026-01-15-sample-topic/variant-a.svg`,
+      );
+      expect(where(docHtml)).toContain('href="../../../../index.html"');
+    });
+
+    test("the bundled admin script ships brand elements and copy-button wiring as one classic script", () => {
       // brand's element script reaches the page as one classic script, which a page from disk loads.
-      const [, script] = decisions.match(/<script nonce="[^"]+" src="([^"]*admin[^"]*\.js)"/)!;
-      const bundled = readFileSync(resolve(out, "spoke", script!), "utf8");
+      const scriptMatch = decisionsHtml.match(/<script nonce="[^"]+" src="([^"]*admin[^"]*\.js)"/);
+      assert(scriptMatch, "decisions page should link the bundled admin script");
+      const bundled = readFileSync(resolve(out, "spoke", scriptMatch[1]!), "utf8");
       expect(bundled).toContain("hw-menu");
       expect(bundled).not.toMatch(/^import\b/m);
-      expect(repos(decisions)).toContain('href="decisions.html"');
-      expect(repos(html)).toContain('href="spoke/dashboard.html"');
-      expect(repos(decisions)).toContain('href="../plain/decisions.html"');
-      // Answers given on a repo page are copied there, not on a trip back to the hub.
-      for (const page of ["dashboard", "work", "reviews"])
-        expect(readFileSync(join(out, `spoke/${page}.html`), "utf8")).toContain('id="copy"');
       // brand's enhance() wires the Copy button by its data-hw-copy attribute.
-      expect(decisions).toMatch(/id="copy"[^>]*data-hw-copy/);
+      expect(decisionsHtml).toMatch(/id="copy"[^>]*data-hw-copy/);
       expect(bundled).toContain("[data-hw-copy]");
       // The copy time is set from brand's hw-copy event, which says whether the copy worked.
       expect(bundled).toMatch(/addEventListener\("hw-copy"[^]*?\.detail\?\.ok/);
+    });
+
+    // Answers given on a repo page are copied there, not on a trip back to the hub.
+    test.each(["dashboard", "work", "reviews"])(
+      "spoke/%s.html includes the Copy button",
+      (page) => {
+        expect(readFileSync(join(out, `spoke/${page}.html`), "utf8")).toContain('id="copy"');
+      },
+    );
+
+    test("a recommended option keeps a space between its pill and label", () => {
       // Astro drops a line break next to a tag: the pill keeps an explicit space before its label.
-      expect(decisions).toMatch(/Recommended\s*<\/span>\s+<b>/);
-      for (const [from, to] of [
-        ["spoke/catalog.html", "../plain/dashboard.html"],
-        ["spoke/products-1.html", "../plain/dashboard.html"],
-        ["spoke/products-1.html", 'href="products-1.html"'],
-      ])
-        expect(repos(readFileSync(join(out, from!), "utf8"))).toContain(to!);
-    },
-    testTimeout(60_000),
-  );
-  test(
-    "the hub ranks every repository's rows in one order; Reviews lists review requests",
-    async () => {
+      expect(decisionsHtml).toMatch(/Recommended\s*<\/span>\s+<b>/);
+    });
+
+    test.each([
+      { from: "index.html", target: 'href="spoke/dashboard.html"' },
+      { from: "spoke/decisions.html", target: 'href="decisions.html"' },
+      { from: "spoke/decisions.html", target: 'href="../plain/decisions.html"' },
+      {
+        from: "spoke/doc/docs/agent-work/2026-01-15-sample-topic.html",
+        target: 'href="../../../../plain/docs.html"',
+      },
+      { from: "spoke/catalog.html", target: "../plain/dashboard.html" },
+      { from: "spoke/products-1.html", target: "../plain/dashboard.html" },
+      { from: "spoke/products-1.html", target: 'href="products-1.html"' },
+    ])("the repository switcher on $from links to $target", ({ from, target }) => {
+      expect(repos(readFileSync(join(out, from), "utf8"))).toContain(target);
+    });
+  });
+
+  describe("ranking, reviews, settled rows and provenance across repositories", () => {
+    let out = "";
+    let html = "";
+    let reviews = "";
+    const kimsTitle = "The printers proof, Kim alone";
+
+    beforeAll(async () => {
       const spoke = await readRepo(repoFrom("spoke"));
       const base = spoke.items.find((i) => i.id === "ask-the-printer")!;
       const late = { ...base, id: "late", owner: "Alex", order: 80 };
@@ -281,7 +395,7 @@ describe("pages", () => {
       const kims = {
         ...base,
         id: "kims",
-        title: "The printers proof, Kim alone",
+        title: kimsTitle,
         owner: "Kim",
         priority: 1 as const,
         due: "2020-01-01",
@@ -298,76 +412,115 @@ describe("pages", () => {
         fetched: 1_700_000_000,
         items: [{ ...base, id: "early", owner: "Alex", order: 20 }],
       };
-      const out = join(scratch(), "out");
+      out = join(scratch(), "out");
       await buildSite(
         siteData([{ ...spoke, items: [...spoke.items, late, bare, kims] }, other]),
         out,
       );
-      const html = readFileSync(join(out, "index.html"), "utf8");
-      // Opened, it still says what was assumed, where the closed line leaves.
-      const bareRow = html.match(/id="spoke:bare"[\s\S]*?<\/details>/)![0];
-      expect(bareRow).toMatch(/<p class="hw-callout"><b>Assumed:<\/b>\s*Variant A/);
+      html = readFileSync(join(out, "index.html"), "utf8");
+      reviews = readFileSync(join(out, "spoke/reviews.html"), "utf8");
+    }, testTimeout(60_000));
+
+    test("the hub ranks items across repositories, labels each item with its repository, and includes priority columns", () => {
       expect(html.indexOf('id="other:early"')).toBeLessThan(html.indexOf('id="spoke:late"'));
       // A line linking to an item names its repository by label too.
-      expect(html.match(/<div[^>]*data-k="spoke:kims"[\s\S]*?<\/div>/)![0]).toContain(
-        "Sample spoke · ",
-      );
+      const kimsLink = html.match(/<div[^>]*data-k="spoke:kims"[\s\S]*?<\/div>/);
+      assert(kimsLink, "hub should render Waiting on others link for spoke:kims");
+      expect(kimsLink[0]).toContain("Sample spoke · ");
+      // Each row names its repository.
+      const earlySummary = html.match(/id="other:early"[\s\S]*?<\/summary>/);
+      assert(earlySummary, "hub should render summary for other:early");
+      expect(earlySummary[0]).toContain("other · to do");
+      expect(html).toContain("Decide P2");
+    });
+
+    test("the Repositories table lists repositories by label and names the top item across every owner", () => {
       // Repositories list by the name a person reads.
       expect(html.indexOf('data-repo-row="other"')).toBeLessThan(
         html.indexOf('data-repo-row="spoke"'),
       );
-      const spokeRow = html.match(/<tr data-row data-repo-row="spoke">[\s\S]*?<\/tr>/)![0];
-      expect(spokeRow).toContain(`<td class="max-w-md max-sm:hidden">${kims.title}</td>`);
-      // Each row names its repository.
-      expect(html).toMatch(/id="other:early"[\s\S]*?<\/summary>/);
-      expect(html.match(/id="other:early"[\s\S]*?<\/summary>/)![0]).toContain("other · to do");
-      const reviews = readFileSync(join(out, "spoke/reviews.html"), "utf8");
-      for (const id of ["check-the-copy", "pick-recipients", "pick-a-variant"])
-        expect(reviews).toContain(`id="spoke:${id}"`);
-      for (const id of ["goal", "ask-the-printer"])
-        expect(reviews).not.toContain(`id="spoke:${id}"`);
+      const spokeRow = html.match(/<tr data-row data-repo-row="spoke">[\s\S]*?<\/tr>/);
+      assert(spokeRow, "Repositories table should render a row for spoke");
+      expect(spokeRow[0]).toContain(`<td class="max-w-md max-sm:hidden">${kimsTitle}</td>`);
+    });
+
+    test.each([
+      { label: "includes", id: "check-the-copy", shown: true },
+      { label: "includes", id: "pick-recipients", shown: true },
+      { label: "includes", id: "pick-a-variant", shown: true },
+      { label: "excludes", id: "goal", shown: false },
+      { label: "excludes", id: "ask-the-printer", shown: false },
+    ])("Reviews $label spoke:$id", ({ id, shown }) => {
+      expect(reviews.includes(`id="spoke:${id}"`)).toBe(shown);
+    });
+
+    test("settled rows state what was assumed or decided, hide the closed line when open, and show a bare assumption callout", () => {
+      // Opened, it still says what was assumed, where the closed line leaves.
+      const bareRow = html.match(/id="spoke:bare"[\s\S]*?<\/details>/);
+      assert(bareRow, "hub should render spoke:bare row");
+      expect(bareRow[0]).toMatch(/<p class="hw-callout"><b>Assumed:<\/b>\s*Variant A/);
       // A settled row says what was assumed or decided, never what was recommended.
-      const settled = (id: string) =>
-        html.match(new RegExp(`id="spoke:${id}"[\\s\\S]*?</summary>`))![0];
+      const settled = (id: string) => {
+        const match = html.match(new RegExp(`id="spoke:${id}"[\\s\\S]*?</summary>`));
+        assert(match, `hub should render summary for spoke:${id}`);
+        return match[0];
+      };
       expect(settled("cache-folder")).toContain("Assumed: The build writes to node_modules/.cache");
       expect(settled("name-the-command")).toContain("Decided by Alex: Keep the short name");
       expect(settled("name-the-command")).not.toContain("Recommended");
       // Closed, that line holds two lines at most; opened, it leaves, since the row's callout says it
       // in full.
       expect(settled("cache-folder")).toMatch(/<span class="[^"]*group-open:hidden">Assumed:/);
+    });
+
+    test("closed row summaries contain no controls that commit an answer", () => {
       // A closed row answers nothing: a control that commits an answer sits beside the text it answers.
-      const summaries = html.match(/<summary[\s\S]*?<\/summary>/g)!;
+      const summaries = html.match(/<summary[\s\S]*?<\/summary>/g);
+      assert(summaries, "hub should render row summaries");
       expect(summaries.length).toBeGreaterThan(5);
-      for (const s of summaries) expect(s).not.toMatch(/<(button|input|textarea|select)\b/);
+      expect(summaries.filter((s) => /<(button|input|textarea|select)\b/.test(s))).toEqual([]);
+    });
+
+    test("an opened decision places its radiogroup and Pick recommended button before Context and prints only short option keys", () => {
       // An opened decision shows its options before its context.
-      const variant = html.match(/id="spoke:pick-a-variant"[\s\S]*?<\/details>/)![0];
+      const variantMatch = html.match(/id="spoke:pick-a-variant"[\s\S]*?<\/details>/);
+      assert(variantMatch, "hub should render spoke:pick-a-variant");
+      const variant = variantMatch[0];
       expect(variant.indexOf('value="a"')).toBeLessThan(variant.indexOf(">Context<"));
       expect(variant.indexOf("Pick recommended")).toBeLessThan(variant.indexOf(">Context<"));
       // A letter key, which the item's text names an option by, stands before its label; a word key,
       // which restates the label, stays out.
       expect(variant).toMatch(/data-option-key[^>]*>a<\/span>\s*<b>Variant A<\/b>/);
-      const recipients = html.match(/id="spoke:pick-recipients"[\s\S]*?<\/details>/)![0];
-      expect(recipients).not.toContain("data-option-key");
+      const recipientsMatch = html.match(/id="spoke:pick-recipients"[\s\S]*?<\/details>/);
+      assert(recipientsMatch, "hub should render spoke:pick-recipients");
+      expect(recipientsMatch[0]).not.toContain("data-option-key");
       // Its options form one group, named by the question they answer.
       expect(variant).toMatch(/role="radiogroup" aria-label="[^"]+"[^>]*>\s*<label/);
+    });
+
+    test("provenance lists checkouts behind their push branch and sits after Settled", () => {
       // The hub's provenance names the checkouts behind and says when it is from, at the page's end,
       // so the lists come first.
       expect(html).toMatch(/class="admin-provenance[^>]*>[^<]*· as of <span data-stamp>\d/);
-      expect(html.match(/<p class="admin-provenance[^>]*>([^<]*)/)?.[1]).toContain(
-        "1 behind their push branch: other",
-      );
+      const provenance = html.match(/<p class="admin-provenance[^>]*>([^<]*)/);
+      assert(provenance, "hub should render provenance paragraph");
+      expect(provenance[1]).toContain("1 behind their push branch: other");
       expect(readFileSync(join(out, "other/dashboard.html"), "utf8")).toContain(
         "2 commits behind the push branch, fetched",
       );
       expect(html.indexOf("admin-provenance")).toBeGreaterThan(html.indexOf(">Settled</h2>"));
-      expect(html).toContain("Decide P2");
-    },
-    testTimeout(60_000),
-  );
+    });
+  });
 
-  test(
-    "an item's own images show above its answer, options or none",
-    async () => {
+  describe("item images and opened row markup", () => {
+    let html = "";
+    const rowOf = (id: string) => {
+      const match = html.match(new RegExp(`id="spoke:${id}"[\\s\\S]*?</details>`));
+      assert(match, `decisions page should render spoke:${id}`);
+      return match[0];
+    };
+
+    beforeAll(async () => {
       const spoke = await readRepo(repoFrom("spoke"));
       const base = spoke.items.find((i) => i.id === "pick-recipients")!;
       const shown = {
@@ -384,107 +537,41 @@ describe("pages", () => {
       const pair = { ...shown, id: "pair", images: ["a.svg", "b.svg"] };
       const out = join(scratch(), "out");
       await buildSite(siteData([{ ...spoke, items: [...spoke.items, shown, pair] }]), out);
-      const html = readFileSync(join(out, "spoke/decisions.html"), "utf8");
-      const rowOf = (id: string) =>
-        html.match(new RegExp(`id="spoke:${id}"[\\s\\S]*?</details>`))![0];
+      html = readFileSync(join(out, "spoke/decisions.html"), "utf8");
+    }, testTimeout(60_000));
+
+    test("an item's own images render above its options in one column when alone and two columns from sm up when paired", () => {
       const row = rowOf("shown");
       expect(row.indexOf("shown/variant-b.svg")).toBeGreaterThan(0);
       expect(row.indexOf("shown/variant-b.svg")).toBeLessThan(row.indexOf("data-option"));
-      expect(row).toMatch(/data-option-key[^>]*>b2<\/span>/);
-      expect(row).not.toMatch(/data-option-key[^>]*>ask</);
       // A lone image takes the row's width, up to 36rem tall: large enough to judge, with its
       // options in view below it at 900 px. Several stand two beside each other from sm up, one per
       // row on a phone.
       expect(row).toMatch(
         /<div class="grid gap-3">\s*<span[^>]*>\s*<button[^>]*data-zoom="[^"]*shown\/variant-b[^>]*>\s*<img[^>]*max-h-144/,
       );
+      expect(rowOf("pair")).toContain('<div class="grid gap-3 sm:grid-cols-2">');
+    });
+
+    test("the page renders one shared zoom dialog after every option label", () => {
       // Each image opens in the page's one image dialog, which stands outside every option's label,
       // so a click on the large image picks nothing.
       expect(html.match(/id="admin-zoom"/g)).toHaveLength(1);
       expect(html.indexOf('id="admin-zoom"')).toBeGreaterThan(html.lastIndexOf("</label>"));
-      expect(rowOf("pair")).toContain('<div class="grid gap-3 sm:grid-cols-2">');
+    });
+
+    test("an opened row shows short alphanumeric option keys, breaks long strings inside the row, and hides the closed recommendation line", () => {
+      const row = rowOf("shown");
+      expect(row).toMatch(/data-option-key[^>]*>b2<\/span>/);
+      expect(row).not.toMatch(/data-option-key[^>]*>ask</);
       // A long path or address in an opened row breaks inside the row rather than widening a phone's
       // page.
       expect(row).toMatch(/<div class="[^"]*\bwrap-anywhere\b[^"]*">\s*<p class="hw-status"/);
       // Opened, the row's own recommendation badge says what the closed line said.
       expect(row).toMatch(/<span class="[^"]*group-open:hidden">Recommended:/);
-    },
-    testTimeout(60_000),
-  );
+    });
+  });
 
-  test(
-    "on a phone too, a row a link opens shows its title below the copy bar, and every person's button shows",
-    async () => {
-      const out = join(scratch(), "out");
-      const spoke = await readRepo(repoFrom("spoke"));
-      // Five more people, each with an open item, so the person buttons run wider than a phone.
-      const more = ["Annabelle", "Bartholomew", "Constance", "Dorothea", "Evangeline"].map(
-        (owner) => ({ ...spoke.items.find((i) => i.id === "ask-the-printer")!, id: owner, owner }),
-      );
-      await buildSite(siteData([{ ...spoke, items: [...spoke.items, ...more] }]), out);
-      const executablePath = await chromeBinaryAsync();
-      if (!executablePath) throw new Error(INSTALL_HINT);
-      const browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
-      try {
-        const page = await browser.newPage();
-        for (const [width, height] of [
-          [390, 844],
-          [1440, 900],
-        ]) {
-          await page.setViewport({ width: width!, height: height! });
-          // A page long enough that the row can reach the top, as on a full repository's page.
-          await page.goto(`file://${out}/spoke/work.html`);
-          const [bar, row] = await page.evaluate(() => {
-            document.body.append(
-              Object.assign(document.createElement("div"), { style: "height:200vh" }),
-            );
-            location.hash = "#spoke:ask-the-printer";
-            return [
-              document.querySelector(".admin-action")!.getBoundingClientRect().bottom,
-              document.getElementById("spoke:ask-the-printer")!.getBoundingClientRect().top,
-            ];
-          });
-          expect({ width, row: row! >= bar! }).toEqual({ width, row: true });
-          await page.goto(`file://${out}/index.html`);
-          const cut = await page.evaluate(() =>
-            [...document.querySelectorAll("[data-who-button], [data-kind-button]")]
-              .filter((b) => b.getBoundingClientRect().right > innerWidth)
-              .map((b) => b.textContent!.trim()),
-          );
-          expect({ width, cut }).toEqual({ width, cut: [] });
-          // A settled row's closed line holds two lines at most, however long its text.
-          const lines = await page.evaluate(() => {
-            const line = document.querySelector<HTMLElement>(
-              '[data-status="assumed"] summary .line-clamp-2',
-            )!;
-            line.closest<HTMLDetailsElement>("details[data-group]")!.open = true;
-            document.querySelector<HTMLElement>('[data-who-button="all"]')!.click();
-            line.textContent = "Assumed: a long assumption. ".repeat(40);
-            return line.offsetHeight / parseFloat(getComputedStyle(line).lineHeight);
-          });
-          expect(lines).toBeGreaterThan(0.5);
-          expect(lines).toBeLessThan(2.5);
-          // A row without a recommendation or an answer leaves no empty line where Reset waits: the
-          // next line sits one gap below the one before.
-          await page.goto(`file://${out}/spoke/work.html#spoke:ask-the-printer`);
-          const gaps = await page.evaluate(() => {
-            const line = document
-              .getElementById("spoke:ask-the-printer")!
-              .querySelector(".clear")!.parentElement!;
-            const box = (e: Element) => e.getBoundingClientRect();
-            return [
-              box(line.nextElementSibling!).top - box(line.previousElementSibling!).bottom,
-              parseFloat(getComputedStyle(line.parentElement!).rowGap),
-            ];
-          });
-          expect(gaps[0]).toBeCloseTo(gaps[1]!);
-        }
-      } finally {
-        await browser.close();
-      }
-    },
-    testTimeout(60_000),
-  );
   test(
     "a Work page without a needs edge has no graph fold",
     async () => {
@@ -500,385 +587,730 @@ describe("pages", () => {
     testTimeout(60_000),
   );
 
-  test(
-    "every needs graph node link names a row that exists and opens it in Chrome",
-    async () => {
-      const out = join(scratch(), "out");
-      const spoke = await readRepo(repoFrom("spoke"));
-      await buildSite(siteData([spoke]), out);
-      const work = join(out, "spoke/work.html");
-      const doc = new Window().document;
-      doc.body.innerHTML = readForDom(work);
-      const fold = doc.querySelector("details:has(figure.admin-diagram)")!;
-      expect(fold.hasAttribute("open")).toBe(false);
-      const links = [...fold.querySelectorAll("svg a")];
-      expect(links).toHaveLength(6);
-      expect(fold.querySelectorAll("svg .node")).toHaveLength(links.length);
-      const targets = links.map((link) => {
-        expect(link.querySelectorAll(".node")).toHaveLength(1);
-        const [file, id] = link.getAttribute("href")!.split("#") as [string, string];
-        const item = spoke.items.find((item) => id === `${spoke.key}:${item.id}`)!;
-        expect(link.querySelector(".node text")?.textContent).toBe(item.title);
-        const target = new Window().document;
-        target.body.innerHTML = readForDom(join(dirname(work), file));
-        expect(target.getElementById(id)?.hasAttribute("data-row"), `${file}#${id}`).toBe(true);
-        return id;
-      });
-      expect(targets.sort()).toEqual(
-        [
-          "cache-folder",
-          "check-the-copy",
-          "goal",
-          "name-the-command",
-          "pick-a-variant",
-          "work-wire-the-gate",
-        ].map((id) => `spoke:${id}`),
-      );
+  describe("in Chrome", () => {
+    let browser: Awaited<ReturnType<typeof puppeteer.launch>>;
 
-      const executablePath = await chromeBinaryAsync();
-      if (!executablePath) throw new Error(INSTALL_HINT);
-      const browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
-      try {
-        const page = await browser.newPage();
-        await page.evaluateOnNewDocument(() => {
-          document.addEventListener("securitypolicyviolation", (event) => {
-            console.error("CSP violation:", event.violatedDirective, event.blockedURI);
-          });
-        });
-        const violations: string[] = [];
-        page.on("console", (message) => {
-          if (message.text().startsWith("CSP violation:")) violations.push(message.text());
-        });
-        await page.goto(`file://${work}`);
-        await page.type("#admin-search", "an unmatched search");
-        await page.click("details:has(figure.admin-diagram) > summary");
-        const graph = await page.locator("figure.admin-diagram svg").waitHandle();
-        const box = await graph.boundingBox();
-        expect(box?.width).toBeGreaterThan(0);
-        expect(box?.height).toBeGreaterThan(0);
-        await Promise.all([
-          page.waitForNavigation(),
-          page.click('svg a[href="decisions.html#spoke:pick-a-variant"] text'),
-        ]);
-        expect(new URL(page.url()).hash).toBe("#spoke:pick-a-variant");
-        await page.waitForSelector('details[id="spoke:pick-a-variant"][open]', { visible: true });
-        expect(violations).toEqual([]);
-      } finally {
-        await browser.close();
-      }
-    },
-    testTimeout(60_000),
-  );
-
-  test(
-    "Chrome copies a comment from a served report below the copy bar without CSP violations",
-    async () => {
-      const repo = repoFrom("spoke");
-      const stem = "2026-01-15-sample-topic";
-      const item = `docs/agent-work/items/${stem}.md`;
-      writeFileSync(
-        join(repo, item),
-        `---\nkind: review\nstatus: open\npriority: 1\nowner: Alex\ntopic: ${stem}\n---\n# Check the sample file\n`,
-      );
-      sh(repo, "git", "add", item);
-      commit(repo, "Add sample question");
-      const hub = createHub({ root: dirname(repo) });
-      const executablePath = await chromeBinaryAsync();
-      if (!executablePath) throw new Error(INSTALL_HINT);
-      const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: hub.fetch });
-      try {
-        const browser = await puppeteer.launch({
-          executablePath,
-          headless: true,
-          args: NO_KEYCHAIN,
-        });
-        try {
-          await browser
-            .defaultBrowserContext()
-            .overridePermissions(server.url.origin, [
-              "clipboard-read",
-              "clipboard-sanitized-write",
-            ]);
-          const page = await browser.newPage();
-          await page.setViewport({ width: 390, height: 844 });
-          await page.evaluateOnNewDocument(() => {
-            document.addEventListener("securitypolicyviolation", (event) => {
-              console.error("CSP violation:", event.violatedDirective, event.blockedURI);
-            });
-          });
-          const violations: string[] = [];
-          page.on("console", (message) => {
-            if (message.text().startsWith("CSP violation:")) violations.push(message.text());
-          });
-          const response = await page.goto(new URL(SAMPLE_REPORT, server.url).href);
-          expect(response?.status()).toBe(200);
-          await page.click('nav[aria-label="Contents"] a[href="#next"]');
-          await page.waitForFunction(() => {
-            const bar = document.querySelector(".admin-action")!.getBoundingClientRect();
-            const heading = document.getElementById("next")!.getBoundingClientRect();
-            return (
-              location.hash === "#next" && heading.top >= bar.bottom && heading.bottom < innerHeight
-            );
-          });
-          const fold = '[data-k="' + COMMENT + '"]';
-          await page.click(fold + " summary");
-          await page.type(fold + " textarea", "why   dotted?");
-          await page.bringToFront();
-          await page.click("#copy");
-          await page.waitForFunction(() =>
-            document.querySelector("#state")?.textContent?.includes("copied at"),
-          );
-          expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-            "Answers from the admin pages:\nspoke:2026-01-15-sample-topic#next: why dotted?",
-          );
-          const row = 'details.item[id="spoke:' + stem + '"]';
-          await page.click(row + " summary");
-          await page.type(row + " textarea", "ready");
-          expect(await page.$eval("#copy", (b) => b.getAttribute("data-hw-copy"))).toBe(
-            `Answers from the admin pages:\nspoke:${stem}: ready`,
-          );
-          await page.reload();
-          expect(
-            await page.$eval(row + " textarea", (field) => (field as HTMLTextAreaElement).value),
-          ).toBe("ready");
-          expect(
-            await page.$eval(fold + " textarea", (field) => (field as HTMLTextAreaElement).value),
-          ).toBe("why   dotted?");
-          expect(
-            await page.evaluate((key) => {
-              const versions = JSON.parse(
-                localStorage.getItem("admin-answers:versions")!,
-              ) as Record<string, string>;
-              return [versions[key], versions["#" + key]];
-            }, "spoke:" + stem),
-          ).toEqual([expect.any(String), expect.any(String)]);
-          expect(violations).toEqual([]);
-        } finally {
-          await browser.close();
-        }
-      } finally {
-        await server.stop(true);
-      }
-    },
-    testTimeout(60_000),
-  );
-
-  test(
-    "Mermaid fits its labels, follows the page theme, and causes no CSP violations",
-    async () => {
-      const repo = await readRepo(repoFrom("spoke"));
-      const classes = await fromFiles({
-        "docs/classes.md":
-          "# Sample classes\n\n```mermaid\nclassDiagram\n  class Sample {\n    +archive()\n  }\n```",
-      });
-      const out = join(scratch(), "out");
-      await buildSite(siteData([repo, classes]), out);
-      const executablePath = await chromeBinaryAsync();
-      if (!executablePath) throw new Error(INSTALL_HINT);
-      const browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
-      try {
-        const page = await browser.newPage();
-        await page.evaluateOnNewDocument(() => {
-          document.addEventListener("securitypolicyviolation", (event) => {
-            console.error("CSP violation:", event.violatedDirective, event.blockedURI);
-          });
-        });
-        const violations: string[] = [];
-        page.on("console", (message) => {
-          if (message.text().startsWith("CSP violation:")) violations.push(message.text());
-        });
-        await page.setViewport({ width: 390, height: 844 });
-        await page.goto(`file://${out}/spoke/doc/docs/agent-work/2026-01-15-sample-topic.html`);
-        const diagram = await page.locator("article .admin-diagram > svg").waitHandle();
-        const view = await diagram.evaluate(async (svg) => {
-          await document.fonts.ready;
-          const { width, height } = svg.getBoundingClientRect();
-          const figure = svg.parentElement!;
-          const nodes = [...svg.querySelectorAll(".node")];
-          const measurements = nodes.map((node) => {
-            const label = node.querySelector("text")!;
-            const box = node.querySelector("rect")!;
-            return [label.textContent, label.getBBox().width, box.getBBox().width] as const;
-          });
-          const root = document.documentElement;
-          const first = nodes[0]!.querySelector("rect")!;
-          root.dataset.theme = "light";
-          const day = getComputedStyle(first).fill;
-          root.dataset.theme = "dark";
-          return {
-            width,
-            height,
-            scrollWidth: figure.scrollWidth,
-            clientWidth: figure.clientWidth,
-            overflow: getComputedStyle(figure).overflowX,
-            font: getComputedStyle(nodes[0]!.querySelector("text")!).fontFamily,
-            measurements,
-            day,
-            night: getComputedStyle(first).fill,
-          };
-        });
-        expect(view.width).toBeGreaterThan(0);
-        expect(view.height).toBeGreaterThan(0);
-        expect(view.scrollWidth).toBeGreaterThan(view.clientWidth);
-        expect(view.overflow).toBe("auto");
-        expect(view.font).toContain("Inter");
-        expect(view.measurements).toHaveLength(3);
-        for (const [label, width, box] of view.measurements) {
-          expect(width, label ?? "").toBeGreaterThan(0);
-          expect(width, label ?? "").toBeLessThanOrEqual(box);
-        }
-        expect(view.day).not.toBe(view.night);
-        expect(violations).toEqual([]);
-        await page.goto(`file://${out}/spoke/work.html#spoke:sort-the-samples`);
-        expect(
-          await page.$eval(
-            '[id="spoke:sort-the-samples"] .admin-diagram svg',
-            (svg) => svg.textContent,
-          ),
-        ).toContain("Dated folders");
-        expect(
-          await page.$eval('[id="spoke:work-wire-the-gate"] > summary', (row) => row.textContent),
-        ).toContain("Waiting on check-the-copy, goal, pick-a-variant");
-        expect(violations).toEqual([]);
-        await page.goto(`file://${out}/x/doc/docs/classes.html`);
-        const [member, mono, sans] = await page.$eval(".admin-diagram text.mono", (label) => {
-          const reference = document.createElement("span");
-          reference.style.fontFamily = "var(--font-mono)";
-          label.closest("figure")!.append(reference);
-          const title = label.closest("svg")!.querySelector("text:not(.mono)")!;
-          return [
-            getComputedStyle(label).fontFamily,
-            getComputedStyle(reference).fontFamily,
-            getComputedStyle(title).fontFamily,
-          ];
-        });
-        expect(member).toBe(mono);
-        expect(member).not.toBe(sans);
-        expect(violations).toEqual([]);
-      } finally {
-        await browser.close();
-      }
-    },
-    testTimeout(60_000),
-  );
-
-  test(
-    "a page opened from disk runs the hub's scripts and none of a doc's, and a doc's q&a link resolves",
-    async () => {
-      const repo = join(scratch(), "r");
-      const files: Record<string, string> = {
-        "package.json": "{}",
-        "docs/x.md": [
-          "# X",
-          "",
-          "[qa](q&a.md) [roll](<rock & roll's.md>)",
-          "",
-          `<a href="q&#38;a.md">raw</a>`,
-          "",
-          `<script>document.title += "|inline"</script>`,
-          `<script src="evil.js"></script>`,
-          `<img src="missing.png" onerror="document.title += '|onerror'">`,
-          `<form action="https://a.test/"><button id="post">Post</button></form>`,
-        ].join("\n"),
-        // An open attribute swallows the markup up to the hub's own script, nonce included.
-        "docs/y.md": `# Y\n\n<script src="evil.js" x="`,
-        "docs/evil.js": `document.title += "|file";`,
-        "docs/q&a.md": "# Q and A",
-        "docs/rock & roll's.md": "# Rock",
-      };
-      for (const [f, text] of Object.entries(files)) {
-        mkdirSync(dirname(join(repo, f)), { recursive: true });
-        writeFileSync(join(repo, f), text);
-      }
-      sh(repo, "git", "init", "-q", "-b", "main");
-      sh(repo, "git", "add", "-A");
-      commit(repo, "c");
-      const data = await readRepo(repo);
-      const out = join(scratch(), "out");
-      await buildSite(siteData([data]), out);
-      const html = readFileSync(join(out, "r/doc/docs/x.html"), "utf8");
-      for (const name of ["qa", "roll", "raw"]) {
-        const to = html.match(new RegExp(`href="([^"]*)">${name}<`))![1]!;
-        expect([name, existsSync(decodeURIComponent(new URL(to).pathname))]).toEqual([name, true]);
-      }
-      const qa = html.match(/href="([^"]*)">qa</)![1]!;
-      expect(linker([data]).pages(`href="${qa}"`)).toBe('href="/r/doc/docs/q%26a"');
-      const executablePath = await chromeBinaryAsync();
-      if (!executablePath) throw new Error(INSTALL_HINT);
-      const browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
-      try {
-        const page = await browser.newPage();
-        await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
-        const posts: string[] = [];
-        page.on("request", (r) => r.url().startsWith("https:") && posts.push(r.url()));
-        await page.goto(`file://${out}/r/doc/docs/x.html`, { waitUntil: "load" });
-        await page.keyboard.press("/");
-        const ran = await page.evaluate(() => [
-          document.title,
-          document.documentElement.dataset.theme,
-          document.activeElement?.id,
-        ]);
-        // theme.js darkens the page, admin.js focuses the search on "/".
-        expect(ran).toEqual(["X · r · Admin", "dark", "admin-search"]);
-        // The header's theme switch turns the page and stores the choice, which outlasts a reload
-        // and the system's theme.
-        await page.click("#theme-toggle");
-        const theme = () =>
-          page.evaluate(() => [
-            document.documentElement.dataset.theme,
-            document.getElementById("theme-toggle")?.getAttribute("aria-pressed"),
-            localStorage.getItem("theme"),
-          ]);
-        expect(await theme()).toEqual(["light", "false", "light"]);
-        await page.reload({ waitUntil: "load" });
-        expect(await theme()).toEqual(["light", "false", "light"]);
-        await page.click("#post").catch(() => {});
-        await new Promise((r) => setTimeout(r, 300));
-        expect(posts).toEqual([]);
-        await page.goto(`file://${out}/r/doc/docs/y.html`, { waitUntil: "load" });
-        expect(await page.title()).not.toContain("|file");
-      } finally {
-        await browser.close();
-      }
-    },
-    testTimeout(60_000),
-  );
-
-  test(
-    "the header repository selector does not overlap the theme switch at 390 px and 360 px",
-    async () => {
-      const spoke = await readRepo(repoFrom("spoke"));
-      const out = join(scratch(), "out");
-      await buildSite(siteData([spoke]), out);
+    beforeAll(async () => {
       const executablePath = await chromeBinaryAsync();
       assert(executablePath, INSTALL_HINT);
-      const browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
-      try {
-        const page = await browser.newPage();
-        const gapAt = async (rel: string, width: number) => {
-          await page.setViewport({ width, height: 844 });
-          await page.goto(`file://${join(out, rel)}`, { waitUntil: "load" });
-          await page.evaluate(() => document.fonts.ready);
-          const right = await page.$eval(
-            "[popovertarget=admin-repos]",
-            (el) => el.getBoundingClientRect().right,
+      browser = await puppeteer.launch({ executablePath, headless: true, args: NO_KEYCHAIN });
+    }, testTimeout(60_000));
+
+    afterAll(async () => {
+      if (browser) await browser.close();
+    });
+
+    const openPage = async (
+      owner: { newPage: () => ReturnType<typeof browser.newPage> } = browser,
+    ) => {
+      const page = await owner.newPage();
+      const violations: string[] = [];
+      await page.exposeFunction("__adminCsp", (msg: string) => {
+        violations.push(msg);
+      });
+      await page.evaluateOnNewDocument(() => {
+        document.addEventListener("securitypolicyviolation", (event) => {
+          (window as unknown as { __adminCsp: (m: string) => void }).__adminCsp(
+            `CSP violation: ${event.violatedDirective} ${event.blockedURI}`,
           );
-          const left = await page.$eval(
-            "[data-admin-theme]",
-            (el) => el.getBoundingClientRect().left,
+        });
+      });
+      return { page, violations };
+    };
+
+    describe("unchanged spoke fixture", () => {
+      let out = "";
+      let workPath = "";
+
+      beforeAll(async () => {
+        out = join(scratch(), "out");
+        const spoke = await readRepo(repoFrom("spoke"));
+        await buildSite(siteData([spoke]), out);
+        workPath = join(out, "spoke/work.html");
+      }, testTimeout(60_000));
+
+      const needsNodes = [
+        {
+          file: "decisions.html",
+          id: "spoke:cache-folder",
+          title: "Where the build writes its pages",
+        },
+        {
+          file: "decisions.html",
+          id: "spoke:check-the-copy",
+          title: "Check the new copy on the start page",
+        },
+        { file: "work.html", id: "spoke:goal", title: "Goal" },
+        {
+          file: "decisions.html",
+          id: "spoke:name-the-command",
+          title: "Which name the command keeps",
+        },
+        { file: "decisions.html", id: "spoke:pick-a-variant", title: "Which variant ships?" },
+        {
+          file: "work.html",
+          id: "spoke:work-wire-the-gate",
+          title: "Wire admin-check into the gate",
+        },
+      ];
+
+      test("the needs graph starts collapsed with six linked nodes", () => {
+        const doc = new Window().document;
+        doc.body.innerHTML = readForDom(workPath);
+        const fold = doc.querySelector("details:has(figure.admin-diagram)");
+        assert(fold, "Work page should render needs graph disclosure");
+        const links = [...fold.querySelectorAll("svg a")];
+        expect(fold.hasAttribute("open")).toBe(false);
+        expect(fold.querySelectorAll("svg .node")).toHaveLength(6);
+        expect(links.map((link) => link.getAttribute("href")).sort()).toEqual([
+          "decisions.html#spoke:cache-folder",
+          "decisions.html#spoke:check-the-copy",
+          "decisions.html#spoke:name-the-command",
+          "decisions.html#spoke:pick-a-variant",
+          "work.html#spoke:goal",
+          "work.html#spoke:work-wire-the-gate",
+        ]);
+      });
+
+      test.each(needsNodes)(
+        "needs graph node $id carries its item title and points to an existing row",
+        ({ file, id, title }) => {
+          const doc = new Window().document;
+          doc.body.innerHTML = readForDom(workPath);
+          const link = doc.querySelector(
+            `details:has(figure.admin-diagram) svg a[href="${file}#${id}"]`,
           );
-          return left - right;
+          assert(link, `needs graph should link to ${file}#${id}`);
+          expect(link.querySelectorAll(".node")).toHaveLength(1);
+          const label = link.querySelector(".node text");
+          assert(label, `node ${id} should contain a text label`);
+          expect(label.textContent).toBe(title);
+          const target = new Window().document;
+          target.body.innerHTML = readForDom(join(dirname(workPath), file));
+          const row = target.getElementById(id);
+          assert(row, `target ${file}#${id} should exist`);
+          expect(row.hasAttribute("data-row")).toBe(true);
+        },
+      );
+
+      test(
+        "clicking a needs graph node opens its target row in Chrome without CSP violations",
+        async () => {
+          const { page, violations } = await openPage();
+          try {
+            await page.goto(`file://${workPath}`);
+            await page.type("#admin-search", "an unmatched search");
+            await page.click("details:has(figure.admin-diagram) > summary");
+            const graph = await page.locator("figure.admin-diagram svg").waitHandle();
+            const box = await graph.boundingBox();
+            assert(box, "needs graph SVG should have a bounding box");
+            expect(box.width).toBeGreaterThan(0);
+            expect(box.height).toBeGreaterThan(0);
+            await Promise.all([
+              page.waitForNavigation(),
+              page.click('svg a[href="decisions.html#spoke:pick-a-variant"] text'),
+            ]);
+            expect(new URL(page.url()).hash).toBe("#spoke:pick-a-variant");
+            await page.waitForSelector('details[id="spoke:pick-a-variant"][open]', {
+              visible: true,
+            });
+            expect(violations).toEqual([]);
+          } finally {
+            await page.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+
+      test.each([
+        { rel: "spoke/dashboard.html", width: 390 },
+        { rel: "spoke/dashboard.html", width: 360 },
+        { rel: "index.html", width: 390 },
+        { rel: "index.html", width: 360 },
+      ])(
+        "the header repository selector does not overlap the theme switch on $rel at $width px",
+        async ({ rel, width }) => {
+          const page = await browser.newPage();
+          try {
+            await page.setViewport({ width, height: 844 });
+            await page.goto(`file://${join(out, rel)}`, { waitUntil: "load" });
+            await page.evaluate(() => document.fonts.ready);
+            const gap = await page.evaluate(() => {
+              const right = document
+                .querySelector("[popovertarget=admin-repos]")!
+                .getBoundingClientRect().right;
+              const left = document
+                .querySelector("[data-admin-theme]")!
+                .getBoundingClientRect().left;
+              return left - right;
+            });
+            expect(gap).toBeGreaterThanOrEqual(0);
+          } finally {
+            await page.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+    });
+
+    describe("layout across phone and desktop viewports", () => {
+      let out = "";
+      const viewports = [
+        { label: "phone", width: 390, height: 844 },
+        { label: "desktop", width: 1440, height: 900 },
+      ];
+
+      beforeAll(async () => {
+        out = join(scratch(), "out");
+        const spoke = await readRepo(repoFrom("spoke"));
+        // Five more people, each with an open item, so the person buttons run wider than a phone.
+        const more = ["Annabelle", "Bartholomew", "Constance", "Dorothea", "Evangeline"].map(
+          (owner) => ({
+            ...spoke.items.find((i) => i.id === "ask-the-printer")!,
+            id: owner,
+            owner,
+          }),
+        );
+        await buildSite(siteData([{ ...spoke, items: [...spoke.items, ...more] }]), out);
+      }, testTimeout(60_000));
+
+      test.each(viewports)(
+        "a hash-linked row opens below the copy bar on $label ($width px)",
+        async ({ width, height }) => {
+          const page = await browser.newPage();
+          try {
+            await page.setViewport({ width, height });
+            // A page long enough that the row can reach the top, as on a full repository's page.
+            await page.goto(`file://${out}/spoke/work.html`);
+            const [bar, row] = await page.evaluate(() => {
+              document.body.append(
+                Object.assign(document.createElement("div"), { style: "height:200vh" }),
+              );
+              location.hash = "#spoke:ask-the-printer";
+              return [
+                document.querySelector(".admin-action")!.getBoundingClientRect().bottom,
+                document.getElementById("spoke:ask-the-printer")!.getBoundingClientRect().top,
+              ];
+            });
+            expect(row!).toBeGreaterThanOrEqual(bar!);
+          } finally {
+            await page.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+
+      test.each(viewports)(
+        "every person and kind filter button fits inside the viewport on $label ($width px)",
+        async ({ width, height }) => {
+          const page = await browser.newPage();
+          try {
+            await page.setViewport({ width, height });
+            await page.goto(`file://${out}/index.html`);
+            const cut = await page.evaluate(() =>
+              [...document.querySelectorAll("[data-who-button], [data-kind-button]")]
+                .filter((b) => b.getBoundingClientRect().right > innerWidth)
+                .map((b) => b.textContent!.trim()),
+            );
+            expect(cut).toEqual([]);
+          } finally {
+            await page.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+
+      test.each(viewports)(
+        "a settled row's closed line clamps to at most two lines on $label ($width px)",
+        async ({ width, height }) => {
+          const page = await browser.newPage();
+          try {
+            await page.setViewport({ width, height });
+            await page.goto(`file://${out}/index.html`);
+            // A settled row's closed line holds two lines at most, however long its text.
+            const lines = await page.evaluate(() => {
+              const line = document.querySelector<HTMLElement>(
+                '[data-status="assumed"] summary .line-clamp-2',
+              )!;
+              line.closest<HTMLDetailsElement>("details[data-group]")!.open = true;
+              document.querySelector<HTMLElement>('[data-who-button="all"]')!.click();
+              line.textContent = "Assumed: a long assumption. ".repeat(40);
+              return line.offsetHeight / parseFloat(getComputedStyle(line).lineHeight);
+            });
+            expect(lines).toBeGreaterThan(0.5);
+            expect(lines).toBeLessThan(2.5);
+          } finally {
+            await page.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+
+      test.each(viewports)(
+        "a row without a recommendation or answer leaves no empty gap where Reset sits on $label ($width px)",
+        async ({ width, height }) => {
+          const page = await browser.newPage();
+          try {
+            await page.setViewport({ width, height });
+            // A row without a recommendation or an answer leaves no empty line where Reset waits: the
+            // next line sits one gap below the one before.
+            await page.goto(`file://${out}/spoke/work.html#spoke:ask-the-printer`);
+            const gaps = await page.evaluate(() => {
+              const line = document
+                .getElementById("spoke:ask-the-printer")!
+                .querySelector(".clear")!.parentElement!;
+              const box = (e: Element) => e.getBoundingClientRect();
+              return [
+                box(line.nextElementSibling!).top - box(line.previousElementSibling!).bottom,
+                parseFloat(getComputedStyle(line.parentElement!).rowGap),
+              ];
+            });
+            expect(gaps[0]).toBeCloseTo(gaps[1]!);
+          } finally {
+            await page.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+    });
+
+    describe("served report comments", () => {
+      const stem = "2026-01-15-sample-topic";
+      const fold = `[data-k="${COMMENT}"]`;
+      const row = `details.item[id="spoke:${stem}"]`;
+      let server: ReturnType<typeof Bun.serve>;
+
+      beforeAll(async () => {
+        const repo = repoFrom("spoke");
+        const item = `docs/agent-work/items/${stem}.md`;
+        writeFileSync(
+          join(repo, item),
+          `---\nkind: review\nstatus: open\npriority: 1\nowner: Alex\ntopic: ${stem}\n---\n# Check the sample file\n`,
+        );
+        sh(repo, "git", "add", item);
+        commit(repo, "Add sample question");
+        const hub = createHub({ root: dirname(repo) });
+        server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: hub.fetch });
+      }, testTimeout(60_000));
+
+      afterAll(async () => {
+        if (server) await server.stop(true);
+      });
+
+      const copyCommentStage = async () => {
+        const context = await browser.createBrowserContext();
+        await context.overridePermissions(server.url.origin, [
+          "clipboard-read",
+          "clipboard-sanitized-write",
+        ]);
+        const { page, violations } = await openPage(context);
+        await page.setViewport({ width: 390, height: 844 });
+        await page.goto(new URL(SAMPLE_REPORT, server.url).href);
+        await page.click(`${fold} summary`);
+        await page.type(`${fold} textarea`, "why   dotted?");
+        await page.bringToFront();
+        await page.click("#copy");
+        await page.waitForFunction(() =>
+          document.querySelector("#state")!.textContent!.includes("copied at"),
+        );
+        const clipboard = await page.evaluate(() => navigator.clipboard.readText());
+        return { context, page, violations, clipboard };
+      };
+
+      test(
+        "clicking a served report's Contents link scrolls the heading below the copy bar without CSP violations",
+        async () => {
+          const context = await browser.createBrowserContext();
+          try {
+            const { page, violations } = await openPage(context);
+            await page.setViewport({ width: 390, height: 844 });
+            const response = await page.goto(new URL(SAMPLE_REPORT, server.url).href);
+            assert(response, "served report should return a response");
+            expect(response.status()).toBe(200);
+            await page.click('nav[aria-label="Contents"] a[href="#next"]');
+            await page.waitForFunction(() => location.hash === "#next");
+            const pos = await page.evaluate(
+              () =>
+                new Promise<{
+                  top: number;
+                  bottom: number;
+                  barBottom: number;
+                  viewportHeight: number;
+                }>((resolve) =>
+                  requestAnimationFrame(() => {
+                    const bar = document.querySelector(".admin-action")!.getBoundingClientRect();
+                    const heading = document.getElementById("next")!.getBoundingClientRect();
+                    resolve({
+                      top: heading.top,
+                      bottom: heading.bottom,
+                      barBottom: bar.bottom,
+                      viewportHeight: innerHeight,
+                    });
+                  }),
+                ),
+            );
+            expect(pos.top).toBeGreaterThanOrEqual(pos.barBottom);
+            expect(pos.bottom).toBeLessThan(pos.viewportHeight);
+            expect(violations).toEqual([]);
+          } finally {
+            await context.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+
+      test(
+        "copying a report comment writes the normalised line to the clipboard without CSP violations",
+        async () => {
+          const stage = await copyCommentStage();
+          try {
+            expect(stage.clipboard).toBe(
+              "Answers from the admin pages:\nspoke:2026-01-15-sample-topic#next: why dotted?",
+            );
+            expect(stage.violations).toEqual([]);
+          } finally {
+            await stage.context.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+
+      describe("after answering the report's item and reloading", () => {
+        let copyAttr: string | null = null;
+        let rowValue = "";
+        let commentValue = "";
+        let versions: [string | undefined, string | undefined] = [undefined, undefined];
+        let violations: string[] = [];
+
+        beforeAll(async () => {
+          const stage = await copyCommentStage();
+          try {
+            const { page } = stage;
+            await page.click(`${row} summary`);
+            await page.type(`${row} textarea`, "ready");
+            copyAttr = await page.$eval("#copy", (b) => b.getAttribute("data-hw-copy"));
+            await page.reload();
+            rowValue = await page.$eval(
+              `${row} textarea`,
+              (field) => (field as HTMLTextAreaElement).value,
+            );
+            commentValue = await page.$eval(
+              `${fold} textarea`,
+              (field) => (field as HTMLTextAreaElement).value,
+            );
+            versions = await page.evaluate((key) => {
+              const stored = JSON.parse(localStorage.getItem("admin-answers:versions")!) as Record<
+                string,
+                string
+              >;
+              return [stored[key], stored[`#${key}`]] as [string | undefined, string | undefined];
+            }, `spoke:${stem}`);
+            violations = stage.violations;
+          } finally {
+            await stage.context.close();
+          }
+        }, testTimeout(60_000));
+
+        test("answering the report's item after copying a comment queues only the new answer for Copy", () => {
+          expect(copyAttr).toBe(`Answers from the admin pages:\nspoke:${stem}: ready`);
+        });
+
+        test("reloading restores both the item answer and the report comment with version stamps and no CSP violations", () => {
+          expect(rowValue).toBe("ready");
+          expect(commentValue).toBe("why   dotted?");
+          expect(versions).toEqual([expect.any(String), expect.any(String)]);
+          expect(violations).toEqual([]);
+        });
+      });
+    });
+
+    describe("Mermaid diagrams", () => {
+      let out = "";
+
+      beforeAll(async () => {
+        const repo = await readRepo(repoFrom("spoke"));
+        const classes = await fromFiles({
+          "docs/classes.md":
+            "# Sample classes\n\n```mermaid\nclassDiagram\n  class Sample {\n    +archive()\n  }\n```",
+        });
+        out = join(scratch(), "out");
+        await buildSite(siteData([repo, classes]), out);
+      }, testTimeout(60_000));
+
+      describe("report flowchart at phone width", () => {
+        let view: {
+          width: number;
+          height: number;
+          scrollWidth: number;
+          clientWidth: number;
+          overflow: string;
+          font: string;
+          measurements: { label: string; width: number; box: number }[];
+          day: string;
+          night: string;
         };
-        expect(await gapAt("spoke/dashboard.html", 390)).toBeGreaterThanOrEqual(0);
-        expect(await gapAt("spoke/dashboard.html", 360)).toBeGreaterThanOrEqual(0);
-        expect(await gapAt("index.html", 390)).toBeGreaterThanOrEqual(0);
-        expect(await gapAt("index.html", 360)).toBeGreaterThanOrEqual(0);
-      } finally {
-        await browser.close();
-      }
-    },
-    testTimeout(60_000),
-  );
+        let violations: string[] = [];
+
+        beforeAll(async () => {
+          const opened = await openPage();
+          try {
+            await opened.page.setViewport({ width: 390, height: 844 });
+            await opened.page.goto(
+              `file://${out}/spoke/doc/docs/agent-work/2026-01-15-sample-topic.html`,
+            );
+            const diagram = await opened.page.locator("article .admin-diagram > svg").waitHandle();
+            view = await diagram.evaluate(async (svg) => {
+              await document.fonts.ready;
+              const { width, height } = svg.getBoundingClientRect();
+              const figure = svg.parentElement!;
+              const nodes = [...svg.querySelectorAll(".node")];
+              const measurements = nodes.map((node) => {
+                const label = node.querySelector("text")!;
+                const box = node.querySelector("rect")!;
+                return {
+                  label: label.textContent!,
+                  width: label.getBBox().width,
+                  box: box.getBBox().width,
+                };
+              });
+              const root = document.documentElement;
+              const first = nodes[0]!.querySelector("rect")!;
+              root.dataset.theme = "light";
+              const day = getComputedStyle(first).fill;
+              root.dataset.theme = "dark";
+              return {
+                width,
+                height,
+                scrollWidth: figure.scrollWidth,
+                clientWidth: figure.clientWidth,
+                overflow: getComputedStyle(figure).overflowX,
+                font: getComputedStyle(nodes[0]!.querySelector("text")!).fontFamily,
+                measurements,
+                day,
+                night: getComputedStyle(first).fill,
+              };
+            });
+            violations = opened.violations;
+          } finally {
+            await opened.page.close();
+          }
+        }, testTimeout(60_000));
+
+        test("renders with non-zero size inside a horizontally scrollable container without CSP violations", () => {
+          expect(view.width).toBeGreaterThan(0);
+          expect(view.height).toBeGreaterThan(0);
+          expect(view.scrollWidth).toBeGreaterThan(view.clientWidth);
+          expect(view.overflow).toBe("auto");
+          expect(violations).toEqual([]);
+        });
+
+        test("uses Inter for node labels and updates node fills when the page theme switches", () => {
+          expect(view.font).toContain("Inter");
+          expect(view.day).not.toBe(view.night);
+        });
+
+        test("renders the three flowchart nodes in order", () => {
+          expect(view.measurements.map((m) => m.label)).toEqual([
+            "Draft sample",
+            "Sort by date",
+            "Archive samples",
+          ]);
+        });
+
+        test.each(["Draft sample", "Sort by date", "Archive samples"])(
+          "fits label %s inside its node box",
+          (label) => {
+            const measurement = view.measurements.find((entry) => entry.label === label);
+            assert(measurement, `node ${label} should be measured`);
+            expect(measurement.width).toBeGreaterThan(0);
+            expect(measurement.width).toBeLessThanOrEqual(measurement.box);
+          },
+        );
+      });
+
+      test(
+        "renders a work item's Mermaid diagram and prerequisite summary without CSP violations",
+        async () => {
+          const { page, violations } = await openPage();
+          try {
+            await page.setViewport({ width: 390, height: 844 });
+            await page.goto(`file://${out}/spoke/work.html#spoke:sort-the-samples`);
+            expect(
+              await page.$eval(
+                '[id="spoke:sort-the-samples"] .admin-diagram svg',
+                (svg) => svg.textContent,
+              ),
+            ).toContain("Dated folders");
+            expect(
+              await page.$eval(
+                '[id="spoke:work-wire-the-gate"] > summary',
+                (row) => row.textContent,
+              ),
+            ).toContain("Waiting on check-the-copy, goal, pick-a-variant");
+            expect(violations).toEqual([]);
+          } finally {
+            await page.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+
+      test(
+        "renders class diagram members in the monospace font without CSP violations",
+        async () => {
+          const { page, violations } = await openPage();
+          try {
+            await page.setViewport({ width: 390, height: 844 });
+            await page.goto(`file://${out}/x/doc/docs/classes.html`);
+            const [member, mono, sans] = await page.$eval(".admin-diagram text.mono", (label) => {
+              const reference = document.createElement("span");
+              reference.style.fontFamily = "var(--font-mono)";
+              label.closest("figure")!.append(reference);
+              const title = label.closest("svg")!.querySelector("text:not(.mono)")!;
+              return [
+                getComputedStyle(label).fontFamily,
+                getComputedStyle(reference).fontFamily,
+                getComputedStyle(title).fontFamily,
+              ];
+            });
+            expect(member).toBe(mono);
+            expect(member).not.toBe(sans);
+            expect(violations).toEqual([]);
+          } finally {
+            await page.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+    });
+
+    describe("disk page script isolation and doc links", () => {
+      let out = "";
+      let data: Awaited<ReturnType<typeof readRepo>>;
+      let xHtml = "";
+
+      beforeAll(async () => {
+        const repo = join(scratch(), "r");
+        const files: Record<string, string> = {
+          "package.json": "{}",
+          "docs/x.md": [
+            "# X",
+            "",
+            "[qa](q&a.md) [roll](<rock & roll's.md>)",
+            "",
+            `<a href="q&#38;a.md">raw</a>`,
+            "",
+            `<script>document.title += "|inline"</script>`,
+            `<script src="evil.js"></script>`,
+            `<img src="missing.png" onerror="document.title += '|onerror'">`,
+            `<form action="https://a.test/"><button id="post">Post</button></form>`,
+          ].join("\n"),
+          // An open attribute swallows the markup up to the hub's own script, nonce included.
+          "docs/y.md": `# Y\n\n<script src="evil.js" x="`,
+          "docs/evil.js": `document.title += "|file";`,
+          "docs/q&a.md": "# Q and A",
+          "docs/rock & roll's.md": "# Rock",
+        };
+        for (const [f, text] of Object.entries(files)) {
+          mkdirSync(dirname(join(repo, f)), { recursive: true });
+          writeFileSync(join(repo, f), text);
+        }
+        sh(repo, "git", "init", "-q", "-b", "main");
+        sh(repo, "git", "add", "-A");
+        commit(repo, "c");
+        data = await readRepo(repo);
+        out = join(scratch(), "out");
+        await buildSite(siteData([data]), out);
+        xHtml = readFileSync(join(out, "r/doc/docs/x.html"), "utf8");
+      }, testTimeout(60_000));
+
+      test.each(["qa", "roll", "raw"])(
+        "doc link %s resolves to an existing file on disk",
+        (name) => {
+          const match = xHtml.match(new RegExp(`href="([^"]*)">${name}<`));
+          assert(match, `doc link ${name} should exist on x.html`);
+          expect(existsSync(decodeURIComponent(new URL(match[1]!).pathname))).toBe(true);
+        },
+      );
+
+      test("linker rewrites a doc's encoded q&a file link to its served route", () => {
+        const match = xHtml.match(/href="([^"]*)">qa</);
+        assert(match, "qa link should exist on x.html");
+        expect(linker([data]).pages(`href="${match[1]!}"`)).toBe('href="/r/doc/docs/q%26a"');
+      });
+
+      test(
+        "opening x.html from disk runs theme.js and admin.js while blocking doc scripts and form posts",
+        async () => {
+          const context = await browser.createBrowserContext();
+          try {
+            const page = await context.newPage();
+            await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+            const requests: string[] = [];
+            page.on("request", (r) => {
+              requests.push(r.url());
+            });
+            await page.goto(`file://${out}/r/doc/docs/x.html`, { waitUntil: "load" });
+            await page.keyboard.press("/");
+            const ran = await page.evaluate(() => [
+              document.title,
+              document.documentElement.dataset.theme,
+              document.activeElement!.id,
+            ]);
+            // theme.js darkens the page, admin.js focuses the search on "/".
+            expect(ran).toEqual(["X · r · Admin", "dark", "admin-search"]);
+            await page.click("#post");
+            await new Promise((r) => setTimeout(r, 300));
+            expect(requests.filter((u) => u.startsWith("https:"))).toEqual([]);
+          } finally {
+            await context.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+
+      test(
+        "toggling the theme on a disk page stores the choice across a reload despite dark system preference",
+        async () => {
+          const context = await browser.createBrowserContext();
+          try {
+            const page = await context.newPage();
+            await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
+            await page.goto(`file://${out}/r/doc/docs/x.html`, { waitUntil: "load" });
+            // The header's theme switch turns the page and stores the choice, which outlasts a reload
+            // and the system's theme.
+            await page.click("#theme-toggle");
+            const theme = () =>
+              page.evaluate(() => [
+                document.documentElement.dataset.theme,
+                document.getElementById("theme-toggle")!.getAttribute("aria-pressed"),
+                localStorage.getItem("theme"),
+              ]);
+            expect(await theme()).toEqual(["light", "false", "light"]);
+            await page.reload({ waitUntil: "load" });
+            expect(await theme()).toEqual(["light", "false", "light"]);
+          } finally {
+            await context.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+
+      test(
+        "an unclosed script attribute in a doc cannot hijack the hub's nonce",
+        async () => {
+          const page = await browser.newPage();
+          try {
+            await page.goto(`file://${out}/r/doc/docs/y.html`, { waitUntil: "load" });
+            expect(await page.title()).not.toContain("|file");
+          } finally {
+            await page.close();
+          }
+        },
+        testTimeout(60_000),
+      );
+    });
+  });
 });
 
 describe("admin.js", () => {
@@ -3030,11 +3462,16 @@ describe("serve", () => {
 });
 
 describe("catalog", () => {
+  let get: (path: string) => Promise<Response>;
+
+  beforeAll(() => {
+    const hub = createHub({ root: dirname(repoFrom("spoke")) });
+    get = (path: string) => hub.fetch(new Request(`http://admin.localhost${path}`));
+  });
+
   test(
-    "the hub serves the catalog at /catalog/ and links it",
+    "the hub home page links to /catalog/ and /catalog redirects with a trailing slash",
     async () => {
-      const hub = createHub({ root: dirname(repoFrom("spoke")) });
-      const get = (path: string) => hub.fetch(new Request(`http://admin.localhost${path}`));
       const hubPage = await get("/");
       expect(hubPage.status).toBe(200);
       expect(await hubPage.text()).toMatch(/<a href="\/catalog\/"[^>]*>\s*Catalog\s*</);
@@ -3043,28 +3480,78 @@ describe("catalog", () => {
         302,
         "http://admin.localhost/catalog/",
       ]);
+    },
+    testTimeout(60_000),
+  );
+
+  test(
+    "serves the catalog home page with an immutable stylesheet",
+    async () => {
       const home = await get("/catalog/");
       expect(home.status).toBe(200);
       const html = await home.text();
       expect(html).toContain("Every page and component of the admin engine");
-      const sheet = html.match(/href="(\/catalog\/_astro\/[^"]+\.css)"/)![1]!;
-      expect((await get(sheet)).headers.get("cache-control")).toContain("immutable");
+      const sheet = html.match(/href="(\/catalog\/_astro\/[^"]+\.css)"/);
+      assert(sheet, "catalog home should link its stylesheet");
+      expect((await get(sheet[1]!)).headers.get("cache-control")).toContain("immutable");
+    },
+    testTimeout(60_000),
+  );
+
+  test(
+    "serves story fixture images from /catalog/test/fixtures/spoke/",
+    async () => {
       const story = await get("/catalog/stories/Items/shot/captioned");
       expect(story.status).toBe(200);
-      const src = (await story.text()).match(/<img[^>]*src="([^"]+)"/)![1]!;
-      expect(src.startsWith("/catalog/test/fixtures/spoke/")).toBe(true);
-      expect((await get(src)).headers.get("content-type")).toContain("image/svg");
+      const src = (await story.text()).match(/<img[^>]*src="([^"]+)"/);
+      assert(src, "captioned shot story should render an image");
+      expect(src[1]!.startsWith("/catalog/test/fixtures/spoke/")).toBe(true);
+      expect((await get(src[1]!)).headers.get("content-type")).toContain("image/svg");
+    },
+    testTimeout(60_000),
+  );
+
+  test(
+    "the needs-graph story links all six connected items",
+    async () => {
       const graphPath = "/catalog/stories/Items/needs-graph/graph/";
       const graph = await get(graphPath);
       expect(graph.status).toBe(200);
-      const graphLinks = [...(await graph.text()).matchAll(/href="([^"]+)"><g class="node"/g)];
-      expect(graphLinks).toHaveLength(6);
-      for (const [, href] of graphLinks) {
-        const target = new URL(href!, `http://admin.localhost${graphPath}`);
-        const row = await get(target.pathname);
-        expect(row.status).toBe(200);
-        expect(await row.text()).toContain(`id="${target.hash.slice(1)}"`);
-      }
+      const hrefs = [...(await graph.text()).matchAll(/href="([^"]+)"><g class="node"/g)]
+        .map(([, href]) => href!)
+        .sort();
+      expect(hrefs).toEqual([
+        "../../../Pages/decisions/default/#spoke:cache-folder",
+        "../../../Pages/decisions/default/#spoke:check-the-copy",
+        "../../../Pages/decisions/default/#spoke:name-the-command",
+        "../../../Pages/decisions/default/#spoke:pick-a-variant",
+        "../../../Pages/work/default/#spoke:goal",
+        "../../../Pages/work/default/#spoke:work-wire-the-gate",
+      ]);
+    },
+    testTimeout(60_000),
+  );
+
+  test.each([
+    { pathname: "/catalog/stories/Pages/decisions/default/", id: "spoke:cache-folder" },
+    { pathname: "/catalog/stories/Pages/decisions/default/", id: "spoke:check-the-copy" },
+    { pathname: "/catalog/stories/Pages/decisions/default/", id: "spoke:name-the-command" },
+    { pathname: "/catalog/stories/Pages/decisions/default/", id: "spoke:pick-a-variant" },
+    { pathname: "/catalog/stories/Pages/work/default/", id: "spoke:goal" },
+    { pathname: "/catalog/stories/Pages/work/default/", id: "spoke:work-wire-the-gate" },
+  ])(
+    "needs-graph story link $id resolves to its target story page",
+    async ({ pathname, id }) => {
+      const row = await get(pathname);
+      expect(row.status).toBe(200);
+      expect(await row.text()).toContain(`id="${id}"`);
+    },
+    testTimeout(60_000),
+  );
+
+  test(
+    "returns 404 for a missing catalog page",
+    async () => {
       expect((await get("/catalog/no-such-page")).status).toBe(404);
     },
     testTimeout(60_000),
