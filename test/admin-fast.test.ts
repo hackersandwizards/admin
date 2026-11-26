@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Window, type Element as DomEl, type Node as DomNode } from "happy-dom";
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { afterAll, assert, beforeAll, describe, expect, test, vi } from "vitest";
 import { tableScroll as brandTableScroll } from "@hackersandwizards/brand/elements/table.ts";
 import { needsGraph, needsGraphItems } from "../src/needs-graph.ts";
 import { siteData } from "../src/site-data.ts";
@@ -193,19 +193,23 @@ describe("needs graph", () => {
       { ...items[2]!, title, status: "decided" as const, needs: [] },
     ];
     const graph = graphDocument(needsGraph(input));
-    expect(graph.querySelectorAll(".node")).toHaveLength(input.length);
-    expect(graph.querySelectorAll(".edge")).toHaveLength(1);
-    expect(graph.querySelector('.edge[data-from="n0"][data-to="n1"]')).toBeTruthy();
-    const nodes = [...graph.querySelectorAll(".node")];
-    expect(nodes.map((node) => node.getAttribute("data-shape"))).toEqual([
-      "stadium",
-      "rectangle",
-      "rounded",
+    expect(
+      [...graph.querySelectorAll(".node")].map((node) => ({
+        shape: node.getAttribute("data-shape"),
+        label: node.getAttribute("data-label"),
+        texts: [...node.querySelectorAll("text")].map((el) => el.textContent),
+      })),
+    ).toEqual([
+      { shape: "stadium", label: title, texts: [title] },
+      { shape: "rectangle", label: title, texts: [title] },
+      { shape: "rounded", label: title, texts: [title] },
     ]);
-    expect(nodes.map((node) => node.getAttribute("data-label"))).toEqual(input.map(() => title));
-    expect(nodes.map((node) => node.querySelector("text")?.textContent)).toEqual(
-      input.map(() => title),
-    );
+    expect(
+      [...graph.querySelectorAll(".edge")].map((edge) => [
+        edge.getAttribute("data-from"),
+        edge.getAttribute("data-to"),
+      ]),
+    ).toEqual([["n0", "n1"]]);
   });
 
   test("site data omits the graph when a need names only an unknown item", async () => {
@@ -406,34 +410,74 @@ describe("item files", () => {
     ).toThrow("unknown field page");
   });
 
-  test("a field the pages print as text, a day and an option key are checked as such", () => {
-    const defects = (more: object) => itemDefects({ ...valid, ...more } as Item, exists);
-    expect(defects({ due: "2026-13-45" })).toContain("due 2026-13-45 not ISO");
-    expect(defects({ due: "2028-02-29" })).toEqual([]);
-    expect(defects({ area: { a: 1 } })).toEqual(["area is not text"]);
-    expect(defects({ area: "Field Ops" })).toEqual([]);
-    const options = (a: object) => ({
-      options: [
-        { key: "a", label: "A", ...a },
-        { key: "b", label: "B" },
-      ],
-    });
-    expect(defects(options({ label: { l: 1 } }))).toContain("option a label or detail is not text");
-    expect(defects({ ...options({ key: "a,b" }), recommended: "b" })).toContain(
-      'option 1 key "a,b" is not one word',
-    );
+  test.each([
+    {
+      label: "out-of-range ISO month and day",
+      change: { due: "2026-13-45" },
+      expected: ["due 2026-13-45 not ISO"],
+    },
+    {
+      label: "leap-day ISO due date",
+      change: { due: "2028-02-29" },
+      expected: [],
+    },
+    {
+      label: "object-valued area on an otherwise valid item",
+      change: { area: { a: 1 } },
+      expected: ["area is not text"],
+    },
+    {
+      label: "plain text area",
+      change: { area: "Field Ops" },
+      expected: [],
+    },
+    {
+      label: "non-text label on the recommended option",
+      change: {
+        options: [
+          { key: "a", label: { l: 1 } },
+          { key: "b", label: "B" },
+        ],
+      },
+      expected: ["option a label or detail is not text"],
+    },
+    {
+      label: "option key containing a comma",
+      change: {
+        options: [
+          { key: "a,b", label: "A" },
+          { key: "b", label: "B" },
+        ],
+        recommended: "b",
+      },
+      expected: ['option 1 key "a,b" is not one word'],
+    },
+    {
+      // A numeric key is the key an images mapping names, 0 included.
+      label: "numeric option keys matched by images mapping",
+      change: {
+        options: [
+          { key: 0, label: "Zero" },
+          { key: 1, label: "One" },
+        ],
+        recommended: 1,
+        images: { 0: "a.png", 1: "b.png" },
+      },
+      expected: [],
+    },
+  ])("checks text fields, calendar dates, and option keys: $label", ({ change, expected }) => {
+    expect(itemDefects({ ...valid, ...change } as unknown as Item, exists)).toEqual(expected);
+  });
+
+  test("usable drops invalid area and due date and stringifies numeric option keys", () => {
     // A numeric key is the key an images mapping names, 0 included.
-    const numbered = {
+    const shown = usable({
+      ...valid,
       options: [
         { key: 0, label: "Zero" },
         { key: 1, label: "One" },
       ],
       recommended: 1,
-    };
-    expect(defects({ ...numbered, images: { 0: "a.png", 1: "b.png" } })).toEqual([]);
-    const shown = usable({
-      ...valid,
-      ...numbered,
       area: { a: 1 },
       due: "2026-13-45",
     } as unknown as Item);
@@ -443,6 +487,9 @@ describe("item files", () => {
       ["0", "1"],
       ["1"],
     ]);
+  });
+
+  test("a folder matching an image path is not accepted as an image", () => {
     // An image names a file: a folder of that name is no image.
     const { defects: found } = readItems({
       paths: ["docs/agent-work/items/shot.md", "docs/agent-work/2026-01-01-r/a.png"],
@@ -859,27 +906,41 @@ describe("admin-check", () => {
     ).toHaveLength(2);
   });
 
-  test("each task box is named by its own line, tight, nested or loose", () => {
-    const box = '<input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly';
-    const tight = renderDocMarkdown("/r", "docs/a.md", "- [x] done **now**\n  - [ ] nested\n");
-    expect(tight).toContain(
-      `<label>${box} disabled checked>done <strong>now</strong></label>\n<ul>`,
-    );
-    expect(tight).toContain(`<label>${box} disabled>nested</label></li>`);
-    const loose = renderDocMarkdown("/r", "docs/a.md", "- [ ] loose\n\n  more\n\n- [x] next\n");
-    expect(loose).toContain(`<p><label>${box} disabled>loose</label></p>\n<p>more</p>`);
-    const quote = renderDocMarkdown("/r", "docs/a.md", "- [ ] see\n  > quoted\n");
-    expect(quote).toContain(`<label>${box} disabled>see</label>\n<blockquote`);
-    const wrapped = renderDocMarkdown("/r", "docs/a.md", "- [ ] a [link\n  **b**](x.md) end\n");
-    expect(wrapped).toContain("</strong></a> end</label>");
-    const fence = renderDocMarkdown("/r", "docs/a.md", "- [ ] run\n  ```\n  x\n  ```\n");
-    expect(fence).toContain(`<label>${box} disabled>run</label>\n<pre`);
-    const mermaid = renderDocMarkdown(
-      "/r",
-      "docs/a.md",
-      "- [ ] check diagram\n  ```mermaid\n  flowchart LR\n    a --> b\n  ```\n",
-    );
-    expect(mermaid).toContain(`<label>${box} disabled>check diagram</label>\n<figure`);
+  const taskBox = '<input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly';
+
+  test.each([
+    {
+      label: "tight and nested task items",
+      markdown: "- [x] done **now**\n  - [ ] nested\n",
+      expected: `<label>${taskBox} disabled checked>done <strong>now</strong></label>\n<ul>\n<li class="task-list-item"><label>${taskBox} disabled>nested</label></li>`,
+    },
+    {
+      label: "loose task item with continuation paragraph",
+      markdown: "- [ ] loose\n\n  more\n\n- [x] next\n",
+      expected: `<p><label>${taskBox} disabled>loose</label></p>\n<p>more</p>`,
+    },
+    {
+      label: "task item followed by blockquote",
+      markdown: "- [ ] see\n  > quoted\n",
+      expected: `<label>${taskBox} disabled>see</label>\n<blockquote`,
+    },
+    {
+      label: "task item with wrapped inline link",
+      markdown: "- [ ] a [link\n  **b**](x.md) end\n",
+      expected: "</strong></a> end</label>",
+    },
+    {
+      label: "task item followed by fenced code block",
+      markdown: "- [ ] run\n  ```\n  x\n  ```\n",
+      expected: `<label>${taskBox} disabled>run</label>\n<pre`,
+    },
+    {
+      label: "task item followed by mermaid diagram",
+      markdown: "- [ ] check diagram\n  ```mermaid\n  flowchart LR\n    a --> b\n  ```\n",
+      expected: `<label>${taskBox} disabled>check diagram</label>\n<figure`,
+    },
+  ])("wraps each task checkbox label cleanly: $label", ({ markdown, expected }) => {
+    expect(renderDocMarkdown("/r", "docs/a.md", markdown)).toContain(expected);
   });
 });
 
@@ -890,35 +951,51 @@ describe("hub", () => {
     expect(html("---\ntitle: x\n---\n\nrest\n")).not.toContain("title");
   });
 
+  type Hast = {
+    type: string;
+    tagName?: string;
+    value?: string;
+    properties?: Record<string, unknown>;
+    children?: Hast[];
+  };
+  const dom = (html: string) => {
+    const body = new Window().document.body;
+    body.innerHTML = html;
+    return body;
+  };
+  const hastByNodeType = new Map<number, (n: DomNode) => Hast>([
+    [
+      3,
+      (n) => {
+        assert(typeof n.textContent === "string", "text node content");
+        return { type: "text", value: n.textContent };
+      },
+    ],
+    [
+      1,
+      (n) => {
+        const el = n as DomEl;
+        return {
+          type: "element",
+          tagName: el.localName,
+          properties: { className: [...el.classList] },
+          children: [...el.childNodes].map(toHast),
+        };
+      },
+    ],
+  ]);
+  const toHast = (n: DomNode): Hast => {
+    const build = hastByNodeType.get(n.nodeType);
+    assert(build, `unexpected DOM nodeType ${n.nodeType}`);
+    return build(n);
+  };
+  const scrollWrapper = (ariaLabel: string) => ({
+    type: "element",
+    tagName: "div",
+    properties: { className: ["hw-table-scroll"], ariaLabel },
+  });
+
   test("a table's wrapper is named as brand's tableScroll names it", () => {
-    type Hast = {
-      type: string;
-      tagName?: string;
-      value?: string;
-      properties?: Record<string, unknown>;
-      children?: Hast[];
-    };
-    const dom = (html: string) => {
-      const body = new Window().document.body;
-      body.innerHTML = html;
-      return body;
-    };
-    const hast = (n: DomNode): Hast => {
-      if (n.nodeType === 3) return { type: "text", value: n.textContent ?? "" };
-      if (n.nodeType !== 1) return { type: "comment" };
-      const el = n as DomEl;
-      const children = [...el.childNodes].map(hast);
-      return {
-        type: "element",
-        tagName: el.localName,
-        properties: { className: [...el.classList] },
-        children,
-      };
-    };
-    const wrappers = (n: Hast): Hast[] => [
-      ...([n.properties?.className].flat().includes("hw-table-scroll") ? [n] : []),
-      ...(n.children ?? []).flatMap(wrappers),
-    ];
     const table = (head: string) => `| ${head} | B |\n| - | - |\n| 1 | 2 |\n\n`;
     const text = `${table("A **b**")}${table("A b")}## Prices\n\n${table("x")}${table("y")}<H3>Raw "q" &amp; <i>it</i></H3>\n\n${table("z")}# Next\n\n| |\n|-|\n|1|\n\n## Prices\n\n${table("w")}`;
     const ours = [
@@ -926,13 +1003,10 @@ describe("hub", () => {
     ].map((w) => w.getAttribute("aria-label"));
     const root: Hast = {
       type: "root",
-      children: [...dom(Bun.markdown.html(text)).childNodes].map(hast),
+      children: [...dom(Bun.markdown.html(text)).childNodes].map(toHast),
     };
     brandTableScroll()(root);
-    expect(ours).toEqual(
-      wrappers(root).map((w) => (w.properties!.ariaLabel as string | undefined) ?? null),
-    );
-    expect(ours).toEqual([
+    const expectedLabels = [
       "A b B",
       "A b B (2)",
       "Prices",
@@ -940,14 +1014,59 @@ describe("hub", () => {
       'Raw "q" & it',
       "Next",
       "Prices (3)",
+    ];
+    expect(root.children).toMatchObject([
+      scrollWrapper("A b B"),
+      { type: "text" },
+      scrollWrapper("A b B (2)"),
+      { type: "text" },
+      { type: "element", tagName: "h2" },
+      { type: "text" },
+      scrollWrapper("Prices"),
+      { type: "text" },
+      scrollWrapper("Prices (2)"),
+      { type: "text" },
+      { type: "element", tagName: "h3" },
+      { type: "text" },
+      scrollWrapper('Raw "q" & it'),
+      { type: "text" },
+      { type: "element", tagName: "h1" },
+      { type: "text" },
+      scrollWrapper("Next"),
+      { type: "text" },
+      { type: "element", tagName: "h2" },
+      { type: "text" },
+      scrollWrapper("Prices (3)"),
+      { type: "text" },
     ]);
-    expect(
-      [
-        ...dom(renderDocMarkdown("/r", "docs/a.md", "| |\n|-|\n|1|\n")).querySelectorAll(
-          ".hw-table-scroll",
-        ),
-      ].map((w) => w.getAttribute("aria-label")),
-    ).toEqual([null]);
+    expect(JSON.stringify(root).split('"hw-table-scroll"')).toHaveLength(8);
+    expect(ours).toEqual(expectedLabels);
+  });
+
+  test("a table without a heading or column names gets no aria-label", () => {
+    const markdown = "| |\n|-|\n|1|\n";
+    const ours = [
+      ...dom(renderDocMarkdown("/r", "docs/a.md", markdown)).querySelectorAll(".hw-table-scroll"),
+    ].map((w) => w.getAttribute("aria-label"));
+    const root: Hast = {
+      type: "root",
+      children: [...dom(Bun.markdown.html(markdown)).childNodes].map(toHast),
+    };
+    brandTableScroll()(root);
+    expect(root.children).toMatchObject([
+      {
+        type: "element",
+        tagName: "div",
+        properties: { className: ["hw-table-scroll"], tabIndex: 0 },
+      },
+      { type: "text" },
+    ]);
+    expect(root.children![0]!.properties).toEqual({
+      className: ["hw-table-scroll"],
+      tabIndex: 0,
+    });
+    expect(JSON.stringify(root).split('"hw-table-scroll"')).toHaveLength(2);
+    expect(ours).toEqual([null]);
   });
 
   test("a table holding another leaves the wrapper to the inner one", () => {
@@ -989,28 +1108,35 @@ describe("repository data", () => {
     expect((await readRepo(clone)).behind).toBeUndefined();
   });
 
-  test("committed history and the working tree show the files each reader promises", async () => {
-    const generated = join(import.meta.dirname, "../node_modules/.cache");
-    mkdirSync(generated, { recursive: true });
-    const repo = mkdtempSync(join(generated, "admin-repo-"));
-    const git = (...args: string[]) => {
-      const result = Bun.spawnSync(["git", ...args], {
-        cwd: repo,
-        env: {
-          ...gitEnv,
-          GIT_AUTHOR_DATE: "2026-01-14T12:34:00Z",
-          GIT_COMMITTER_DATE: "2026-01-14T12:34:00Z",
-        },
-      });
-      if (result.exitCode) throw new Error(result.stderr.toString());
-      return result.stdout.toString().trim();
-    };
-    try {
-      git("init", "-q");
+  describe("committed history and working tree readers", () => {
+    const report = "docs/agent-work/2026-01-14-first draft.md";
+    const fetched = new Date("2026-01-15T10:00:00Z");
+    const time = Date.parse("2026-01-14T12:34:00Z") / 1000;
+    const pkgTime = Date.parse("2026-01-14T12:35:00Z") / 1000;
+    let repo: string;
+    let trackingHash: string;
+    let tree: ReturnType<typeof treeSource>;
+    let committed: Awaited<ReturnType<typeof readRepo>>;
+
+    beforeAll(async () => {
+      const generated = join(import.meta.dirname, "../node_modules/.cache");
+      mkdirSync(generated, { recursive: true });
+      repo = mkdtempSync(join(generated, "admin-repo-"));
+      const gitAt = (whenIso: string, ...args: string[]) => {
+        const result = Bun.spawnSync(["git", ...args], {
+          cwd: repo,
+          env: {
+            ...gitEnv,
+            GIT_AUTHOR_DATE: whenIso,
+            GIT_COMMITTER_DATE: whenIso,
+          },
+        });
+        assert.strictEqual(result.exitCode, 0, result.stderr.toString());
+        return result.stdout.toString().trim();
+      };
+      gitAt("2026-01-14T12:34:00Z", "init", "-q");
       const work = "docs/agent-work/items/ship.md";
-      const report = "docs/agent-work/2026-01-14-first draft.md";
-      const reportText = "# First draft\n";
-      await Bun.write(join(repo, report), reportText);
+      await Bun.write(join(repo, report), "# First draft\n");
       await Bun.write(
         join(repo, work),
         "---\nkind: work\nstatus: open\npriority: 1\nowner: Alex\n---\n# Ship the samples",
@@ -1018,9 +1144,9 @@ describe("repository data", () => {
       await Bun.write(join(repo, ".gitignore"), "ignored.txt\n");
       await Bun.write(join(repo, "docs/note.md"), "# First note\n\nCafé");
       await Bun.write(join(repo, "docs/next.md"), "# Next note\n\nTwo");
-      await Bun.write(join(repo, "package.json"), '{"name":"paint","version":"1.0.0"}');
-      git("add", "--", ".gitignore", "docs", "package.json");
-      git(
+      gitAt("2026-01-14T12:34:00Z", "add", "--", ".gitignore", "docs");
+      gitAt(
+        "2026-01-14T12:34:00Z",
         "-c",
         "user.name=Test",
         "-c",
@@ -1029,16 +1155,35 @@ describe("repository data", () => {
         "-qm",
         "Write notes",
       );
+      trackingHash = gitAt("2026-01-14T12:34:00Z", "rev-parse", "--short", "HEAD");
+      await Bun.write(join(repo, "package.json"), '{"name":"paint","version":"1.0.0"}');
+      gitAt("2026-01-14T12:35:00Z", "add", "--", "package.json");
+      gitAt(
+        "2026-01-14T12:35:00Z",
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-qm",
+        "Add package",
+      );
       const fetch = join(repo, ".git/FETCH_HEAD");
       await Bun.write(fetch, "");
-      const fetched = new Date("2026-01-15T10:00:00Z");
       utimesSync(fetch, fetched, fetched);
       await Bun.write(join(repo, "docs/note.md"), "# Edited note\n\nDraft");
       await Bun.write(join(repo, "ignored.txt"), "Generated");
       await Bun.write(join(repo, "docs/draft.md"), "# Draft");
       rmSync(join(repo, "docs/next.md"));
+      tree = treeSource(repo);
+      committed = await readRepo(repo);
+    });
 
-      const tree = treeSource(repo);
+    afterAll(() => {
+      rmSync(repo, { recursive: true, force: true });
+    });
+
+    test("treeSource reads working-tree edits and omits gitignored or deleted files", () => {
       expect(tree.paths.toSorted()).toEqual([
         ".gitignore",
         report,
@@ -1049,29 +1194,51 @@ describe("repository data", () => {
       ]);
       expect(tree.read("docs/note.md")).toBe("# Edited note\n\nDraft");
       expect(tree.read("docs/next.md")).toBeUndefined();
+    });
 
-      const committed = await readRepo(repo);
-      const time = Date.parse("2026-01-14T12:34:00Z") / 1000;
+    test("readRepo records the FETCH_HEAD modification time", () => {
       expect(committed.fetched).toBe(fetched.getTime());
+    });
+
+    test("readRepo leaves commits behind unset without an upstream", () => {
       expect(committed.behind).toBeUndefined();
+    });
+
+    test("readRepo reads HEAD and the full commit log", () => {
       expect(committed.head).toMatch(/^[a-f0-9]{7,}$/);
-      expect(committed.log).toEqual([{ hash: committed.head, time, subject: "Write notes" }]);
-      expect(committed.trackingLog).toEqual(committed.log);
-      expect(committed.reports).toMatchObject([
-        { path: report, changed: time, version: Bun.hash(reportText).toString(36) },
+      expect(committed.log).toEqual([
+        { hash: committed.head, time: pkgTime, subject: "Add package" },
+        { hash: trackingHash, time, subject: "Write notes" },
       ]);
+    });
+
+    test("readRepo restricts trackingLog to commits touching docs/agent-work", () => {
+      expect(committed.trackingLog).toEqual([{ hash: trackingHash, time, subject: "Write notes" }]);
+    });
+
+    test("readRepo reads committed reports with change time and content hash", () => {
+      expect(committed.reports).toMatchObject([
+        { path: report, changed: time, version: "29j6lxvxj0p1b" },
+      ]);
+    });
+
+    test("readRepo reads committed items with change time", () => {
       expect(committed.items).toMatchObject([
         { id: "ship", title: "Ship the samples", changed: time },
       ]);
+    });
+
+    test("readRepo reads committed docs at HEAD including working-tree deletions", () => {
       expect(committed.docs).toEqual([
         { path: "docs/next.md", title: "Next note", titleId: "next-note", html: "<p>Two</p>\n" },
         { path: "docs/note.md", title: "First note", titleId: "first-note", html: "<p>Café</p>\n" },
       ]);
+    });
+
+    test("readRepo reads committed package metadata with no defects", () => {
       expect(committed.pkg).toMatchObject({ name: "paint", version: "1.0.0" });
       expect(committed.defects).toEqual([]);
-    } finally {
-      rmSync(repo, { recursive: true, force: true });
-    }
+    });
   });
 
   test("a source outside Git still reads its docs and leaves generated folders alone", () => {
@@ -1094,108 +1261,164 @@ describe("repository data", () => {
     }
   });
 
-  test("a repository publishes its configured links, checks, scripts and review material", async () => {
+  describe("repository publication", () => {
     const report = "docs/agent-work/2026-01-14-paint";
-    const repo = await readFiles({
-      "package.json": JSON.stringify({
-        name: "paint",
-        version: "2.0.0",
-        scripts: { "check:all": " format &&  test && ", check: "lint" },
-        dependencies: { tint: "1.0.0" },
-        devDependencies: { sampler: "2.0.0" },
-        bin: "./scripts/paint.ts",
-        admin: {
-          name: "paint.samples",
-          label: "  Paint samples  ",
-          designSystem: "https://paint.example/catalog/",
-          products: [
-            { label: "Tiles", description: "Browse the colors", href: "docs/tiles.html" },
-            null,
-          ],
-          links: [{ label: "Guide", href: "docs/guide.md?print=1#start" }, { label: "Unlinked" }],
-        },
-      }),
-      "docs/agent-work/admin.json": '{"label":"Old label"}',
-      "docs/guide.md": "# Tool &amp; *guide*\n\nInstructions",
-      "README.md": "# Read me\n\nStart",
-      [`${report}.md`]: "# Sample review\n\nComparison",
-      [`${report}/z.PNG`]: "",
-      [`${report}/a.webp`]: "",
-      [`${report}/notes.txt`]: "",
-      "docs/agent-work/2026-01-15-next.md": "Planning",
-      "docs/agent-work/2026-01-15-next/first.jpg": "",
-      "scripts/paint.ts": "// Render color samples\n",
-      "scripts/other.sh": "#!/bin/sh\n# Export samples\n",
-      ".claude/agents/help.md": "---\ndescription: Mira, who samples paint\n---\n",
-      ".claude/agents/tool.md": "---\ndescription: Tool instructions\n---\n",
+    let repo: Awaited<ReturnType<typeof readFiles>>;
+
+    beforeAll(async () => {
+      repo = await readFiles({
+        "package.json": JSON.stringify({
+          name: "paint",
+          version: "2.0.0",
+          scripts: { "check:all": " format &&  test && ", check: "lint" },
+          dependencies: { tint: "1.0.0" },
+          devDependencies: { sampler: "2.0.0" },
+          bin: "./scripts/paint.ts",
+          admin: {
+            name: "paint.samples",
+            label: "  Paint samples  ",
+            designSystem: "https://paint.example/catalog/",
+            products: [
+              { label: "Tiles", description: "Browse the colors", href: "docs/tiles.html" },
+              null,
+            ],
+            links: [{ label: "Guide", href: "docs/guide.md?print=1#start" }, { label: "Unlinked" }],
+          },
+        }),
+        "docs/agent-work/admin.json": '{"label":"Old label"}',
+        "README.md": "# Read me\n\nStart",
+        "docs/guide.md": "# Tool &amp; *guide*\n\nInstructions",
+        [`${report}.md`]: "# Sample review\n\nComparison",
+        [`${report}/z.PNG`]: "",
+        [`${report}/a.webp`]: "",
+        [`${report}/notes.txt`]: "",
+        "docs/agent-work/2026-01-15-next.md": "Planning",
+        "docs/agent-work/2026-01-15-next/first.jpg": "",
+        "scripts/paint.ts": "// Render color samples\n",
+        "scripts/other.sh": "#!/bin/sh\n# Export samples\n",
+        ".claude/agents/help.md": "---\ndescription: Mira, who samples paint\n---\n",
+        ".claude/agents/tool.md": "---\ndescription: Tool instructions\n---\n",
+      });
     });
-    expect(repo).toMatchObject({
-      key: "paint.samples",
-      label: "Paint samples",
-      pkg: {
+
+    test("publishes the configured admin.name as repository key", () => {
+      expect(repo.key).toBe("paint.samples");
+    });
+
+    test("trims whitespace around the configured admin.label", () => {
+      expect(repo.label).toBe("Paint samples");
+    });
+
+    test("publishes package metadata with merged dependencies and string bin", () => {
+      expect(repo.pkg).toMatchObject({
         name: "paint",
         version: "2.0.0",
         dependencies: { tint: "1.0.0", sampler: "2.0.0" },
         bin: { paint: "./scripts/paint.ts" },
-      },
-      designSystem: "https://paint.example/catalog/",
-      designSystemDev: undefined,
-      checkSteps: ["format", "test"],
-      agents: ["Mira"],
+      });
     });
-    expect(repo.defects).toEqual(["docs/agent-work/admin.json: ignored, package.json holds admin"]);
-    expect(repo.products).toEqual([
-      {
-        label: "Tiles",
-        description: "Browse the colors",
-        href: "file:///nonexistent/paint%20samples/docs/tiles.html",
+
+    test("reports docs/agent-work/admin.json ignored when package.json carries valid admin", () => {
+      expect(repo.defects).toEqual([
+        "docs/agent-work/admin.json: ignored, package.json holds admin",
+      ]);
+    });
+
+    test("publishes an explicit designSystem URL without a dev server", () => {
+      expect(repo).toMatchObject({
+        designSystem: "https://paint.example/catalog/",
+        designSystemDev: undefined,
+      });
+    });
+
+    test("publishes check steps from check:all", () => {
+      expect(repo.checkSteps).toEqual(["format", "test"]);
+    });
+
+    test("publishes colleague names from agent definitions", () => {
+      expect(repo.agents).toEqual(["Mira"]);
+    });
+
+    test.each([
+      [
+        "products",
+        [
+          {
+            label: "Tiles",
+            description: "Browse the colors",
+            href: "file:///nonexistent/paint%20samples/docs/tiles.html",
+          },
+        ],
+      ],
+      [
+        "links",
+        [
+          {
+            label: "Guide",
+            href: "file:///nonexistent/paint%20samples/docs/guide.md?print=1#start",
+          },
+        ],
+      ],
+    ] as const)(
+      "publishes valid %s with resolved file hrefs and drops incomplete entries",
+      (field, expected) => {
+        expect(repo[field]).toEqual(expected);
       },
-    ]);
-    expect(repo.links).toEqual([
-      { label: "Guide", href: "file:///nonexistent/paint%20samples/docs/guide.md?print=1#start" },
-    ]);
-    expect(repo.scripts).toEqual([
-      { path: "scripts/paint.ts", comment: "Render color samples" },
-      { path: "scripts/other.sh", comment: "Export samples" },
-    ]);
-    expect(repo.docs).toEqual([
-      {
-        path: "docs/guide.md",
-        title: "Tool & guide",
-        titleId: "tool-guide",
-        html: "<p>Instructions</p>\n",
-      },
-      { path: "README.md", title: "Read me", titleId: "read-me", html: "<p>Start</p>\n" },
-    ]);
-    expect(repo.reports).toEqual([
-      {
-        path: "docs/agent-work/2026-01-15-next.md",
-        stem: "2026-01-15-next",
-        date: "2026-01-15",
-        title: "2026-01-15-next",
-        changed: undefined,
-        version: Bun.hash("Planning").toString(36),
-        html: "<p>Planning</p>\n",
-      },
-      {
-        path: `${report}.md`,
-        date: "2026-01-14",
-        title: "Sample review",
-        titleId: "sample-review",
-        stem: "2026-01-14-paint",
-        changed: undefined,
-        version: Bun.hash("# Sample review\n\nComparison").toString(36),
-        html: "<p>Comparison</p>\n",
-      },
-    ]);
-    expect(repo.reviews).toEqual([
-      {
-        dir: "docs/agent-work/2026-01-15-next",
-        images: ["first.jpg"],
-        report: "docs/agent-work/2026-01-15-next.md",
-      },
-      { dir: report, images: ["a.webp", "z.PNG"], report: `${report}.md` },
-    ]);
+    );
+
+    test("publishes scripts with their leading comments", () => {
+      expect(repo.scripts).toEqual([
+        { path: "scripts/paint.ts", comment: "Render color samples" },
+        { path: "scripts/other.sh", comment: "Export samples" },
+      ]);
+    });
+
+    test("publishes docs sorted by path with extracted titles", () => {
+      expect(repo.docs).toEqual([
+        {
+          path: "docs/guide.md",
+          title: "Tool & guide",
+          titleId: "tool-guide",
+          html: "<p>Instructions</p>\n",
+        },
+        { path: "README.md", title: "Read me", titleId: "read-me", html: "<p>Start</p>\n" },
+      ]);
+    });
+
+    test("publishes dated reports sorted newest first with content hashes", () => {
+      expect(repo.reports).toEqual([
+        {
+          path: "docs/agent-work/2026-01-15-next.md",
+          stem: "2026-01-15-next",
+          date: "2026-01-15",
+          title: "2026-01-15-next",
+          changed: undefined,
+          version: "1wtv1saywapf5",
+          html: "<p>Planning</p>\n",
+        },
+        {
+          path: `${report}.md`,
+          date: "2026-01-14",
+          title: "Sample review",
+          titleId: "sample-review",
+          stem: "2026-01-14-paint",
+          changed: undefined,
+          version: "1n50oecivccm7",
+          html: "<p>Comparison</p>\n",
+        },
+      ]);
+    });
+
+    test("publishes dated review folders with sorted images and linked reports", () => {
+      expect(repo.reviews).toEqual([
+        {
+          dir: "docs/agent-work/2026-01-15-next",
+          images: ["first.jpg"],
+          report: "docs/agent-work/2026-01-15-next.md",
+        },
+        { dir: report, images: ["a.webp", "z.PNG"], report: `${report}.md` },
+      ]);
+    });
   });
 
   test("bad package fields report defects while a usable catalog can still be inferred", async () => {
@@ -1307,10 +1530,16 @@ describe("pages", () => {
         `<img alt='src="y?&#39; onerror=alert(1) x=&#39;"' src=z.png>`,
     );
     expect(html).not.toMatch(/<a |' onerror/);
+  });
+
+  test("a named entity in a relative link's fragment stays encoded", () => {
     // A named entity in the fragment keeps the character it names.
     expect(renderDocMarkdown("/r", "docs/x.md", `<a href="x.md#a&quot;b">r</a>`)).toContain(
       'href="file:///r/docs/x.md#a&quot;b"',
     );
+  });
+
+  test("a leading whitespace entity before an address or fragment stays as written", () => {
     // An address or a fragment behind a leading space stays as written, as a browser reads it.
     const lead = renderDocMarkdown(
       "/r",
@@ -1319,6 +1548,9 @@ describe("pages", () => {
     );
     expect(lead).toContain('href="&#32;https://a.test/"');
     expect(lead).toContain('href="&#9;#t"');
+  });
+
+  test("upper-case standard entities decode in relative links while mixed-case or non-standard names do not", () => {
     // A browser reads &AMP;, &LT;, &GT; and &QUOT; as their lower-case names, and &Amp; or &APOS;
     // as text.
     const upper = renderDocMarkdown(
@@ -1332,28 +1564,47 @@ describe("pages", () => {
     expect(upper).not.toContain("APOS");
   });
 
-  test("a due date says today or overdue, and a one-line field renders its code and links", () => {
-    const now = new Date(2026, 10, 10, 12).getTime();
-    expect(dueOf("2026-11-10", now)).toEqual({ text: "due today", tone: "today" });
-    expect(dueOf("2026-11-03", now).tone).toBe("overdue");
-    expect(dueOf("2026-11-03", now).text.startsWith("was due 3 Nov")).toBe(true);
-    expect(dueOf("2026-11-13", now).tone).toBe("soon");
-    expect(dueOf("2026-12-13", now).tone).toBe("later");
+  const dueNow = new Date(2026, 10, 10, 12).getTime();
+
+  test.each([
+    ["2026-11-10", { text: "due today", tone: "today" }],
+    ["2026-11-03", { text: "was due 3 Nov", tone: "overdue" }],
+    ["2026-11-13", { text: "due 13 Nov", tone: "soon" }],
+    ["2026-12-13", { text: "due 13 Dec", tone: "later" }],
     // A day more than 300 days away names its year, ahead as behind.
-    expect(dueOf("2027-12-01", now).text).toBe("due 1 Dec 2027");
+    ["2027-12-01", { text: "due 1 Dec 2027", tone: "later" }],
+  ])("dueOf formats text and tone for %s", (due, expected) => {
+    expect(dueOf(due, dueNow)).toEqual(expected);
+  });
+
+  test("dueOf names the written calendar day west of UTC", () => {
     // West of UTC too, the pill names the day written.
     inZone("America/New_York", () =>
       expect(dueOf("2026-11-20", new Date(2026, 10, 10, 12).getTime()).text).toBe("due 20 Nov"),
     );
-    expect(inline("use `a-b` & <i>, see http://127.0.0.1:4329/x.")).toBe(
-      'use <code class="hw-inline-code">a-b</code> &amp; &lt;i&gt;, see <a class="hw-link" href="http://127.0.0.1:4329/x">http://127.0.0.1:4329/x</a>.',
-    );
+  });
+
+  test.each([
+    {
+      label: "code spans, escaped HTML, and bare URLs",
+      input: "use `a-b` & <i>, see http://127.0.0.1:4329/x.",
+      expected:
+        'use <code class="hw-inline-code">a-b</code> &amp; &lt;i&gt;, see <a class="hw-link" href="http://127.0.0.1:4329/x">http://127.0.0.1:4329/x</a>.',
+    },
+    {
+      label: "quoted URLs stop before closing quotes",
+      input: `see "https://d.example/a" or 'https://d.example/b'`,
+      expected:
+        'see &quot;<a class="hw-link" href="https://d.example/a">https://d.example/a</a>&quot; or &#x27;<a class="hw-link" href="https://d.example/b">https://d.example/b</a>&#x27;',
+    },
+  ])("inline formats $label", ({ input, expected }) => {
+    expect(inline(input)).toBe(expected);
+  });
+
+  test("withLinks leaves URLs already linked, inside tags, or inside code untouched", () => {
     // An address already linked, inside a tag or inside code stays as it is; quotes end one.
     const html =
       '<p><a href="http://a.example/">http://a.example/</a> <img src="http://b.example/i.png"> <code>curl http://c.example/y</code></p>';
     expect(withLinks(html)).toBe(html);
-    expect(inline(`see "https://d.example/a" or 'https://d.example/b'`)).toBe(
-      'see &quot;<a class="hw-link" href="https://d.example/a">https://d.example/a</a>&quot; or &#x27;<a class="hw-link" href="https://d.example/b">https://d.example/b</a>&#x27;',
-    );
   });
 });

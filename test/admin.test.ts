@@ -1,5 +1,5 @@
-import { afterAll, describe, expect, test } from "vitest";
-import { cpSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { Window } from "happy-dom";
 import { peerDependenciesMeta } from "../package.json";
@@ -67,50 +67,94 @@ describe("admin-check", () => {
     expect(cli.stdout.toString()).toMatch(/^Usage: /);
   });
 
-  test("an item's paths link into the repository named beside them, or stay text", async () => {
-    const spoke = await readRepo(join(FIX, "spoke"), treeSource(join(FIX, "spoke")));
-    const body = [
-      "Report: other `docs/agent-work/notes.md`.",
-      "Old: `git show abc~1:docs/agent-work/gone.md` in other.",
-      "Own: docs/agent-work/2026-01-15-sample-topic.md, none: docs/agent-work/missing.md.",
-      "[relative](../2026-01-15-sample-topic.md)",
-      "Folder: docs/agent-work/2026-01-15-sample-topic, item: docs/agent-work/items/goal.md.",
-      "![shot of docs/agent-work/2026-01-15-sample-topic.md](a.png)",
-    ].join("\n\n");
-    const item = parseItem(
-      "x",
-      `---\nkind: work\nstatus: open\npriority: 1\nowner: A\n---\n# X\n\n${body}\n`,
-    );
-    const other = {
-      ...spoke,
-      key: "other",
-      path: "/o/other",
-      items: [],
-      workFiles: ["docs/agent-work/notes.md"],
-    };
-    const html = siteData([{ ...spoke, items: [item] }, other]).repos.find(
-      (r) => r.key === "spoke",
-    )!.items[0]!.html;
-    const at = (path: string) => `href="file://${path}"`;
-    expect(html).toContain(at("/o/other/docs/agent-work/notes.md"));
-    expect(html).not.toContain('gone.md"');
-    expect(html).toContain(at(`${spoke.path}/docs/agent-work/2026-01-15-sample-topic.md`));
-    expect(html).not.toContain('missing.md"');
-    expect(html).toMatch(
-      new RegExp(`${at(`${spoke.path}/docs/agent-work/2026-01-15-sample-topic.md`)}>relative<`),
-    );
-    expect(html).not.toContain('href="../');
-    // A folder has no file to serve; an item file has.
-    expect(html).not.toContain('sample-topic"');
-    expect(html).toContain(at(`${spoke.path}/docs/agent-work/items/goal.md`));
-    // A path inside an attribute stays text, so the tag holds.
-    expect(html).toContain('alt="shot of docs/agent-work/2026-01-15-sample-topic.md"');
-    // A body has no front matter: a leading rule stays, with the text after it.
-    const ruled = { ...item, id: "ruled", body: "---\nKept.\n\n---\nAfter." };
-    const unowned = { ...item, id: "unowned", owner: undefined };
-    const [r, u] = siteData([{ ...spoke, items: [ruled, unowned] }]).repos[0]!.items;
-    expect(r!.html).toContain("Kept.");
-    expect(u!.agent).toBe(false);
+  describe("item body paths and rendering", () => {
+    let spoke: Awaited<ReturnType<typeof readRepo>>;
+    let html: string;
+    let ruledView: ReturnType<typeof siteData>["repos"][number]["items"][number];
+    let unownedView: ReturnType<typeof siteData>["repos"][number]["items"][number];
+
+    beforeAll(async () => {
+      spoke = await readRepo(join(FIX, "spoke"), treeSource(join(FIX, "spoke")));
+      const body = [
+        "Report: other `docs/agent-work/notes.md`.",
+        "Old: `git show abc~1:docs/agent-work/gone.md` in other.",
+        "Own: docs/agent-work/2026-01-15-sample-topic.md, none: docs/agent-work/missing.md.",
+        "[relative](../2026-01-15-sample-topic.md)",
+        "Folder: docs/agent-work/2026-01-15-sample-topic, item: docs/agent-work/items/goal.md.",
+        "![shot of docs/agent-work/2026-01-15-sample-topic.md](a.png)",
+      ].join("\n\n");
+      const item = parseItem(
+        "x",
+        `---\nkind: work\nstatus: open\npriority: 1\nowner: A\n---\n# X\n\n${body}\n`,
+      );
+      const other = {
+        ...spoke,
+        key: "other",
+        path: "/o/other",
+        items: [],
+        workFiles: ["docs/agent-work/notes.md"],
+      };
+      html = siteData([{ ...spoke, items: [item] }, other]).repos.find((r) => r.key === "spoke")!
+        .items[0]!.html;
+      // A body has no front matter: a leading rule stays, with the text after it.
+      const ruled = { ...item, id: "ruled", body: "---\nKept.\n\n---\nAfter." };
+      const unowned = { ...item, id: "unowned", owner: undefined };
+      const pair = siteData([{ ...spoke, items: [ruled, unowned] }]).repos[0]!.items;
+      ruledView = pair[0]!;
+      unownedView = pair[1]!;
+    });
+
+    test.each([
+      {
+        label: "links a path into the repository named beside it",
+        expected: () => 'href="file:///o/other/docs/agent-work/notes.md"',
+      },
+      {
+        label: "links an existing work file in the item's own repository",
+        expected: () =>
+          `href="file://${spoke.path}/docs/agent-work/2026-01-15-sample-topic.md">docs/agent-work/2026-01-15-sample-topic.md<`,
+      },
+      {
+        // A folder has no file to serve; an item file has.
+        label: "links an item file in the item's own repository",
+        expected: () => `href="file://${spoke.path}/docs/agent-work/items/goal.md"`,
+      },
+      {
+        // A path inside an attribute stays text, so the tag holds.
+        label: "leaves a path inside an image alt attribute as text",
+        expected: () => 'alt="shot of docs/agent-work/2026-01-15-sample-topic.md"',
+      },
+    ])("$label", ({ expected }) => {
+      expect(html).toContain(expected());
+    });
+
+    test.each([
+      ["leaves a missing git-show path in another repository unlinked", 'gone.md"'],
+      ["leaves a missing work file in the item's own repository unlinked", 'missing.md"'],
+      // A folder has no file to serve; an item file has.
+      ["leaves a folder path unlinked", 'sample-topic"'],
+    ])("%s", (_label, forbidden) => {
+      expect(html).not.toContain(forbidden);
+    });
+
+    test("resolves a relative Markdown link into the item's own repository without keeping ../", () => {
+      expect(html).toMatch(
+        new RegExp(
+          `href="file://${spoke.path}/docs/agent-work/2026-01-15-sample-topic.md">relative<`,
+        ),
+      );
+      expect(html).not.toContain('href="../');
+    });
+
+    test("an item body has no front matter so a leading rule stays with the text after it", () => {
+      expect(ruledView.id).toBe("ruled");
+      expect(ruledView.html).toBe("<hr />\n<p>Kept.</p>\n<hr />\n<p>After.</p>\n");
+    });
+
+    test("an item without an owner is not marked as agent-owned", () => {
+      expect(unownedView.id).toBe("unowned");
+      expect(unownedView.agent).toBe(false);
+    });
   });
 
   test("a ? in a file's name stays in its path, and an admin link's query stays its query", async () => {
@@ -202,7 +246,7 @@ describe("admin-check", () => {
     expect(html).toContain('<code class="hw-inline-code">&lt;id&gt;</code>');
   });
 
-  test("a doc, a script or a key the hub reads costs no rescan per character and stays in its folder", async () => {
+  test("large docs, scripts, and traversal admin.name stay linear and fall back to the folder key", async () => {
     const run = "x".repeat(160_000);
     const files: Record<string, string> = {
       "package.json": JSON.stringify({ name: "x", admin: { name: "../../spoke" } }),
@@ -223,81 +267,143 @@ describe("admin-check", () => {
     expect(repo.defects).toContain(
       'package.json: admin.name "../../spoke" is not letters, digits, ".", "_" and "-": its pages are under x',
     );
-    // A dot segment percent-encoded, a route, a colon or a query take the folder name too.
-    for (const name of ["%2e%2e", "_astro/x", "a:b", "a?b", ".."]) {
-      const pkg = JSON.stringify({ admin: { name } });
-      const read = await readRepo("/nonexistent/x", {
-        paths: ["package.json"],
-        read: () => pkg,
-      });
-      expect(read.key).toBe("x");
-    }
-    // A folder's name keeps its other characters as "-", and its letters, composed or not.
-    const keyOf = async (folder: string) =>
-      (await readRepo(`/nonexistent/${folder}`, { paths: [], read: () => "" })).key;
-    expect(await keyOf("a#b c:d")).toBe("a-b-c-d");
-    for (const folder of ["Größe", "Größe".normalize("NFD")])
-      expect(await keyOf(folder)).toBe(folder);
-    const kept = JSON.stringify({ admin: { name: "web-site_2.0" } });
-    expect(
-      (await readRepo("/nonexistent/x", { paths: ["package.json"], read: () => kept })).key,
-    ).toBe("web-site_2.0");
-    // A label names the repository to a person and leaves its key; one that is not text is a defect.
-    const labelled = (label: unknown) => configured("/nonexistent/x", { label });
-    expect(await labelled("Sample label")).toMatchObject({
-      key: "x",
-      label: "Sample label",
-      defects: [],
-    });
-    expect(await labelled(undefined)).toMatchObject({ key: "x", label: undefined, defects: [] });
-    expect((await labelled(" ")).label).toBeUndefined();
-    expect(await labelled(3)).toMatchObject({
-      label: undefined,
-      defects: ["package.json: admin.label is not text"],
-    });
-    // The hub names a repository without one by its key.
-    expect(siteData([await labelled(undefined)]).repos[0]!.label).toBe("x");
   });
 
-  test("a repository whose package.json cannot carry admin sets it in docs/agent-work/admin.json", async () => {
-    // Read at HEAD, as the hub reads it: no package.json, the file committed beside the items.
-    const repo = repoFrom("spoke");
-    rmSync(join(repo, "package.json"));
-    const file = join(repo, "docs/agent-work/admin.json");
-    const at = async (text: string, pkg?: object) => {
-      writeFileSync(file, text);
-      if (pkg) writeFileSync(join(repo, "package.json"), JSON.stringify(pkg));
-      sh(repo, "git", "add", "-A");
-      commit(repo, "admin");
-      return readRepo(repo);
-    };
-    const read = await at('{ "label": "Sample notes" }');
-    expect([read.key, read.label, read.defects]).toEqual(["spoke", "Sample notes", []]);
-    // admin-check passes it beside the items.
-    expect(readItems(treeSource(repo)).defects).toEqual([]);
-    expect((await at('{ "label": 3 }')).defects).toEqual([
-      "docs/agent-work/admin.json: label is not text",
-    ]);
-    for (const [text, defect] of [
-      ["{", "not JSON"],
-      ["[]", "not a JSON object"],
-    ])
-      expect(await at(text!)).toMatchObject({
-        label: undefined,
-        defects: [`docs/agent-work/admin.json: ${defect}`],
-      });
-    // package.json's own admin wins, and the file says it is ignored.
-    expect(await at('{ "label": "Sample notes" }', { admin: { label: "Own" } })).toMatchObject({
-      label: "Own",
-      defects: ["docs/agent-work/admin.json: ignored, package.json holds admin"],
+  // A dot segment percent-encoded, a route, a colon or a query take the folder name too.
+  test.each([
+    ["%2e%2e", "x"],
+    ["_astro/x", "x"],
+    ["a:b", "x"],
+    ["a?b", "x"],
+    ["..", "x"],
+    ["web-site_2.0", "web-site_2.0"],
+  ])("admin.name %s resolves to repository key %s", async (name, expectedKey) => {
+    const pkg = JSON.stringify({ admin: { name } });
+    const read = await readRepo("/nonexistent/x", {
+      paths: ["package.json"],
+      read: () => pkg,
     });
-    // An admin there that is no object wins too, and says so.
-    expect(await at('{ "label": "Sample notes" }', { admin: null })).toMatchObject({
-      label: undefined,
-      defects: [
-        "package.json: admin is not an object",
-        "docs/agent-work/admin.json: ignored, package.json holds admin",
+    expect(read.key).toBe(expectedKey);
+  });
+
+  // A folder's name keeps its other characters as "-", and its letters, composed or not.
+  test.each([
+    ["a#b c:d", "a-b-c-d"],
+    ["Größe", "Größe"],
+    ["Gro\u0308ße", "Gro\u0308ße"],
+  ])("folder name %s derives repository key %s", async (folder, expectedKey) => {
+    const read = await readRepo(`/nonexistent/${folder}`, { paths: [], read: () => "" });
+    expect(read.key).toBe(expectedKey);
+  });
+
+  // A label names the repository to a person and leaves its key; one that is not text is a defect.
+  test.each([
+    ["Sample label", { key: "x", label: "Sample label", defects: [] }],
+    [undefined, { key: "x", label: undefined, defects: [] }],
+    [" ", { key: "x", label: undefined, defects: [] }],
+    [3, { key: "x", label: undefined, defects: ["package.json: admin.label is not text"] }],
+  ])("admin.label %o resolves without changing the key", async (label, expected) => {
+    expect(await configured("/nonexistent/x", { label })).toMatchObject(expected);
+  });
+
+  describe("docs/agent-work/admin.json at HEAD", () => {
+    // Read at HEAD, as the hub reads it: no package.json, the file committed beside the items.
+    let base: string;
+
+    beforeAll(() => {
+      base = repoFrom("spoke");
+    });
+
+    const commitAdmin = async (text: string) => {
+      const dir = join(scratch(), "spoke");
+      cpSync(base, dir, { recursive: true });
+      rmSync(join(dir, "package.json"));
+      const file = join(dir, "docs/agent-work/admin.json");
+      writeFileSync(file, text);
+      sh(dir, "git", "add", "-A");
+      commit(dir, "admin");
+      writeFileSync(file, '{ "label": "Working tree" }');
+      return { dir, read: await readRepo(dir) };
+    };
+
+    const commitAdminWithPackage = (text: string, pkg: object) => {
+      const dir = join(scratch(), "spoke");
+      cpSync(base, dir, { recursive: true });
+      const file = join(dir, "docs/agent-work/admin.json");
+      const pkgFile = join(dir, "package.json");
+      writeFileSync(file, text);
+      writeFileSync(pkgFile, JSON.stringify(pkg));
+      sh(dir, "git", "add", "-A");
+      commit(dir, "admin");
+      writeFileSync(file, '{ "label": "Working tree" }');
+      writeFileSync(pkgFile, "{}");
+      return readRepo(dir);
+    };
+
+    test("reads standalone docs/agent-work/admin.json at HEAD and passes admin-check", async () => {
+      const { dir, read } = await commitAdmin('{ "label": "Sample notes" }');
+      expect([read.key, read.label, read.defects]).toEqual(["spoke", "Sample notes", []]);
+      // admin-check passes it beside the items.
+      expect(readItems(treeSource(dir)).defects).toEqual([]);
+    });
+
+    test.each([
+      [
+        "non-text label",
+        '{ "label": 3 }',
+        {
+          key: "spoke",
+          label: undefined,
+          defects: ["docs/agent-work/admin.json: label is not text"],
+        },
       ],
+      [
+        "invalid JSON",
+        "{",
+        { key: "spoke", label: undefined, defects: ["docs/agent-work/admin.json: not JSON"] },
+      ],
+      [
+        "JSON array",
+        "[]",
+        {
+          key: "spoke",
+          label: undefined,
+          defects: ["docs/agent-work/admin.json: not a JSON object"],
+        },
+      ],
+    ])(
+      "reports malformed standalone docs/agent-work/admin.json (%s)",
+      async (_case, text, expected) => {
+        expect((await commitAdmin(text)).read).toMatchObject(expected);
+      },
+    );
+
+    test.each([
+      {
+        // package.json's own admin wins, and the file says it is ignored.
+        label: "package.json admin object wins and reports admin.json ignored",
+        pkg: { admin: { label: "Own" } },
+        expected: {
+          label: "Own",
+          defects: ["docs/agent-work/admin.json: ignored, package.json holds admin"],
+        },
+      },
+      {
+        // An admin there that is no object wins too, and says so.
+        label: "non-object package.json admin wins and reports both defects",
+        pkg: { admin: null },
+        expected: {
+          label: undefined,
+          defects: [
+            "package.json: admin is not an object",
+            "docs/agent-work/admin.json: ignored, package.json holds admin",
+          ],
+        },
+      },
+    ])("$label", async ({ pkg, expected }) => {
+      expect(await commitAdminWithPackage('{ "label": "Sample notes" }', pkg)).toMatchObject(
+        expected,
+      );
     });
   });
 });
@@ -310,15 +416,12 @@ describe("hub", () => {
     expect(await findRepos(root)).toEqual([repo]);
   });
 
-  test("finds a repo naming an @hackersandwizards package with no items, and none other or archived", async () => {
-    const repo = repoFrom("spoke");
-    const root = dirname(repo);
-    const bare = (name: string, pkg: object, files: Record<string, string> = {}) => {
-      const dir = join(root, name);
-      Bun.spawnSync(["mkdir", "-p", dir]);
+  describe("hub discovery and committed design system", () => {
+    const bareIn = (dir: string, pkg: object, files: Record<string, string> = {}) => {
+      mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "package.json"), JSON.stringify(pkg));
       for (const [f, text] of Object.entries(files)) {
-        Bun.spawnSync(["mkdir", "-p", dirname(join(dir, f))]);
+        mkdirSync(dirname(join(dir, f)), { recursive: true });
         writeFileSync(join(dir, f), text);
       }
       sh(dir, "git", "init", "-q", "-b", "main");
@@ -326,36 +429,60 @@ describe("hub", () => {
       commit(dir, "c");
       return dir;
     };
-    const tool = bare("tool", { name: "@hackersandwizards/tool" });
-    bare("other", { name: "other" });
-    const live = bare("group/live", { name: "@hackersandwizards/live" });
-    bare("group/_archive/old", { name: "@hackersandwizards/old" });
-    expect(await findRepos(root)).toEqual([live, repo, tool]);
-    expect((await readRepo(tool)).designSystem).toBeUndefined();
-    expect(
-      (await readRepo(bare("ui", { name: "ui", devDependencies: { astro: "1" } }))).designSystem,
-    ).toBe(undefined);
-    const book = await readRepo(
-      bare(
-        "book",
-        { name: "book", scripts: { dev: "astro dev", "design-system": "astro dev --root ds" } },
-        {
-          "ds/astro.config.ts":
-            'astrobook({ subpath: "/design-system" });\nserver: { host: "127.0.0.1", port: 4999 }',
-        },
-      ),
-    );
-    expect(book.designSystem).toBe("http://127.0.0.1:4999/design-system/");
-    expect(book.designSystemDev).toEqual({ port: 4999, start: "design-system" });
-    const owned = await readRepo(
-      bare("owned", {
-        name: "owned",
-        admin: { designSystem: "catalog.html", products: [{ label: "A", href: "a.html#x" }] },
-      }),
-    );
-    expect(owned.designSystem).toBe(`file://${owned.path}/catalog.html`);
-    expect(owned.designSystemDev).toBeUndefined();
-    expect(owned.products[0]!.href).toBe(`file://${owned.path}/a.html#x`);
+
+    let root: string;
+    let repo: string;
+    let tool: string;
+    let live: string;
+    let ui: string;
+
+    beforeAll(() => {
+      repo = repoFrom("spoke");
+      root = dirname(repo);
+      tool = bareIn(join(root, "tool"), { name: "@hackersandwizards/tool" });
+      bareIn(join(root, "other"), { name: "other" });
+      live = bareIn(join(root, "group/live"), { name: "@hackersandwizards/live" });
+      bareIn(join(root, "group/_archive/old"), { name: "@hackersandwizards/old" });
+      ui = bareIn(join(scratch(), "ui"), { name: "ui", devDependencies: { astro: "1" } });
+    });
+
+    test("finds a repo naming an @hackersandwizards package with no items, and none other or archived", async () => {
+      expect(await findRepos(root)).toEqual([live, repo, tool]);
+    });
+
+    test.each([
+      ["plain @hackersandwizards package", () => tool],
+      ["astro package without a catalog config", () => ui],
+    ])("leaves designSystem unset for a %s", async (_label, repoDir) => {
+      expect((await readRepo(repoDir())).designSystem).toBeUndefined();
+    });
+
+    test("infers designSystem and dev server from a committed astrobook config", async () => {
+      const book = await readRepo(
+        bareIn(
+          join(scratch(), "book"),
+          { name: "book", scripts: { dev: "astro dev", "design-system": "astro dev --root ds" } },
+          {
+            "ds/astro.config.ts":
+              'astrobook({ subpath: "/design-system" });\nserver: { host: "127.0.0.1", port: 4999 }',
+          },
+        ),
+      );
+      expect(book.designSystem).toBe("http://127.0.0.1:4999/design-system/");
+      expect(book.designSystemDev).toEqual({ port: 4999, start: "design-system" });
+    });
+
+    test("resolves admin.designSystem and product hrefs relative to the repository", async () => {
+      const owned = await readRepo(
+        bareIn(join(scratch(), "owned"), {
+          name: "owned",
+          admin: { designSystem: "catalog.html", products: [{ label: "A", href: "a.html#x" }] },
+        }),
+      );
+      expect(owned.designSystem).toBe(`file://${owned.path}/catalog.html`);
+      expect(owned.designSystemDev).toBeUndefined();
+      expect(owned.products[0]!.href).toBe(`file://${owned.path}/a.html#x`);
+    });
   });
 
   test("scaffolding's catalog preset links /catalog/ wherever its catalog sits", async () => {
@@ -376,25 +503,58 @@ describe("hub", () => {
     expect(shell.designSystemDev).toEqual({ port: 4998, start: "catalog" });
   });
 
-  test("a doc's title is its first rendered h1, which leaves the article", async () => {
-    const files: Record<string, string> = {
-      "docs/fenced.md": "```sh\n# install deps\n```\n\n# Setup &amp; *run*\n\nBody.\n",
-      "docs/setext.md": "Setext title\n============\n\nBody.\n",
-      "docs/none.md": "Just text.\n",
-      "docs/image.md": "# ![logo](logo.png)\n\nBody.\n",
-    };
-    const { docs } = await readRepo("/nonexistent/titles", {
-      paths: Object.keys(files),
-      read: (f) => files[f],
+  describe("doc title extraction", () => {
+    let byPath: Record<string, { title: string; html: string }>;
+
+    beforeAll(async () => {
+      const files: Record<string, string> = {
+        "docs/fenced.md": "```sh\n# install deps\n```\n\n# Setup &amp; *run*\n\nBody.\n",
+        "docs/setext.md": "Setext title\n============\n\nBody.\n",
+        "docs/none.md": "Just text.\n",
+        "docs/image.md": "# ![logo](logo.png)\n\nBody.\n",
+        "docs/two.md": "# First heading\n\n# Second heading\n\nBody.\n",
+      };
+      const { docs } = await readRepo("/nonexistent/titles", {
+        paths: Object.keys(files),
+        read: (f) => files[f],
+      });
+      byPath = Object.fromEntries(docs.map((d) => [d.path, d]));
     });
-    const by = Object.fromEntries(docs.map((d) => [d.path, d]));
-    expect(by["docs/fenced.md"]!.title).toBe("Setup & run");
-    expect(by["docs/fenced.md"]!.html).toContain("# install deps");
-    expect(by["docs/setext.md"]!.title).toBe("Setext title");
-    expect(by["docs/none.md"]!.title).toBe("docs/none.md");
-    expect(by["docs/image.md"]!.title).toBe("docs/image.md");
-    expect(by["docs/image.md"]!.html).toContain('<h1 id="logo"><img');
-    for (const d of ["fenced", "setext"]) expect(by[`docs/${d}.md`]!.html).not.toContain("<h1");
+
+    test.each([
+      ["docs/fenced.md", "Setup & run"],
+      ["docs/setext.md", "Setext title"],
+      ["docs/two.md", "First heading"],
+    ])("uses the first rendered text h1 as the title for %s", (path, title) => {
+      expect(byPath[path]!.title).toBe(title);
+    });
+
+    test.each(["docs/none.md", "docs/image.md"])(
+      "titles %s by its path where no h1 holds text",
+      (path) => {
+        expect(byPath[path]!.title).toBe(path);
+      },
+    );
+
+    test.each(["docs/fenced.md", "docs/setext.md"])(
+      "removes the extracted h1 from the rendered article for %s",
+      (path) => {
+        expect(byPath[path]!.html).not.toContain("<h1");
+      },
+    );
+
+    test("leaves a second h1 in the rendered article after extracting the first", () => {
+      expect(byPath["docs/two.md"]!.html).not.toContain("First heading");
+      expect(byPath["docs/two.md"]!.html).toContain('<h1 id="second-heading">Second heading</h1>');
+    });
+
+    test("keeps a # comment inside a fenced code block in the article", () => {
+      expect(byPath["docs/fenced.md"]!.html).toContain("# install deps");
+    });
+
+    test("keeps an image-only h1 in the rendered article", () => {
+      expect(byPath["docs/image.md"]!.html).toContain('<h1 id="logo"><img');
+    });
   });
 
   test("reads a worktree's fetch, and a checkout without upstream as commits behind unknown", async () => {
@@ -449,66 +609,139 @@ describe("hub", () => {
 });
 
 describe("pages", () => {
-  test("waiting on others: people other than the hub's user, never an agent", async () => {
-    const repo = await readRepo(join(FIX, "spoke"), treeSource(join(FIX, "spoke")));
-    expect(repo.agents).toEqual(["Ivo"]);
-    // The first person stands for the hub's user when none is named.
-    expect(siteData([repo]).others).toEqual(["Kim", "Sam"]);
-    expect(siteData([repo], "Sam").others).toEqual(["Alex", "Kim"]);
-    // The person filter starts on the hub's user, who comes first.
-    expect(siteData([repo], "Sam").people[0]).toBe("Sam");
-    // A git name no owner writes stands for nobody: the first person does.
-    expect(siteData([repo], "kimlee").others).toEqual(["Kim", "Sam"]);
+  describe("waiting on others", () => {
+    let repo: Awaited<ReturnType<typeof readRepo>>;
+
+    beforeAll(async () => {
+      repo = await readRepo(join(FIX, "spoke"), treeSource(join(FIX, "spoke")));
+    });
+
     const owned = (owner: string) => ({
       ...repo.items[0]!,
       id: owner,
       status: "open" as const,
       owner,
     });
-    const more = { ...repo, items: [...repo.items, owned("An agent"), owned("The agent")] };
-    expect(siteData([more]).others).toEqual(["Kim", "Sam"]);
-    // The person is whoever the owner names, wherever: an agent drafting first leaves the item
-    // the person's.
-    const sends = siteData([{ ...repo, items: [...repo.items, owned("Ivo drafts, Kim sends")] }]);
-    const row = sends.repos[0]!.items.find((i) => i.id === "Ivo drafts, Kim sends")!;
-    expect([row.who, row.agent]).toEqual(["Kim", false]);
-    // A name is whole: Kim never stands for Kim-Lee.
-    const pair = siteData([{ ...repo, items: [owned("Kim"), owned("Kim-Lee")] }]);
-    expect(pair.repos[0]!.items.map((i) => i.who)).toEqual(["Kim", "Kim-Lee"]);
-    // The hub's user counts as a person where only a later word of an owner names them.
-    expect(
-      siteData([{ ...repo, items: [owned("Ivo drafts, Zoe sends")] }], "Zoe").repos[0]!.items[0]!
-        .who,
-    ).toBe("Zoe");
-    // The filter offers every person who owns an open item, work alone included.
-    expect(siteData([repo]).people.toSorted()).toEqual(["Alex", "Kim", "Sam"]);
-    // An owner that is a company or a team keeps its whole name, gets no button of its own, and
-    // waits under "Waiting on others": neither a person cut at a "+" nor an agent.
-    const parties = ["B+L", "eBike Works", "x&y", "eBike Works, then Kim", "B+L; next week"];
-    const firms = siteData([{ ...repo, items: [...repo.items, ...parties.map(owned)] }]);
-    expect(firms.people.toSorted()).toEqual(["Alex", "Kim", "Sam"]);
-    expect(firms.others).toEqual(["B+L", "Kim", "Sam", "eBike Works", "x&y"]);
-    const of = (id: string) => firms.repos[0]!.items.find((i) => i.id === id)!;
-    expect(parties.map((p) => [of(p).who, of(p).agent])).toEqual([
-      ["B+L", false],
-      ["eBike Works", false],
-      ["x&y", false],
-      ["Kim", false],
-      ["B+L", false],
-    ]);
-    // A person's name ends at any other mark, an agent's word may hold a hyphen, and an owner
-    // opening with a bracket names no company.
-    const marks = ["Sam.", "Kim's team", "claude-code", "agent:", "(tbd)"];
-    const marked = siteData([{ ...repo, items: [...repo.items, ...marks.map(owned)] }]);
-    expect(marked.others).toEqual(["Kim", "Sam"]);
-    const at = (id: string) => marked.repos[0]!.items.find((i) => i.id === id)!;
-    expect(marks.map((m) => [at(m).who, at(m).agent])).toEqual([
-      ["Sam", false],
-      ["Kim", false],
-      ["claude-code", true],
-      ["agent", true],
-      ["(tbd)", true],
-    ]);
+
+    test("lists repository agents and every person owning an open item", () => {
+      expect(repo.agents).toEqual(["Ivo"]);
+      // The filter offers every person who owns an open item, work alone included.
+      expect(siteData([repo]).people.toSorted()).toEqual(["Alex", "Kim", "Sam"]);
+    });
+
+    test.each([
+      {
+        // The first person stands for the hub's user when none is named.
+        label: "default (none named)",
+        hubUser: undefined,
+        firstPerson: "Alex",
+        others: ["Kim", "Sam"],
+      },
+      {
+        // The person filter starts on the hub's user, who comes first.
+        label: "named owner Sam",
+        hubUser: "Sam",
+        firstPerson: "Sam",
+        others: ["Alex", "Kim"],
+      },
+      {
+        // A git name no owner writes stands for nobody: the first person does.
+        label: "unmatched git name kimlee",
+        hubUser: "kimlee",
+        firstPerson: "Alex",
+        others: ["Kim", "Sam"],
+      },
+    ])(
+      "computes others and default person order for hub user $label",
+      ({ hubUser, firstPerson, others }) => {
+        const data = siteData([repo], hubUser);
+        expect(data.others).toEqual(others);
+        expect(data.people[0]).toBe(firstPerson);
+      },
+    );
+
+    test("keeps generic agent phrases out of waiting on others", () => {
+      const more = { ...repo, items: [...repo.items, owned("An agent"), owned("The agent")] };
+      expect(siteData([more]).others).toEqual(["Kim", "Sam"]);
+    });
+
+    test("assigns an item drafted by an agent to the person named in its owner", () => {
+      // The person is whoever the owner names, wherever: an agent drafting first leaves the item
+      // the person's.
+      const sends = siteData([{ ...repo, items: [...repo.items, owned("Ivo drafts, Kim sends")] }]);
+      const row = sends.repos[0]!.items.find((i) => i.id === "Ivo drafts, Kim sends")!;
+      expect([row.who, row.agent]).toEqual(["Kim", false]);
+    });
+
+    test("matches whole person names so Kim does not stand for Kim-Lee", () => {
+      // A name is whole: Kim never stands for Kim-Lee.
+      const pair = siteData([{ ...repo, items: [owned("Kim"), owned("Kim-Lee")] }]);
+      expect(pair.repos[0]!.items.map((i) => i.who)).toEqual(["Kim", "Kim-Lee"]);
+    });
+
+    test("recognizes the hub user when only a later word of an owner names them", () => {
+      // The hub's user counts as a person where only a later word of an owner names them.
+      expect(
+        siteData([{ ...repo, items: [owned("Ivo drafts, Zoe sends")] }], "Zoe").repos[0]!.items[0]!
+          .who,
+      ).toBe("Zoe");
+    });
+
+    describe("companies and teams", () => {
+      // An owner that is a company or a team keeps its whole name, gets no button of its own, and
+      // waits under "Waiting on others": neither a person cut at a "+" nor an agent.
+      const parties = ["B+L", "eBike Works", "x&y", "eBike Works, then Kim", "B+L; next week"];
+      let firms: ReturnType<typeof siteData>;
+
+      beforeAll(() => {
+        firms = siteData([{ ...repo, items: [...repo.items, ...parties.map(owned)] }]);
+      });
+
+      test("does not add company or team owners to the person filter", () => {
+        expect(firms.people.toSorted()).toEqual(["Alex", "Kim", "Sam"]);
+      });
+
+      test("lists companies and teams under waiting on others", () => {
+        expect(firms.others).toEqual(["B+L", "Kim", "Sam", "eBike Works", "x&y"]);
+      });
+
+      test.each([
+        ["B+L", "B+L", false],
+        ["eBike Works", "eBike Works", false],
+        ["x&y", "x&y", false],
+        ["eBike Works, then Kim", "Kim", false],
+        ["B+L; next week", "B+L", false],
+      ])("classifies company or team owner %s", (owner, who, agent) => {
+        const item = firms.repos[0]!.items.find((i) => i.id === owner)!;
+        expect([item.who, item.agent]).toEqual([who, agent]);
+      });
+    });
+
+    describe("punctuation, hyphens, and brackets in owners", () => {
+      // A person's name ends at any other mark, an agent's word may hold a hyphen, and an owner
+      // opening with a bracket names no company.
+      const marks = ["Sam.", "Kim's team", "claude-code", "agent:", "(tbd)"];
+      let marked: ReturnType<typeof siteData>;
+
+      beforeAll(() => {
+        marked = siteData([{ ...repo, items: [...repo.items, ...marks.map(owned)] }]);
+      });
+
+      test("does not add punctuated or bracketed non-people to waiting on others", () => {
+        expect(marked.others).toEqual(["Kim", "Sam"]);
+      });
+
+      test.each([
+        ["Sam.", "Sam", false],
+        ["Kim's team", "Kim", false],
+        ["claude-code", "claude-code", true],
+        ["agent:", "agent", true],
+        ["(tbd)", "(tbd)", true],
+      ])("classifies owner %s", (owner, who, agent) => {
+        const item = marked.repos[0]!.items.find((i) => i.id === owner)!;
+        expect([item.who, item.agent]).toEqual([who, agent]);
+      });
+    });
   });
 
   test("leaving a page asks nothing: answers are stored as they are typed", async () => {
@@ -523,23 +756,34 @@ describe("admin.js", () => {
     await Promise.all(opened.map((w) => w.happyDOM.close()));
   });
 
-  test("an explicitly light page stays light, and a page without a choice follows the system", () => {
+  test("a stored light choice keeps the page light on a dark system until cleared", () => {
     const theme = readFileSync(join(import.meta.dirname, "../site/src/theme.js"), "utf8");
-    for (const prefersColorScheme of ["light", "dark"]) {
-      const window = new Window({
-        url: "http://admin.localhost/index",
-        settings: { device: { prefersColorScheme } },
-      });
-      opened.push(window);
-      window.localStorage.setItem("theme", "light");
-      evaluate(window, theme);
-      expect(window.document.documentElement.dataset.theme).toBeUndefined();
-      window.localStorage.removeItem("theme");
-      evaluate(window, theme);
-      expect(window.document.documentElement.dataset.theme).toBe(
-        prefersColorScheme === "dark" ? "dark" : undefined,
-      );
-    }
+    const window = new Window({
+      url: "http://admin.localhost/index",
+      settings: { device: { prefersColorScheme: "dark" } },
+    });
+    opened.push(window);
+    window.localStorage.setItem("theme", "light");
+    evaluate(window, theme);
+    expect(window.document.documentElement.dataset.theme).toBeUndefined();
+    window.localStorage.removeItem("theme");
+    evaluate(window, theme);
+    expect(window.document.documentElement.dataset.theme).toBe("dark");
+  });
+
+  test("on a light system, theme.js stays light with a stored light choice and after clearing it", () => {
+    const theme = readFileSync(join(import.meta.dirname, "../site/src/theme.js"), "utf8");
+    const window = new Window({
+      url: "http://admin.localhost/index",
+      settings: { device: { prefersColorScheme: "light" } },
+    });
+    opened.push(window);
+    window.localStorage.setItem("theme", "light");
+    evaluate(window, theme);
+    expect(window.document.documentElement.dataset.theme).toBeUndefined();
+    window.localStorage.removeItem("theme");
+    evaluate(window, theme);
+    expect(window.document.documentElement.dataset.theme).toBeUndefined();
   });
 });
 
