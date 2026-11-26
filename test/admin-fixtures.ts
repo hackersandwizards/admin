@@ -1,4 +1,4 @@
-import { afterAll } from "vitest";
+import { afterAll, vi } from "vitest";
 import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -70,3 +70,17 @@ export const inZone = <T>(zone: string, check: () => T): T => {
     else process.env.TZ = tz;
   }
 };
+
+export function stubBuildSpawn(script: string) {
+  const spawn = Bun.spawn;
+  let count = 0;
+  const spy = vi.spyOn(Bun, "spawn").mockImplementation(((cmd: string[], opts: object) => {
+    if (!cmd[1]?.endsWith("serve.ts")) return spawn(cmd, opts as never);
+    count++;
+    return spawn([process.execPath, "-e", script], { stderr: "pipe" });
+  }) as typeof Bun.spawn);
+  return {
+    calls: () => count,
+    restore: () => spy.mockRestore(),
+  };
+}

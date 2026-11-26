@@ -42,6 +42,7 @@ import {
   repoFrom,
   scratch,
   sh,
+  stubBuildSpawn,
 } from "../admin-fixtures.ts";
 
 const testTimeout = (ms: number) =>
@@ -3188,65 +3189,10 @@ describe("serve", () => {
   );
 
   describe("serves committed pages and files, rebuilding only after a commit", () => {
+    type BuiltSite = Awaited<ReturnType<ReturnType<typeof createHub>["pages"]>>;
     const HUB_CSP =
       "default-src 'self'; script-src http://admin.localhost/_astro/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'; frame-ancestors 'self'";
-    let repo = "";
-    let hub: ReturnType<typeof createHub>;
-    let get: (path: string) => Promise<Response>;
-    let asked = 0;
-    let afterAsked = 0;
-    let first = "";
-    let decisions: Response;
-    let nested = "";
-
-    beforeAll(async () => {
-      repo = repoFrom("spoke");
-      writeFileSync(join(repo, "uncommitted.txt"), "uncommitted");
-      mkdirSync(join(repo, "node_modules/pkg"), { recursive: true });
-      writeFileSync(join(repo, "node_modules/pkg/tokens.css"), ":root{}");
-      const outside = scratch();
-      writeFileSync(join(outside, "secret.txt"), "secret");
-      symlinkSync(outside, join(repo, "node_modules/escape"));
-      symlinkSync(join(outside, "secret.txt"), join(repo, "node_modules/pkg/secret.txt"));
-      const oid = "ab".repeat(32);
-      const store = join(repo, ".git/lfs/objects/ab/ab");
-      mkdirSync(store, { recursive: true });
-      writeFileSync(join(store, oid), "<svg>stored</svg>");
-      writeFileSync(
-        join(repo, "docs/agent-work/lfs.svg"),
-        `version https://git-lfs.github.com/spec/v1\noid sha256:${oid}\nsize 17\n`,
-      );
-      sh(repo, "git", "add", "docs/agent-work/lfs.svg");
-      commit(repo, "l");
-      hub = createHub({ root: dirname(repo) });
-      get = (path: string) => hub.fetch(new Request(`http://admin.localhost${path}`));
-      asked = Date.now();
-      first = await (await get("/")).text();
-      afterAsked = Date.now();
-      decisions = await get("/spoke/decisions");
-      nested = await decisions.text();
-    }, testTimeout(60_000));
-
-    test("serves the hub home page with committed items, /_file/ links, and /index.html", async () => {
-      expect(first).toContain("Which variant ships?");
-      expect(first).not.toContain("file://");
-      expect(first).toContain("/_file/spoke/docs/agent-work/");
-      expect((await get("/index.html")).status).toBe(200);
-    });
-
-    test("serves /spoke/decisions with hub CSP, security headers, and no-store cache", () => {
-      // A committed form posts nowhere else, and no outside page is framed into the hub.
-      // Nothing a body commits loads from elsewhere, so no image or stylesheet reports a view or
-      // reads the page out; a catalog's dev server is still asked whether it runs.
-      expect(decisions.status).toBe(200);
-      expect(decisions.headers.get("content-security-policy")).toBe(HUB_CSP);
-      expect(decisions.headers.get("x-content-type-options")).toBe("nosniff");
-      expect(decisions.headers.get("cross-origin-resource-policy")).toBe("same-origin");
-      expect(decisions.headers.get("cache-control")).toBe("no-store");
-    });
-
-    // A page elsewhere may link the hub, but loads nothing from it to learn what exists.
-    test.each([
+    const fetchSiteCases = [
       {
         label: "cross-site no-cors script",
         site: "cross-site",
@@ -3290,20 +3236,8 @@ describe("serve", () => {
         dest: "document",
         status: 200,
       },
-    ])("responds $status to /_file/ request for $label", async ({ site, mode, dest, status }) => {
-      const res = await hub.fetch(
-        new Request("http://admin.localhost/_file/spoke/scripts/sample.ts", {
-          headers: { "sec-fetch-site": site, "sec-fetch-mode": mode, "sec-fetch-dest": dest },
-        }),
-      );
-      expect(res.status).toBe(status);
-    });
-
-    test("rejects requests for a non-local host with 403", async () => {
-      expect((await hub.fetch(new Request("http://evil.example/"))).status).toBe(403);
-    });
-
-    test.each([
+    ];
+    const bareRedirectCases = [
       {
         label: "bare repository address",
         path: "/spoke",
@@ -3314,6 +3248,8 @@ describe("serve", () => {
         path: "/spoke/?who=A",
         location: "http://admin.localhost/spoke/dashboard?who=A",
       },
+    ];
+    const slashRedirectCases = [
       {
         label: "page with trailing slash",
         path: "/spoke/decisions/",
@@ -3324,65 +3260,258 @@ describe("serve", () => {
         path: "/spoke/decisions/?who=A",
         location: "http://admin.localhost/spoke/decisions?who=A",
       },
-    ])("redirects $label with 302", async ({ path, location }) => {
-      const r = await get(path);
-      expect([r.status, r.headers.get("location")]).toEqual([302, location]);
+    ];
+    const missing404Cases = [
+      { path: "/404", expectedLine: "answers at /404:" },
+      { path: "/404.html", expectedLine: "answers at /404.html:" },
+      { path: "/a/<b>", expectedLine: "answers at /a/%3Cb%3E:" },
+    ];
+    const nodeModulesRejectCases = [
+      {
+        label: "parent-directory traversal",
+        path: "/_file/spoke/node_modules/..%2Funcommitted.txt",
+      },
+      {
+        label: "escaping directory symlink",
+        path: "/_file/spoke/node_modules/escape/secret.txt",
+      },
+      {
+        label: "escaping file symlink",
+        path: "/_file/spoke/node_modules/pkg/secret.txt",
+      },
+    ];
+
+    let asked = 0;
+    let afterAsked = 0;
+    let twoMinLater = 0;
+    let later = 0;
+    let first = "";
+    let homeTwoMinLater = "";
+    let decisions: Response;
+    let nested = "";
+    const fetchSiteStatuses = new Map<string, number>();
+    const redirectResults = new Map<string, [number, string | null]>();
+    let unknownStatus = 0;
+    let lost = "";
+    let indexAliasStatus = 0;
+    const missing404Results = new Map<string, { status: number; html: string }>();
+    let packages = "";
+    let zippedEncoding: string | null = null;
+    let zippedBytes = new Uint8Array(0);
+    let cssMatch: RegExpMatchArray | null = null;
+    let cssCacheControl: string | null = null;
+    let svgContentType: string | null = null;
+    const nodeModulesRejectStatuses = new Map<string, number>();
+    let installedCss = "";
+    let nonLocalStatus = 0;
+    let lfsText = "";
+    let cached: BuiltSite;
+    let afterUncommittedEdit: BuiltSite;
+    let afterCommit: BuiltSite;
+    let homeAfterCommit = "";
+
+    beforeAll(async () => {
+      // Stage 1: initial committed spoke checkout.
+      const repo = repoFrom("spoke");
+      const hub = createHub({ root: dirname(repo) });
+      const get = (path: string) => hub.fetch(new Request(`http://admin.localhost${path}`));
+      asked = Date.now();
+      first = await (await get("/")).text();
+      afterAsked = Date.now();
+      decisions = await get("/spoke/decisions");
+      for (const { label, site, mode, dest } of fetchSiteCases) {
+        const res = await hub.fetch(
+          new Request("http://admin.localhost/_file/spoke/scripts/sample.ts", {
+            headers: { "sec-fetch-site": site, "sec-fetch-mode": mode, "sec-fetch-dest": dest },
+          }),
+        );
+        fetchSiteStatuses.set(label, res.status);
+      }
+      for (const { path } of bareRedirectCases) {
+        const r = await get(path);
+        redirectResults.set(path, [r.status, r.headers.get("location")]);
+      }
+      const none = await get("/nosuchrepo/");
+      unknownStatus = none.status;
+      lost = await none.text();
+      indexAliasStatus = (await get("/index.html")).status;
+      for (const { path } of missing404Cases) {
+        const r = await get(path);
+        missing404Results.set(path, { status: r.status, html: await r.text() });
+      }
+
+      // Stage 2: request-time stamping on a cached build and a day later, then returning to today.
+      twoMinLater = afterAsked + 120_000;
+      const shortClock = vi.spyOn(Date, "now").mockReturnValue(twoMinLater);
+      try {
+        homeTwoMinLater = await (await get("/")).text();
+      } finally {
+        shortClock.mockRestore();
+      }
+      // So does the hub's other page, a day after its build.
+      later = Date.now() + 864e5;
+      const clock = vi.spyOn(Date, "now").mockReturnValue(later);
+      try {
+        packages = await (await get("/architecture")).text();
+      } finally {
+        clock.mockRestore();
+      }
+      nested = await decisions.text();
+      const zipped = await hub.fetch(
+        new Request("http://admin.localhost/spoke/decisions", {
+          headers: { "accept-encoding": "gzip, br" },
+        }),
+      );
+      zippedEncoding = zipped.headers.get("content-encoding");
+      zippedBytes = await zipped.bytes();
+      cssMatch = first.match(/href="\.\/(_astro\/[^"]+\.css)"/);
+      if (cssMatch) cssCacheControl = (await get(`/${cssMatch[1]!}`)).headers.get("cache-control");
+      for (const { path } of slashRedirectCases) {
+        const r = await get(path);
+        redirectResults.set(path, [r.status, r.headers.get("location")]);
+      }
+      const svg = await get("/_file/spoke/docs/agent-work/2026-01-15-sample-topic/variant-a.svg");
+      svgContentType = svg.headers.get("content-type");
+
+      // Stage 3: uncommitted files, installed node_modules, escaping symlinks, and non-local host.
+      writeFileSync(join(repo, "uncommitted.txt"), "uncommitted");
+      nodeModulesRejectStatuses.set(
+        "parent-directory traversal",
+        (await get("/_file/spoke/node_modules/..%2Funcommitted.txt")).status,
+      );
+      mkdirSync(join(repo, "node_modules/pkg"), { recursive: true });
+      writeFileSync(join(repo, "node_modules/pkg/tokens.css"), ":root{}");
+      installedCss = await (await get("/_file/spoke/node_modules/pkg/tokens.css")).text();
+      const outside = scratch();
+      writeFileSync(join(outside, "secret.txt"), "secret");
+      symlinkSync(outside, join(repo, "node_modules/escape"));
+      symlinkSync(join(outside, "secret.txt"), join(repo, "node_modules/pkg/secret.txt"));
+      nodeModulesRejectStatuses.set(
+        "escaping directory symlink",
+        (await get("/_file/spoke/node_modules/escape/secret.txt")).status,
+      );
+      nodeModulesRejectStatuses.set(
+        "escaping file symlink",
+        (await get("/_file/spoke/node_modules/pkg/secret.txt")).status,
+      );
+      nonLocalStatus = (await hub.fetch(new Request("http://evil.example/"))).status;
+
+      // Stage 4: LFS object committed after the hub is already warm.
+      const oid = "ab".repeat(32);
+      const store = join(repo, ".git/lfs/objects/ab/ab");
+      mkdirSync(store, { recursive: true });
+      writeFileSync(join(store, oid), "<svg>stored</svg>");
+      writeFileSync(
+        join(repo, "docs/agent-work/lfs.svg"),
+        `version https://git-lfs.github.com/spec/v1\noid sha256:${oid}\nsize 17\n`,
+      );
+      sh(repo, "git", "add", "docs/agent-work/lfs.svg");
+      commit(repo, "l");
+      lfsText = await (await get("/_file/spoke/docs/agent-work/lfs.svg")).text();
+
+      // Stage 5: baseline cached build, uncommitted edit (no rebuild), then commit (rebuild).
+      cached = await hub.pages();
+      const item = join(repo, "docs/agent-work/items/check-the-copy.md");
+      writeFileSync(item, readFileSync(item, "utf8").replace("# ", "# Renamed "));
+      afterUncommittedEdit = await hub.pages();
+      sh(
+        repo,
+        "git",
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.invalid",
+        "commit",
+        "-qam",
+        "r",
+      );
+      afterCommit = await hub.pages();
+      homeAfterCommit = await (await get("/")).text();
+    }, testTimeout(60_000));
+
+    test("serves the hub home page with committed items and /_file/ links", () => {
+      expect(first).toContain("Which variant ships?");
+      expect(first).not.toContain("file://");
+      expect(first).toContain("/_file/spoke/docs/agent-work/");
     });
 
-    test("renders a styled 404 page with root-relative links for an unknown path", async () => {
-      const none = await get("/nosuchrepo/");
-      expect(none.status).toBe(404);
+    test("serves /index.html as an alias for the hub home page", () => {
+      expect(indexAliasStatus).toBe(200);
+    });
+
+    test("serves /spoke/decisions with hub CSP, security headers, and no-store cache", () => {
+      // A committed form posts nowhere else, and no outside page is framed into the hub.
+      // Nothing a body commits loads from elsewhere, so no image or stylesheet reports a view or
+      // reads the page out; a catalog's dev server is still asked whether it runs.
+      expect(decisions.status).toBe(200);
+      expect(decisions.headers.get("content-security-policy")).toBe(HUB_CSP);
+      expect(decisions.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(decisions.headers.get("cross-origin-resource-policy")).toBe("same-origin");
+      expect(decisions.headers.get("cache-control")).toBe("no-store");
+    });
+
+    // A page elsewhere may link the hub, but loads nothing from it to learn what exists.
+    test.each(fetchSiteCases)(
+      "responds $status to /_file/ request for $label",
+      ({ label, status }) => {
+        expect(fetchSiteStatuses.get(label)).toBe(status);
+      },
+    );
+
+    test("rejects requests for a non-local host with 403", () => {
+      expect(nonLocalStatus).toBe(403);
+    });
+
+    test.each([...bareRedirectCases, ...slashRedirectCases])(
+      "redirects $label with 302",
+      ({ path, location }) => {
+        expect(redirectResults.get(path)).toEqual([302, location]);
+      },
+    );
+
+    test("renders a styled 404 page with root-relative links for an unknown path", () => {
+      expect(unknownStatus).toBe(404);
       // In the hub's styles, with the way back.
-      const lost = await none.text();
       expect(lost).toMatch(/<a class="hw-link" href="\/index\.html">\s*Open the hub\s*<\/a>/);
       expect(lost).toMatch(/<link rel="stylesheet" href="\/_astro\/[^"]+\.css">/);
       expect(lost).not.toMatch(/(?:href|src)="(?!\/|#|[a-z]+:)/);
       expect(lost).toContain("Nothing on the hub answers at /nosuchrepo/:");
     });
 
-    test.each([
-      { path: "/404", expectedLine: "answers at /404:" },
-      { path: "/404.html", expectedLine: "answers at /404.html:" },
-      { path: "/a/<b>", expectedLine: "answers at /a/%3Cb%3E:" },
-    ])("renders the 404 page with the requested path for $path", async ({ path, expectedLine }) => {
-      const r = await get(path);
-      const html = await r.text();
-      expect(r.status).toBe(404);
-      expect(html).not.toContain("admin-missing-path");
-      expect(html).toContain(expectedLine);
-    });
+    test.each(missing404Cases)(
+      "renders the 404 page with the requested path for $path",
+      ({ path, expectedLine }) => {
+        const res = missing404Results.get(path);
+        expect(res).toBeDefined();
+        expect(res!.status).toBe(404);
+        expect(res!.html).not.toContain("admin-missing-path");
+        expect(res!.html).toContain(expectedLine);
+      },
+    );
 
-    test("stamps the hub home page with the request minute", async () => {
+    test("stamps the hub home page with the request minute", () => {
       // The hub says it is current as of the request, in the minute it was asked or the next.
       const stamp = first.match(/· as of <span data-stamp>([^<]*)<\/span>/);
-      assert(stamp, "hub home page should include a request timestamp");
-      expect([when(asked), when(afterAsked)]).toContain(stamp[1]!);
-      let twoMinLaterHtml: string;
-      const twoMinLater = afterAsked + 120_000;
-      const clock = vi.spyOn(Date, "now").mockReturnValue(twoMinLater);
-      try {
-        twoMinLaterHtml = await (await get("/")).text();
-      } finally {
-        clock.mockRestore();
-      }
-      expect(twoMinLaterHtml).toContain(`· as of <span data-stamp>${when(twoMinLater)}</span>`);
+      expect(stamp).not.toBeNull();
+      expect([when(asked), when(afterAsked)]).toContain(stamp![1]!);
+      expect(homeTwoMinLater).toContain(`· as of <span data-stamp>${when(twoMinLater)}</span>`);
     });
 
-    test("gzips HTML when accepted and caches hashed _astro stylesheets immutably", async () => {
+    test("stamps /architecture with the request time a day after its build", () => {
+      expect(packages).toContain(`· as of <span data-stamp>${when(later)}</span>`);
+    });
+
+    test("gzips HTML responses when the client accepts gzip", () => {
       // A page travels gzipped where the browser takes it, and a hashed asset stays in its cache.
-      const plain = await (await get("/spoke/decisions")).text();
-      const zipped = await hub.fetch(
-        new Request("http://admin.localhost/spoke/decisions", {
-          headers: { "accept-encoding": "gzip, br" },
-        }),
+      expect(zippedEncoding).toBe("gzip");
+      expect(sansNonce(new TextDecoder().decode(Bun.gunzipSync(zippedBytes)))).toBe(
+        sansNonce(nested),
       );
-      expect(zipped.headers.get("content-encoding")).toBe("gzip");
-      expect(sansNonce(new TextDecoder().decode(Bun.gunzipSync(await zipped.bytes())))).toBe(
-        sansNonce(plain),
-      );
-      const css = first.match(/href="\.\/(_astro\/[^"]+\.css)"/);
-      assert(css, "hub home page should link its stylesheet");
-      expect((await get(`/${css[1]!}`)).headers.get("cache-control")).toContain("immutable");
+    });
+
+    test("caches hashed _astro stylesheets immutably", () => {
+      expect(cssMatch).not.toBeNull();
+      expect(cssCacheControl).toContain("immutable");
     });
 
     // Every script, on the hub and on a nested page, resolves under the one path the policy runs.
@@ -3399,94 +3528,32 @@ describe("serve", () => {
       ]);
     });
 
-    test("serves a committed SVG with image/svg content-type and resolves a committed LFS object", async () => {
-      const svg = await get("/_file/spoke/docs/agent-work/2026-01-15-sample-topic/variant-a.svg");
-      expect(svg.headers.get("content-type")).toContain("image/svg");
-      expect(await (await get("/_file/spoke/docs/agent-work/lfs.svg")).text()).toBe(
-        "<svg>stored</svg>",
-      );
+    test("serves a committed SVG with an image/svg content-type", () => {
+      expect(svgContentType).toContain("image/svg");
     });
 
-    test("serves an installed file from node_modules", async () => {
-      expect(await (await get("/_file/spoke/node_modules/pkg/tokens.css")).text()).toBe(":root{}");
+    test("resolves a committed Git LFS object on a warm hub", () => {
+      expect(lfsText).toBe("<svg>stored</svg>");
     });
 
-    test.each([
-      {
-        label: "parent-directory traversal",
-        path: "/_file/spoke/node_modules/..%2Funcommitted.txt",
-      },
-      {
-        label: "escaping directory symlink",
-        path: "/_file/spoke/node_modules/escape/secret.txt",
-      },
-      {
-        label: "escaping file symlink",
-        path: "/_file/spoke/node_modules/pkg/secret.txt",
-      },
-    ])("returns 404 for $label under node_modules", async ({ path }) => {
-      expect((await get(path)).status).toBe(404);
+    test("serves an installed file from node_modules", () => {
+      expect(installedCss).toBe(":root{}");
     });
 
-    test(
-      "rebuilds only after a commit, leaving uncommitted edits unserved",
-      async () => {
-        const item = join(repo, "docs/agent-work/items/check-the-copy.md");
-        writeFileSync(item, readFileSync(item, "utf8").replace("# ", "# Renamed "));
-        const cached = await hub.pages();
-        expect(await hub.pages()).toBe(cached);
-        sh(
-          repo,
-          "git",
-          "-c",
-          "user.name=t",
-          "-c",
-          "user.email=t@example.invalid",
-          "commit",
-          "-qam",
-          "r",
-        );
-        expect(await hub.pages()).not.toBe(cached);
-        expect(await (await get("/")).text()).toContain("Renamed ");
-      },
-      testTimeout(60_000),
-    );
+    test.each(nodeModulesRejectCases)("returns 404 for $label under node_modules", ({ label }) => {
+      expect(nodeModulesRejectStatuses.get(label)).toBe(404);
+    });
 
-    test(
-      "stamps /architecture with the request time a day after its build",
-      async () => {
-        // So does the hub's other page, a day after its build.
-        let packages: string;
-        const later = Date.now() + 864e5;
-        const clock = vi.spyOn(Date, "now").mockReturnValue(later);
-        try {
-          packages = await (await get("/architecture")).text();
-        } finally {
-          clock.mockRestore();
-        }
-        expect(packages).toContain(`· as of <span data-stamp>${when(later)}</span>`);
-      },
-      testTimeout(60_000),
-    );
+    test("rebuilds only after a commit, leaving uncommitted edits unserved", () => {
+      expect(afterUncommittedEdit).toBe(cached);
+      expect(afterCommit).not.toBe(cached);
+      expect(homeAfterCommit).toContain("Renamed ");
+    });
   });
 
   describe("a failed read or build shows on every page and retries on state change or after a minute", () => {
     type BuiltSite = Awaited<ReturnType<ReturnType<typeof createHub>["pages"]>>;
-    const stubServeBuild = (script: string) => {
-      const spawn = Bun.spawn;
-      let builds = 0;
-      const spy = vi.spyOn(Bun, "spawn").mockImplementation(((cmd: string[], opts: object) => {
-        if (!cmd[1]?.endsWith("serve.ts")) return spawn(cmd, opts as never);
-        builds++;
-        return spawn([process.execPath, "-e", script], { stderr: "pipe" });
-      }) as typeof Bun.spawn);
-      return { calls: () => builds, restore: () => spy.mockRestore() };
-    };
-    const notice = (html: string) => {
-      const match = html.match(/<div id="admin-problem"[^>]*>[\s\S]*?<\/div>/);
-      assert(match, "page should include the admin-problem container");
-      return match[0];
-    };
+    const problemBox = (html: string) => html.match(/<div id="admin-problem"[^>]*>[\s\S]*?<\/div>/);
 
     let first: BuiltSite;
     let homeInitial = "";
@@ -3499,7 +3566,8 @@ describe("serve", () => {
     let afterMinute: BuiltSite;
     let buildsAfterMinute = 0;
     let recoveredBuild: BuiltSite;
-    let homeAfterRebuild = "";
+    let homeAfterRebuild1 = "";
+    let homeAfterRebuild2 = "";
     let homeAfterReadRecovery = "";
     let homeAfterTaggedFail = "";
     let homeAfterRevert = "";
@@ -3524,7 +3592,7 @@ describe("serve", () => {
       docInitial = await get("/spoke/doc/docs/agent-work/2026-01-15-sample-topic");
       cachedInitial = await hub.pages();
 
-      const failing = stubServeBuild("console.error('TypeError: boom'); process.exit(1)");
+      const failing = stubBuildSpawn("console.error('TypeError: boom'); process.exit(1)");
       try {
         writeFileSync(join(repo, "moved.md"), "# Moved\n");
         sh(repo, "git", "add", "moved.md");
@@ -3546,7 +3614,8 @@ describe("serve", () => {
       sh(repo, "git", "add", "moved.md");
       commit(repo, "n");
       recoveredBuild = await hub.pages();
-      homeAfterRebuild = await get("/");
+      homeAfterRebuild1 = await get("/");
+      homeAfterRebuild2 = await get("/");
 
       // A read that failed for a passing cause comes back a minute later, with no commit there.
       writeFileSync(object, bytes);
@@ -3569,16 +3638,22 @@ describe("serve", () => {
     }, testTimeout(120_000));
 
     test("shows an unreadable repository notice on every page and caches the initial build", () => {
-      expect(notice(homeInitial)).toContain("second could not be read: git cat-file answered");
-      expect(notice(docInitial)).toContain("It is left out.");
+      const homeNotice = problemBox(homeInitial);
+      const docNotice = problemBox(docInitial);
+      expect(homeNotice).not.toBeNull();
+      expect(homeNotice![0]).toContain("second could not be read: git cat-file answered");
+      expect(docNotice).not.toBeNull();
+      expect(docNotice![0]).toContain("It is left out.");
       expect(cachedInitial).toBe(first);
     });
 
     test("keeps the last pages with a build-failure notice and skips immediate retry on a failed rebuild", () => {
+      const dashNotice = problemBox(dashboardAfterFail);
       expect(afterFail1).toBe(first);
       expect(afterFail2).toBe(first);
       expect(buildsAfterCommit).toBe(1);
-      expect(notice(dashboardAfterFail)).toMatch(
+      expect(dashNotice).not.toBeNull();
+      expect(dashNotice![0]).toMatch(
         /could not rebuild on [^<]+<\/b> These pages show the repositories as of [\s\S]*The build stopped: build failed: TypeError: boom/,
       );
     });
@@ -3589,9 +3664,11 @@ describe("serve", () => {
     });
 
     test("clears the build-failure notice after a successful rebuild while keeping the unread-repository notice", () => {
+      const rebuildNotice = problemBox(homeAfterRebuild1);
       expect(recoveredBuild).not.toBe(first);
-      expect(notice(homeAfterRebuild)).not.toContain("The build stopped");
-      expect(homeAfterRebuild).toContain("second could not be read");
+      expect(rebuildNotice).not.toBeNull();
+      expect(rebuildNotice![0]).not.toContain("The build stopped");
+      expect(homeAfterRebuild2).toContain("second could not be read");
     });
 
     test("clears the unread-repository notice once the missing object returns and the retry window passes", () => {
@@ -3698,17 +3775,17 @@ describe("serve", () => {
         heading: '<h1 id="read-me">Read me</h1>',
       },
     ];
-    const shellParityPages = [
+    const shellFilledPages = [
       "README",
       "docs/guide/index.md",
-      "docs/agent-work/2026-01-15-sample-topic",
       "docs/agent-work/2026-01-14-standalone",
       "docs/shell-html",
       "docs/shell-title",
       "docs/rock & roll's",
     ];
+    const prebuiltTopicPage = "docs/agent-work/2026-01-15-sample-topic";
     const linkedPages = new Map<string, { status: number; html: string }>();
-    const shellPages = new Map<string, string>();
+    const servedPages = new Map<string, string>();
     let readme = "";
     let notesStatus = 0;
     let notes = "";
@@ -3717,10 +3794,12 @@ describe("serve", () => {
     let slash: Response;
     let topic: Window["document"];
     let standalone: Window["document"];
+    let ordinaryStatus = 0;
     let ordinary: Window["document"];
     let out = "";
     let served: ReturnType<typeof linker>;
     let htmlSlugStatus = 0;
+    let htmlSlugHtml = "";
 
     beforeAll(async () => {
       // A path with characters a page escapes in its attributes.
@@ -3745,43 +3824,47 @@ describe("serve", () => {
         linkedPages.set(path, { status: page.status, html: await page.text() });
       }
       readme = await (await get("/spoke/doc/README")).text();
-      const notesRes = await get("/spoke/doc/docs/c%23-notes");
-      notesStatus = notesRes.status;
-      notes = await notesRes.text();
+      notesStatus = (await get("/spoke/doc/docs/c%23-notes")).status;
+      notes = await (await get("/spoke/doc/docs/c%23-notes")).text();
       notesFile = await (await get("/_file/spoke/docs/c%23-notes.md")).text();
       rock = await (await get("/spoke/doc/docs/rock%20&%20roll's")).text();
       slash = await get("/spoke/doc/README/?x=1");
       const docFor = async (path: string) => {
+        const res = await get(path);
         const doc = new Window().document;
-        doc.body.innerHTML = domMarkup.transform(await (await get(path)).text());
-        return doc;
+        doc.body.innerHTML = domMarkup.transform(await res.text());
+        return { status: res.status, doc };
       };
-      topic = await docFor("/" + SAMPLE_REPORT);
-      standalone = await docFor("/spoke/doc/docs/agent-work/2026-01-14-standalone");
-      ordinary = await docFor("/spoke/doc/docs/guide/index.md");
+      topic = (await docFor("/" + SAMPLE_REPORT)).doc;
+      standalone = (await docFor("/spoke/doc/docs/agent-work/2026-01-14-standalone")).doc;
+      const ordinaryRes = await docFor("/spoke/doc/docs/guide/index.md");
+      ordinaryStatus = ordinaryRes.status;
+      ordinary = ordinaryRes.doc;
 
       // A doc filled into its shell is the page a full build renders, served with the same links:
       // the article's links to docs open their pages, the line above it opens the file.
       out = join(scratch(), "out");
       await buildSite(siteData([data]), out);
       served = linker([data]);
-      for (const page of shellParityPages)
-        shellPages.set(page, await (await get(`/spoke/doc/${page}`)).text());
+      for (const page of [...shellFilledPages, prebuiltTopicPage])
+        servedPages.set(page, await (await get(`/spoke/doc/${page}`)).text());
 
       // A doc's slug may itself end in .html, which only the hub's shells serve: Astro builds none.
       writeFileSync(join(repo, "docs/page.html.md"), "# Named like a page\n");
       sh(repo, "git", "add", "docs/page.html.md");
       commit(repo, "page");
-      htmlSlugStatus = (await get("/spoke/doc/docs/page.html")).status;
+      const htmlSlugRes = await get("/spoke/doc/docs/page.html");
+      htmlSlugStatus = htmlSlugRes.status;
+      htmlSlugHtml = await htmlSlugRes.text();
     }, testTimeout(120_000));
 
     test.each(expectedDocs)(
       "links $path from the Docs index and serves its heading",
       ({ path, heading }) => {
         const entry = linkedPages.get(path);
-        assert(entry, `Docs index should link ${path}`);
-        expect(entry.status).toBe(200);
-        expect(entry.html).toContain(heading);
+        expect(entry).toBeDefined();
+        expect(entry!.status).toBe(200);
+        expect(entry!.html).toContain(heading);
       },
     );
 
@@ -3809,32 +3892,35 @@ describe("serve", () => {
 
     test("renders open decision options and the pick-recommended button on the topic report", () => {
       const options = topic.querySelector('details.item[id="spoke:pick-a-variant"]');
-      assert(options, "topic report should include spoke:pick-a-variant");
-      expect(options.querySelector('input[data-option][value="a"]')).not.toBeNull();
-      const pick = options.querySelector(".pick");
-      assert(pick, "decision item should include a pick button");
-      expect(pick.textContent).toContain("Pick recommended");
+      expect(options).not.toBeNull();
+      expect(options!.querySelector('input[data-option][value="a"]')).not.toBeNull();
+      const pick = options!.querySelector(".pick");
+      expect(pick).not.toBeNull();
+      expect(pick!.textContent).toContain("Pick recommended");
     });
 
     test("renders the topic prerequisite graph collapsed with four nodes and two edges", () => {
       const graph = topic.querySelector("details:has(figure.admin-diagram)");
-      assert(graph, "topic report should include a prerequisite graph disclosure");
-      expect(graph.hasAttribute("open")).toBe(false);
-      expect(graph.querySelectorAll("svg .node")).toHaveLength(4);
-      expect(graph.querySelectorAll("svg .edge")).toHaveLength(2);
+      expect(graph).not.toBeNull();
+      expect(graph!.hasAttribute("open")).toBe(false);
+      expect(graph!.querySelectorAll("svg .node")).toHaveLength(4);
+      expect(graph!.querySelectorAll("svg .edge")).toHaveLength(2);
     });
 
-    test("groups settled items under Assumed and decided and orders topic sections before the article", () => {
+    test("groups settled items under Assumed and decided on the topic report", () => {
       const settled = topic.getElementById("spoke:cache-folder");
-      assert(settled, "topic report should include settled item spoke:cache-folder");
-      const group = settled.closest("[data-group]");
-      assert(group, "settled item should sit inside a data-group disclosure");
-      const summary = group.querySelector("summary");
-      assert(summary, "settled group should have a summary");
-      expect(summary.textContent).toContain("Assumed and decided");
+      expect(settled).not.toBeNull();
+      const group = settled!.closest("[data-group]");
+      expect(group).not.toBeNull();
+      const summary = group!.querySelector("summary");
+      expect(summary).not.toBeNull();
+      expect(summary!.textContent).toContain("Assumed and decided");
+    });
+
+    test("orders topic sections before the report article", () => {
       const content = topic.querySelector("#admin-content");
-      assert(content, "topic report should include #admin-content");
-      const topicHtml = content.innerHTML;
+      expect(content).not.toBeNull();
+      const topicHtml = content!.innerHTML;
       const openIdx = topicHtml.indexOf("Open questions");
       const waitsIdx = topicHtml.indexOf("What waits on what");
       const assumedIdx = topicHtml.indexOf("Assumed and decided");
@@ -3845,7 +3931,7 @@ describe("serve", () => {
       expect(assumedIdx).toBeLessThan(articleIdx);
     });
 
-    test("renders the topic contents navigation, subsection comment anchor, and change line", () => {
+    test("renders the topic contents navigation matching every article h2 heading", () => {
       const expectedHeadings = [
         "#scores-by-reader",
         "#next",
@@ -3859,10 +3945,16 @@ describe("serve", () => {
       expect([...topic.querySelectorAll("article h2")].map((h) => "#" + h.id)).toEqual(
         expectedHeadings,
       );
+    });
+
+    test("places a comment disclosure after a subsection h3 heading on the topic report", () => {
       expect(topic.querySelector("article h3 + [data-comment]")).not.toBeNull();
+    });
+
+    test("shows the Last changed report metadata line on the topic report", () => {
       const reportMeta = topic.querySelector("article [data-report]");
-      assert(reportMeta, "topic report should include report metadata");
-      expect(reportMeta.textContent).toContain("Last changed");
+      expect(reportMeta).not.toBeNull();
+      expect(reportMeta!.textContent).toContain("Last changed");
     });
 
     test("omits the contents navigation, items, and diagram on a standalone dated report with five headings", () => {
@@ -3875,35 +3967,52 @@ describe("serve", () => {
       expect(standalone.querySelectorAll("[data-comment]")).toHaveLength(5);
       expect(standalone.getElementById("copy")).not.toBeNull();
       const reportMeta = standalone.querySelector("article [data-report]");
-      assert(reportMeta, "standalone report should include report metadata");
-      expect(reportMeta.textContent).toContain("Last changed");
+      expect(reportMeta).not.toBeNull();
+      expect(reportMeta!.textContent).toContain("Last changed");
     });
 
-    test("omits copy and comment controls on an ordinary doc", () => {
+    test("serves an ordinary doc without copy or comment controls", () => {
+      expect(ordinaryStatus).toBe(200);
+      expect(ordinary.body.textContent).toContain("Setup");
       expect(ordinary.getElementById("copy")).toBeNull();
       expect(ordinary.querySelector("[data-comment]")).toBeNull();
     });
 
-    test.each(shellParityPages)(
+    test("serves the prebuilt topic report with matching script nonces and full-build parity", () => {
+      const built = readFileSync(join(out, `spoke/doc/${prebuiltTopicPage}.html`), "utf8");
+      const got = servedPages.get(prebuiltTopicPage);
+      expect(got).toBeDefined();
+      const nonceMatch = got!.match(/'nonce-([\w-]+)'/);
+      expect(nonceMatch).not.toBeNull();
+      const nonce = nonceMatch![1]!;
+      expect([...got!.matchAll(/<script nonce="([^"]+)"/g)].map((m) => m[1])).toEqual([
+        nonce,
+        nonce,
+      ]);
+      expect(sansNonce(got!)).toBe(sansNonce(served.files(served.pages(built))));
+    });
+
+    test.each(shellFilledPages)(
       "fills %s into its shell with matching script nonces and full-build parity",
       (page) => {
         const built = readFileSync(join(out, `spoke/doc/${page}.html`), "utf8");
-        const got = shellPages.get(page);
-        assert(got, `served HTML for ${page}`);
+        const got = servedPages.get(page);
+        expect(got).toBeDefined();
         // A shell's scripts carry the nonce its policy names.
-        const nonceMatch = got.match(/'nonce-([\w-]+)'/);
-        assert(nonceMatch, `CSP nonce for ${page}`);
-        const nonce = nonceMatch[1]!;
-        expect([...got.matchAll(/<script nonce="([^"]+)"/g)].map((m) => m[1])).toEqual([
+        const nonceMatch = got!.match(/'nonce-([\w-]+)'/);
+        expect(nonceMatch).not.toBeNull();
+        const nonce = nonceMatch![1]!;
+        expect([...got!.matchAll(/<script nonce="([^"]+)"/g)].map((m) => m[1])).toEqual([
           nonce,
           nonce,
         ]);
-        expect(sansNonce(got)).toBe(sansNonce(served.files(served.pages(built))));
+        expect(sansNonce(got!)).toBe(sansNonce(served.files(served.pages(built))));
       },
     );
 
     test("serves a doc whose slug ends in .html through a shell", () => {
       expect(htmlSlugStatus).toBe(200);
+      expect(htmlSlugHtml).toContain('<h1 id="named-like-a-page">Named like a page</h1>');
     });
   });
 
@@ -4061,68 +4170,121 @@ describe("serve", () => {
 
   describe("committed image thumbnails", () => {
     const at = "/_file/spoke/docs/agent-work/2026-01-15-sample-topic";
-    let get: (q: string, headers?: Record<string, string>) => Promise<Response>;
+    const originalCases = [
+      { label: "no width", query: "wide.png", file: "wide.png" },
+      { label: "unoffered width", query: "wide.png?w=123", file: "wide.png" },
+      { label: "image that already fits", query: "small.png?w=480", file: "small.png" },
+      { label: "file that is no image", query: "broken.png?w=480", file: "broken.png" },
+    ];
+    const originals = new Map<string, Buffer>();
+    const fullResponses = new Map<string, { contentType: string | null; bytes: Buffer }>();
     let reviewsPage = "";
     let small: Response;
-    let smallWidth = 0;
+    let smallBytes = Buffer.alloc(0);
+    let smallSize: [number, number] = [0, 0];
+    let tallRes: Response;
+    let tallBytes = Buffer.alloc(0);
     let tallSize: [number, number] = [0, 0];
+    let smallEtag: string | null = null;
+    let repeatStatus = 0;
+    let wide960Etag: string | null = null;
 
     beforeAll(async () => {
       const pixel = Buffer.from(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
         "base64",
       );
-      const png = (w: number, h: number) => new Bun.Image(pixel).resize(w, h).png().bytes();
+      const png = async (w: number, h: number) =>
+        Buffer.from(await new Bun.Image(pixel).resize(w, h).png().bytes());
       const repo = repoFrom("spoke");
       const dir = join(repo, "docs/agent-work/2026-01-15-sample-topic");
-      writeFileSync(join(dir, "wide.png"), await png(2000, 1000));
-      writeFileSync(join(dir, "tall.png"), await png(400, 2000));
-      writeFileSync(join(dir, "small.png"), await png(100, 100));
-      writeFileSync(join(dir, "broken.png"), "no image");
+      const wideFile = await png(2000, 1000);
+      const tallFile = await png(400, 2000);
+      const smallFile = await png(100, 100);
+      const brokenFile = Buffer.from("no image");
+      originals.set("wide.png", wideFile);
+      originals.set("small.png", smallFile);
+      originals.set("broken.png", brokenFile);
+      writeFileSync(join(dir, "wide.png"), wideFile);
+      writeFileSync(join(dir, "tall.png"), tallFile);
+      writeFileSync(join(dir, "small.png"), smallFile);
+      writeFileSync(join(dir, "broken.png"), brokenFile);
       sh(repo, "git", "add", "-A");
       commit(repo, "i");
       const hub = createHub({ root: dirname(repo) });
       reviewsPage = await (
         await hub.fetch(new Request("http://admin.localhost/spoke/reviews"))
       ).text();
-      get = (q: string, headers = {}) =>
+      const get = (q: string, headers = {}) =>
         hub.fetch(new Request(`http://admin.localhost${at}/${q}`, { headers }));
       small = await get("wide.png?w=480");
-      smallWidth = (await new Bun.Image(await small.bytes()).metadata()).width;
-      const tall = await new Bun.Image(await (await get("tall.png?w=480")).bytes()).metadata();
-      tallSize = [tall.width, tall.height];
+      smallBytes = Buffer.from(await small.bytes());
+      const smallMeta = await new Bun.Image(smallBytes).metadata();
+      smallSize = [smallMeta.width, smallMeta.height];
+      tallRes = await get("tall.png?w=480");
+      tallBytes = Buffer.from(await tallRes.bytes());
+      const tallMeta = await new Bun.Image(tallBytes).metadata();
+      tallSize = [tallMeta.width, tallMeta.height];
+      for (const { query } of originalCases) {
+        const res = await get(query);
+        fullResponses.set(query, {
+          contentType: res.headers.get("content-type"),
+          bytes: Buffer.from(await res.bytes()),
+        });
+      }
+      smallEtag = small.headers.get("etag");
+      if (smallEtag)
+        repeatStatus = (await get("wide.png?w=480", { "if-none-match": smallEtag })).status;
+      wide960Etag = (await get("wide.png?w=960")).headers.get("etag");
     }, testTimeout(60_000));
 
     test("renders thumbnail src and srcset on /spoke/reviews", () => {
       const img = reviewsPage.match(/<img[^>]*small\.png[^>]*>/);
-      assert(img, "reviews page should render small.png");
-      expect(img[0]).toContain(`src="${at}/small.png?w=480"`);
-      expect(img[0]).toContain(`srcset="${at}/small.png?w=480 480w, ${at}/small.png?w=960 960w"`);
+      expect(img).not.toBeNull();
+      expect(img![0]).toContain(`src="${at}/small.png?w=480"`);
+      expect(img![0]).toContain(`srcset="${at}/small.png?w=480 480w, ${at}/small.png?w=960 960w"`);
     });
 
-    test("resizes oversized wide and tall PNGs into the 480w box as WebP", () => {
-      expect(small.headers.get("content-type")).toBe("image/webp");
-      expect(smallWidth).toBe(480);
-      expect(tallSize).toEqual([54, 270]);
-    });
+    test.each([
+      {
+        label: "wide PNG",
+        getRes: () => small,
+        getBytes: () => smallBytes,
+        getSize: () => smallSize,
+        expectedSize: [480, 240],
+      },
+      {
+        label: "tall PNG",
+        getRes: () => tallRes,
+        getBytes: () => tallBytes,
+        getSize: () => tallSize,
+        expectedSize: [54, 270],
+      },
+    ])(
+      "resizes an oversized $label into the 480w box as WebP",
+      ({ getRes, getBytes, getSize, expectedSize }) => {
+        const bytes = getBytes();
+        expect(getRes().headers.get("content-type")).toBe("image/webp");
+        expect(bytes.subarray(0, 4).toString("ascii")).toBe("RIFF");
+        expect(bytes.subarray(8, 12).toString("ascii")).toBe("WEBP");
+        expect(getSize()).toEqual(expectedSize);
+      },
+    );
 
     // The full file: no width, a width the hub does not offer, an image that already fits, or a
     // file that is no image.
-    test.each([
-      { label: "no width", query: "wide.png" },
-      { label: "unoffered width", query: "wide.png?w=123" },
-      { label: "image that already fits", query: "small.png?w=480" },
-      { label: "file that is no image", query: "broken.png?w=480" },
-    ])("serves the original PNG for $label", async ({ query }) => {
-      expect((await get(query)).headers.get("content-type")).toBe("image/png");
+    test.each(originalCases)("serves the original PNG for $label", ({ query, file }) => {
+      const res = fullResponses.get(query);
+      expect(res).toBeDefined();
+      expect(res!.contentType).toBe("image/png");
+      expect(res!.bytes).toEqual(originals.get(file)!);
     });
 
-    test("returns 304 for a matching thumbnail etag and varies etags by width", async () => {
-      const etag = small.headers.get("etag");
-      assert(etag, "thumbnail response should include an etag");
-      const repeat = await get("wide.png?w=480", { "if-none-match": etag });
-      expect(repeat.status).toBe(304);
-      expect((await get("wide.png?w=960")).headers.get("etag")).not.toBe(etag);
+    test("returns 304 for a matching thumbnail etag and varies etags by width", () => {
+      expect(smallEtag).not.toBeNull();
+      expect(wide960Etag).not.toBeNull();
+      expect(repeatStatus).toBe(304);
+      expect(wide960Etag).not.toBe(smallEtag);
     });
   });
 });

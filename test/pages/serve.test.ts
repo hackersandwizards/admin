@@ -2,24 +2,10 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 import { createHub } from "../../src/serve.ts";
-import { commit, repoFrom, scratch, sh } from "../admin-fixtures.ts";
+import { commit, repoFrom, scratch, sh, stubBuildSpawn } from "../admin-fixtures.ts";
 
 const TIMEOUT = (60_000 * (Number(process.env.SCAFFOLDING_TEST_TIMEOUT_MS) || 5000)) / 5000;
 const CATALOG_CSP = "object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'";
-
-function stubBuildSpawn(script: string) {
-  const spawn = Bun.spawn;
-  let count = 0;
-  const spy = vi.spyOn(Bun, "spawn").mockImplementation(((cmd: string[], opts: object) => {
-    if (!cmd[1]?.endsWith("serve.ts")) return spawn(cmd, opts as never);
-    count++;
-    return spawn([process.execPath, "-e", script], { stderr: "pipe" });
-  }) as typeof Bun.spawn);
-  return {
-    calls: () => count,
-    restore: () => spy.mockRestore(),
-  };
-}
 
 function holdBuildSpawn() {
   const spawn = Bun.spawn;
