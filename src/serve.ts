@@ -34,7 +34,7 @@ import {
 } from "./serve-repos.ts";
 import { firstWord, siteData } from "./site-data.ts";
 
-export type ServeOptions = { root: string; rescanMs?: number };
+type ServeOptions = { root: string; rescanMs?: number };
 
 export class BuildError extends Error {
   override readonly name = "Error";
@@ -44,7 +44,7 @@ export type BuildFailure = {
   key: string;
   at: number;
   message: string;
-  error: Error;
+  isBuildError: boolean;
 };
 
 export function isBuildDeferred(
@@ -117,13 +117,16 @@ async function rebuildSite(key: string, repos: RepoData[], you: string | undefin
 }
 
 function recordBuildFailure(key: string, error: unknown): BuildFailure {
-  const message = errorMessageOf(error);
   return {
     key,
     at: Date.now(),
-    message,
-    error: error instanceof BuildError ? new BuildError(message) : new Error(message),
+    message: errorMessageOf(error),
+    isBuildError: error instanceof BuildError,
   };
+}
+
+function freshFailureError(failed: BuildFailure): Error {
+  return failed.isBuildError ? new BuildError(failed.message) : new Error(failed.message);
 }
 
 export function createSiteStore(
@@ -156,7 +159,7 @@ export function createSiteStore(
       if (site?.key === key) return site;
       if (isBuildDeferred(failed, key, Date.now())) {
         if (site) return site;
-        throw failed!.error;
+        throw freshFailureError(failed!);
       }
     }
     return runBuild(key, repos);

@@ -251,15 +251,14 @@ export function createPageRoute(
     return missingResponse(parsed, built);
   }
 
-  return function handlePage(parsed: ParsedRequest): Promise<Response> {
-    return loadSite().then(
-      (built) =>
-        respondForMatch(parsed, built, matchSitePage(parsed.path, built.files, built.docs)),
-      (e: Error) =>
-        new Response(
-          `The hub could not build its pages: ${e.message}. It tries again a minute later, or once a repository changes.`,
-          { status: 503 },
-        ),
-    );
+  return async function handlePage(parsed: ParsedRequest): Promise<Response> {
+    const built = await loadSite().catch((e: unknown) => e);
+    if (built instanceof Error)
+      return new Response(
+        `The hub could not build its pages: ${built.message}. It tries again a minute later, or once a repository changes.`,
+        { status: 503 },
+      );
+    const site = built as Site;
+    return respondForMatch(parsed, site, matchSitePage(parsed.path, site.files, site.docs));
   };
 }
