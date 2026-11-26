@@ -1,6 +1,6 @@
 import { assert, describe, expect, test, vi } from "vitest";
+import { rejection } from "@hackersandwizards/scaffolding/rejection";
 import { SHELL, shellPath } from "../src/build.ts";
-import { when } from "../src/display.ts";
 import type { RepoData } from "../src/repo.ts";
 import {
   astroAssetRoute,
@@ -174,7 +174,22 @@ describe("responseHeaders and isCompressible", () => {
 describe("createResponder", () => {
   const bigHtml = "<p>hello</p>".repeat(200);
 
-  test("gzips compressible built pages when accepted and reuses cached bytes on repeat", async () => {
+  test("gzips compressible built pages with no-store and hub CSP", async () => {
+    const responder = createResponder();
+    const req: ParsedRequest = {
+      url: new URL("http://admin.localhost/"),
+      path: "/",
+      gzip: true,
+      ifNoneMatch: null,
+    };
+    const res = responder.page(req, Buffer.from(bigHtml), "index.html");
+    expect(res.headers.get("content-encoding")).toBe("gzip");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("content-security-policy")).toBe(HUB_CSP);
+    expect(Buffer.from(Bun.gunzipSync(await res.bytes())).toString("utf8")).toBe(bigHtml);
+  });
+
+  test("reuses cached gzip bytes across repeated page responses for the same buffer", async () => {
     const responder = createResponder();
     const body = Buffer.from(bigHtml);
     const req: ParsedRequest = {
@@ -187,13 +202,8 @@ describe("createResponder", () => {
     try {
       const first = responder.page(req, body, "index.html");
       const second = responder.page(req, body, "index.html");
-      expect(first.headers.get("content-encoding")).toBe("gzip");
-      expect(first.headers.get("cache-control")).toBe("no-store");
-      expect(first.headers.get("content-security-policy")).toBe(HUB_CSP);
-      expect([
-        Buffer.from(Bun.gunzipSync(await first.bytes())).toString("utf8"),
-        Buffer.from(Bun.gunzipSync(await second.bytes())).toString("utf8"),
-      ]).toEqual([bigHtml, bigHtml]);
+      expect(Buffer.from(Bun.gunzipSync(await first.bytes())).toString("utf8")).toBe(bigHtml);
+      expect(Buffer.from(Bun.gunzipSync(await second.bytes())).toString("utf8")).toBe(bigHtml);
       expect(gzipSpy).toHaveBeenCalledTimes(1);
     } finally {
       gzipSpy.mockRestore();
@@ -374,10 +384,8 @@ describe("createCatalogRoute", () => {
       ifNoneMatch: null,
     });
     assert(redirect, "redirect response");
-    expect([redirect.status, redirect.headers.get("location")]).toEqual([
-      302,
-      "http://admin.localhost/catalog/?q=1",
-    ]);
+    expect(redirect.status).toBe(302);
+    expect(redirect.headers.get("location")).toBe("http://admin.localhost/catalog/?q=1");
     const story = await route({
       url: new URL("http://admin.localhost/catalog/stories/a"),
       path: "/catalog/stories/a",
@@ -396,7 +404,7 @@ describe("createCatalogRoute", () => {
     expect(miss.status).toBe(404);
   });
 
-  test("caches a failed catalog build as 503 with the same body on repeat requests", async () => {
+  test("caches a failed catalog build as 503 with the exact same body on repeat requests", async () => {
     const load = vi.fn(async () => {
       throw new Error("catalog build failed: boom");
     });
@@ -407,13 +415,16 @@ describe("createCatalogRoute", () => {
       gzip: false,
       ifNoneMatch: null,
     };
+    const expectedBody =
+      "catalog build failed: boom: the catalog builds with astrobook and @hackersandwizards/scaffolding installed beside this package; install them and restart admin-serve";
     const first = await route(req);
     const second = await route(req);
     assert(first, "first 503");
     assert(second, "second 503");
-    expect([first.status, second.status]).toEqual([503, 503]);
-    expect(await first.text()).toContain("catalog build failed: boom");
-    expect(await second.text()).toContain("catalog build failed: boom");
+    expect(first.status).toBe(503);
+    expect(second.status).toBe(503);
+    expect(await first.text()).toBe(expectedBody);
+    expect(await second.text()).toBe(expectedBody);
     expect(load).toHaveBeenCalledTimes(1);
   });
 });
@@ -484,7 +495,8 @@ describe("createPageRoute", () => {
       createResponder(),
     );
     const res = await route({ url: new URL(url), path, gzip: false, ifNoneMatch: null });
-    expect([res.status, res.headers.get("location")]).toEqual([302, location]);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(location);
   });
 
   test.each([
@@ -492,7 +504,7 @@ describe("createPageRoute", () => {
       label: "stamped and noticed HTML file",
       url: "http://admin.localhost/",
       path: "/",
-      expectedBody: `<p>Home <span data-stamp>${when(Date.UTC(2026, 2, 10, 9, 5))}</span> <p>Warn</p></p>`,
+      expectedBody: "<p>Home <span data-stamp>10 Mar at 09:05</span> <p>Warn</p></p>",
     },
     {
       label: "unmodified non-HTML built file",
@@ -507,7 +519,7 @@ describe("createPageRoute", () => {
       expectedBody: "<main><p>Doc body</p><p>Warn</p></main>",
     },
   ])("responds with $label", async ({ url, path, expectedBody }) => {
-    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 2, 10, 9, 5));
+    const clock = vi.spyOn(Date, "now").mockReturnValue(new Date(2026, 2, 10, 9, 5).getTime());
     try {
       const site = makeSite();
       const decorator = createPageDecorator(() => undefined);
@@ -540,7 +552,7 @@ describe("createPageRoute", () => {
     expect(await missing.text()).toBe('<a href="/index.html">Hub</a> /missing/x <p>Warn</p>');
   });
 
-  test("answers 503 when loading the site fails", async () => {
+  test("answers 503 when loading the site rejects with an Error", async () => {
     const route = createPageRoute(
       async () => {
         throw new Error("build failed: boom");
@@ -555,8 +567,25 @@ describe("createPageRoute", () => {
       ifNoneMatch: null,
     });
     expect(response.status).toBe(503);
-    expect(await response.text()).toContain(
-      "The hub could not build its pages: build failed: boom.",
+    expect(await response.text()).toBe(
+      "The hub could not build its pages: build failed: boom. It tries again a minute later, or once a repository changes.",
     );
+  });
+
+  test("does not answer 503 when loading the site rejects with a non-Error value", async () => {
+    const route = createPageRoute(
+      () => Promise.reject("not an error object"),
+      createPageDecorator(() => undefined),
+      createResponder(),
+    );
+    const err = await rejection(
+      route({
+        url: new URL("http://admin.localhost/"),
+        path: "/",
+        gzip: false,
+        ifNoneMatch: null,
+      }),
+    );
+    expect(err).toContain("undefined");
   });
 });

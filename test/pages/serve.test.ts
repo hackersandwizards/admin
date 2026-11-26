@@ -1,11 +1,11 @@
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { beforeAll, describe, expect, test, vi } from "vitest";
-import elements from "../../brand-elements.json";
 import { createHub } from "../../src/serve.ts";
 import { commit, repoFrom, scratch, sh } from "../admin-fixtures.ts";
 
 const TIMEOUT = (60_000 * (Number(process.env.SCAFFOLDING_TEST_TIMEOUT_MS) || 5000)) / 5000;
+const CATALOG_CSP = "object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'self'";
 
 function stubBuildSpawn(script: string) {
   const spawn = Bun.spawn;
@@ -21,16 +21,40 @@ function stubBuildSpawn(script: string) {
   };
 }
 
-function countBuildSpawns() {
+function holdBuildSpawn() {
   const spawn = Bun.spawn;
   let count = 0;
-  const spy = vi.spyOn(Bun, "spawn").mockImplementation(((cmd: string[], opts: object) => {
-    if (cmd[1]?.endsWith("serve.ts")) count++;
-    return spawn(cmd, opts as never);
+  let markStarted!: () => void;
+  const started = new Promise<void>((r) => (markStarted = r));
+  const held: { end: () => void }[] = [];
+  const wrapper =
+    'await Bun.stdin.text(); const r = Bun.spawnSync(process.argv.slice(1), { stdio: ["ignore", "inherit", "inherit"] }); process.exit(r.exitCode);';
+  const spy = vi.spyOn(Bun, "spawn").mockImplementation(((
+    cmd: string[],
+    opts: { env?: Record<string, string | undefined> },
+  ) => {
+    if (!cmd[1]?.endsWith("serve.ts")) return spawn(cmd, opts as never);
+    count++;
+    if (count > 1) return spawn(cmd, opts as never);
+    markStarted();
+    const child = spawn([process.execPath, "-e", wrapper, ...cmd], {
+      stdin: "pipe",
+      stderr: "pipe",
+      env: opts?.env,
+    });
+    held.push(child.stdin as { end: () => void });
+    return child;
   }) as typeof Bun.spawn);
   return {
+    started,
     calls: () => count,
-    restore: () => spy.mockRestore(),
+    release: () => {
+      for (const s of held.splice(0)) s.end();
+    },
+    restore: () => {
+      for (const s of held.splice(0)) s.end();
+      spy.mockRestore();
+    },
   };
 }
 
@@ -128,7 +152,7 @@ describe("serve hub pinning on one site", () => {
     async () => {
       const response = await hub.fetch(new Request("http://admin.localhost/catalog/"));
       expect(response.status).toBe(200);
-      expect(response.headers.get("content-security-policy")).toBe(elements.csp);
+      expect(response.headers.get("content-security-policy")).toBe(CATALOG_CSP);
     },
     TIMEOUT,
   );
@@ -207,79 +231,102 @@ describe("serve hub failure, concurrency, and rescan pinning", () => {
   );
 
   test(
-    "two concurrent page fetch requests during one build cause one build",
+    "two page fetch requests while a build is held open share one build spawn",
     async () => {
       const repo = repoFrom("spoke");
-      const counter = countBuildSpawns();
+      const gate = holdBuildSpawn();
       try {
         const hub = createHub({ root: dirname(repo) });
-        const [home, dashboard] = await Promise.all([
-          hub.fetch(new Request("http://admin.localhost/")),
-          hub.fetch(new Request("http://admin.localhost/spoke/dashboard")),
-        ]);
-        expect([home.status, dashboard.status]).toEqual([200, 200]);
-        expect(counter.calls()).toBe(1);
+        const homePending = hub.fetch(new Request("http://admin.localhost/"));
+        await gate.started;
+        const dashPending = hub.fetch(new Request("http://admin.localhost/spoke/dashboard"));
+        gate.release();
+        const [home, dashboard] = await Promise.all([homePending, dashPending]);
+        expect(home.status).toBe(200);
+        expect(dashboard.status).toBe(200);
+        expect(gate.calls()).toBe(1);
       } finally {
-        counter.restore();
+        gate.restore();
       }
     },
     TIMEOUT,
   );
 
   test(
-    "a page request arriving while a build is in flight shares that build",
+    "a page request arriving while pages() holds a build open shares that build",
     async () => {
       const repo = repoFrom("spoke");
-      const counter = countBuildSpawns();
+      const gate = holdBuildSpawn();
       try {
         const hub = createHub({ root: dirname(repo) });
         const building = hub.pages();
+        await gate.started;
         const page = hub.fetch(new Request("http://admin.localhost/"));
+        gate.release();
         const [built, response] = await Promise.all([building, page]);
         expect(built.repos).toHaveLength(1);
         expect(response.status).toBe(200);
-        expect(counter.calls()).toBe(1);
+        expect(gate.calls()).toBe(1);
       } finally {
-        counter.restore();
+        gate.restore();
       }
     },
     TIMEOUT,
   );
 
-  test(
-    "keeps last pages on failure, skips retry inside window, and retries without rebuilding at window edge",
-    async () => {
-      const base = new Date(2026, 4, 10, 12, 0, 0).getTime();
+  describe("stale read notice and retry backoff on one broken repository", () => {
+    const base = new Date(2026, 4, 10, 12, 0, 0).getTime();
+    let hub: ReturnType<typeof createHub>;
+    let afterFail: Awaited<ReturnType<ReturnType<typeof createHub>["pages"]>>;
+    let dashboard: Response;
+    let body = "";
+
+    beforeAll(async () => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(base);
       const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       try {
         const repo = repoFrom("spoke");
         const second = join(dirname(repo), "second");
         cpSync(repo, second, { recursive: true });
-        const hub = createHub({ root: dirname(repo) });
+        hub = createHub({ root: dirname(repo) });
         await hub.pages();
         breakGoalObject(second);
         sh(second, "git", "tag", "v-broken");
-        const afterFail = await hub.pages();
-        const dashboard = await hub.fetch(new Request("http://admin.localhost/second/dashboard"));
-        const body = await dashboard.text();
-        expect(dashboard.status).toBe(200);
-        expect(body).toContain("Its pages show its last read.");
-
-        clock.mockReturnValue(base + 59_999);
-        await hub.pages();
-        expect(errSpy).toHaveBeenCalledTimes(1);
-
-        clock.mockReturnValue(base + 60_000);
-        expect(await hub.pages()).toBe(afterFail);
-        expect(errSpy).toHaveBeenCalledTimes(2);
+        afterFail = await hub.pages();
+        dashboard = await hub.fetch(new Request("http://admin.localhost/second/dashboard"));
+        body = await dashboard.text();
       } finally {
-        clock.mockRestore();
         errSpy.mockRestore();
+        clock.mockRestore();
       }
-    },
-    TIMEOUT,
-  );
+    }, TIMEOUT);
+
+    test("keeps the repository's last pages and names it in the last-read notice", () => {
+      expect(dashboard.status).toBe(200);
+      expect(body).toContain("second could not be read:");
+      expect(body).toContain("Its pages show its last read.");
+    });
+
+    test(
+      "skips retry inside the window and retries without rebuilding at the window edge",
+      async () => {
+        const clock = vi.spyOn(Date, "now").mockReturnValue(base + 59_999);
+        const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        try {
+          await hub.pages();
+          expect(errSpy).toHaveBeenCalledTimes(0);
+
+          clock.mockReturnValue(base + 60_000);
+          expect(await hub.pages()).toBe(afterFail);
+          expect(errSpy).toHaveBeenCalledTimes(1);
+        } finally {
+          errSpy.mockRestore();
+          clock.mockRestore();
+        }
+      },
+      TIMEOUT,
+    );
+  });
 
   test(
     "counts multiple unread repositories and drops a vanished repository after rescan",
@@ -301,6 +348,7 @@ describe("serve hub failure, concurrency, and rescan pinning", () => {
 
         rmSync(join(root, "two"), { recursive: true, force: true });
         clock.mockReturnValue(base + 200);
+        // Triggers background rescan while returning the last list.
         await hub.pages();
         await vi.waitFor(
           async () => {

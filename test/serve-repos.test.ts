@@ -291,6 +291,39 @@ describe("createRepoCache", () => {
     }
   });
 
+  test("loads healthy repos alongside failures and records unread notice for never-read repo", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dataA = sampleRepo("a", "/r/a");
+    const readers = new Map<string, () => Promise<RepoData>>([
+      ["/r/a", async () => dataA],
+      [
+        "/r/b",
+        async () => {
+          throw new Error("b broken");
+        },
+      ],
+    ]);
+    const states = new Map([
+      ["/r/a", { state: "a1", fetched: 500 }],
+      ["/r/b", { state: "b1", fetched: undefined }],
+    ]);
+    try {
+      const cache = createRepoCache(
+        (p) => readers.get(p)!(),
+        async (p) => states.get(p)!,
+      );
+      const firstLoad = await cache.load((await cache.probe(["/r/a", "/r/b"])).states);
+      const readFetched = cache.fetchedTime;
+      expect(firstLoad).toEqual({ repos: [dataA], fresh: true });
+      expect(readFetched("/r/a")).toBe(500);
+      expect(cache.unreadNotices()).toEqual([
+        { name: "b", message: "b broken", hasLastRead: false },
+      ]);
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
   test("prunes vanished repositories from read, unread, and fetched caches on probe", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const dataA = sampleRepo("a", "/r/a");

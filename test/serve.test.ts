@@ -58,7 +58,7 @@ describe("isBuildDeferred", () => {
     key: "k2",
     at,
     message: "build failed: boom",
-    error: new BuildError("build failed: boom"),
+    isBuildError: true,
   });
 
   test.each<{ label: string; failed: BuildFailure | undefined; key: string; expected: boolean }>([
@@ -97,7 +97,61 @@ describe("BuildError", () => {
 });
 
 describe("createSiteStore", () => {
-  test("logs Error line, rethrows BuildError during retry window, and clears failure on recovery", async () => {
+  test("logs an Error instance with the literal message and Bun output on build failure", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const repo = makeRepo("a", "/r/a");
+    const repoCache = createRepoCache(
+      async () => repo,
+      async () => ({ state: "s1", fetched: undefined }),
+    );
+    const store = createSiteStore(
+      async () => ["/r/a"],
+      repoCache,
+      async () => {
+        throw new BuildError("build failed: exit 1");
+      },
+    );
+    try {
+      await rejection(store.refresh());
+      const logged = errSpy.mock.calls[0]![0];
+      expect(logged).toBeInstanceOf(Error);
+      expect((logged as Error).name).toBe("Error");
+      expect((logged as Error).message).toBe("build failed: exit 1");
+      expect(Bun.inspect(logged).split("\n")).toContain("error: build failed: exit 1");
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
+  test("rethrows a fresh BuildError on each deferred call without sharing mutation", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const clock = vi.spyOn(Date, "now").mockReturnValue(50_000);
+    const repo = makeRepo("a", "/r/a");
+    const repoCache = createRepoCache(
+      async () => repo,
+      async () => ({ state: "s1", fetched: undefined }),
+    );
+    const build = vi.fn(async () => {
+      throw new BuildError("build failed: exit 1");
+    });
+    try {
+      const store = createSiteStore(async () => ["/r/a"], repoCache, build);
+      await rejection(store.refresh());
+      const deferredOne = (await store.refresh().catch((e: unknown) => e)) as Error;
+      deferredOne.message = "mutated by caller";
+      const deferredTwo = (await store.refresh().catch((e: unknown) => e)) as Error;
+      expect(deferredOne).toBeInstanceOf(BuildError);
+      expect(deferredTwo).toBeInstanceOf(BuildError);
+      expect(deferredTwo).not.toBe(deferredOne);
+      expect(deferredTwo.message).toBe("build failed: exit 1");
+      expect(build).toHaveBeenCalledTimes(1);
+    } finally {
+      errSpy.mockRestore();
+      clock.mockRestore();
+    }
+  });
+
+  test("returns the built repositories and clears buildFailure once retry succeeds", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const clock = vi.spyOn(Date, "now").mockReturnValue(50_000);
     const repo = makeRepo("a", "/r/a");
@@ -114,15 +168,98 @@ describe("createSiteStore", () => {
     const build = vi.fn((key: string, repos: RepoData[]) => outcomes.shift()!(key, repos));
     try {
       const store = createSiteStore(async () => ["/r/a"], repoCache, build);
-      expect(await rejection(store.refresh())).toContain("build failed: exit 1");
-      expect(String(errSpy.mock.calls[0]![0])).toBe("Error: build failed: exit 1");
-      const cachedErr = await store.refresh().catch((e: unknown) => e);
-      expect(cachedErr).toBeInstanceOf(BuildError);
-      expect(build).toHaveBeenCalledTimes(1);
-
+      await rejection(store.refresh());
       clock.mockReturnValue(50_000 + RETRY_MS);
-      await store.refresh();
+      const built = await store.refresh();
+      expect(built.repos).toEqual([repo]);
       expect(store.buildFailure()).toBeUndefined();
+      expect(build).toHaveBeenCalledTimes(2);
+    } finally {
+      errSpy.mockRestore();
+      clock.mockRestore();
+    }
+  });
+
+  test("rebuilds when fresh repository data arrives despite matching site key", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const clock = vi.spyOn(Date, "now").mockReturnValue(10_000);
+    const repoA = makeRepo("a", "/r/a");
+    const repoB = makeRepo("b", "/r/b");
+    const bReads = [
+      async () => {
+        throw new Error("b transient");
+      },
+      async () => repoB,
+    ];
+    const readers = new Map<string, () => Promise<RepoData>>([
+      ["/r/a", async () => repoA],
+      ["/r/b", () => bReads.shift()!()],
+    ]);
+    const repoCache = createRepoCache(
+      (p) => readers.get(p)!(),
+      async (p) => ({ state: `state:${p}`, fetched: undefined }),
+    );
+    const build = vi.fn(async (key: string, repos: RepoData[]) => makeSite(key, repos));
+    try {
+      const store = createSiteStore(async () => ["/r/a", "/r/b"], repoCache, build);
+      const first = await store.refresh();
+      expect(first.repos).toEqual([repoA]);
+
+      clock.mockReturnValue(10_000 + RETRY_MS);
+      const rebuilt = await store.refresh();
+      expect(rebuilt).not.toBe(first);
+      expect(rebuilt.repos).toEqual([repoA, repoB]);
+      expect(build).toHaveBeenCalledTimes(2);
+    } finally {
+      errSpy.mockRestore();
+      clock.mockRestore();
+    }
+  });
+
+  test("rebuilds during build backoff when fresh repository data arrives", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const clock = vi.spyOn(Date, "now").mockReturnValue(10_000);
+    const repoA = makeRepo("a", "/r/a");
+    const repoB = makeRepo("b", "/r/b");
+    const bReads = [
+      async () => {
+        throw new Error("b transient");
+      },
+      async () => repoB,
+    ];
+    const readers = new Map<string, () => Promise<RepoData>>([
+      ["/r/a", async () => repoA],
+      ["/r/b", () => bReads.shift()!()],
+    ]);
+    const states = new Map([
+      ["/r/a", "a1"],
+      ["/r/b", "b1"],
+    ]);
+    const repoCache = createRepoCache(
+      (p) => readers.get(p)!(),
+      async (p) => ({ state: states.get(p)!, fetched: undefined }),
+    );
+    const outcomes = [
+      async (key: string, repos: RepoData[]) => makeSite(key, repos),
+      async () => {
+        throw new BuildError("build failed: boom");
+      },
+      async (key: string, repos: RepoData[]) => makeSite(key, repos),
+    ];
+    const build = vi.fn((key: string, repos: RepoData[]) => outcomes.shift()!(key, repos));
+    try {
+      const store = createSiteStore(async () => ["/r/a", "/r/b"], repoCache, build);
+      const first = await store.refresh();
+      // Move a to a2 at t=50_000 so build fails and starts a 60s build backoff.
+      states.set("/r/a", "a2");
+      clock.mockReturnValue(50_000);
+      expect(await store.refresh()).toBe(first);
+      // At t=70_000, build backoff is still active (20s elapsed), while b's read is due (60s elapsed).
+      clock.mockReturnValue(70_000);
+      const rebuilt = await store.refresh();
+      expect(rebuilt).not.toBe(first);
+      expect(rebuilt.repos).toEqual([repoA, repoB]);
+      expect(build).toHaveBeenCalledTimes(3);
     } finally {
       errSpy.mockRestore();
       clock.mockRestore();
@@ -164,7 +301,7 @@ describe("createSiteStore", () => {
     }
   });
 
-  test("rethrows plain Error (not BuildError) during retry window after a non-BuildError failure", async () => {
+  test("rethrows a fresh plain Error (not BuildError) during retry window after a non-BuildError failure", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const clock = vi.spyOn(Date, "now").mockReturnValue(10_000);
     const repo = makeRepo("a", "/r/a");
@@ -177,11 +314,13 @@ describe("createSiteStore", () => {
     });
     try {
       const store = createSiteStore(async () => ["/r/a"], repoCache, build);
-      await rejection(store.refresh());
-      const cached = await store.refresh().catch((e: unknown) => e);
-      expect(cached).toBeInstanceOf(Error);
-      expect(cached).not.toBeInstanceOf(BuildError);
-      expect((cached as Error).message).toBe("unexpected boom");
+      const first = await store.refresh().catch((e: unknown) => e);
+      const second = await store.refresh().catch((e: unknown) => e);
+      expect(Object.getPrototypeOf(second)).toBe(Error.prototype);
+      expect(second).not.toBeInstanceOf(BuildError);
+      expect(second).not.toBe(first);
+      expect((second as Error).message).toBe("unexpected boom");
+      expect(build).toHaveBeenCalledTimes(1);
     } finally {
       errSpy.mockRestore();
       clock.mockRestore();
