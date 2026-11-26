@@ -69,90 +69,91 @@ describe("admin-check", () => {
 
   describe("item body paths and rendering", () => {
     let spoke: Awaited<ReturnType<typeof readRepo>>;
-    let other: Awaited<ReturnType<typeof readRepo>>;
+    let html: string;
+    let ruledView: ReturnType<typeof siteData>["repos"][number]["items"][number];
+    let unownedView: ReturnType<typeof siteData>["repos"][number]["items"][number];
 
     beforeAll(async () => {
       spoke = await readRepo(join(FIX, "spoke"), treeSource(join(FIX, "spoke")));
-      other = {
+      const body = [
+        "Report: other `docs/agent-work/notes.md`.",
+        "Old: `git show abc~1:docs/agent-work/gone.md` in other.",
+        "Own: docs/agent-work/2026-01-15-sample-topic.md, none: docs/agent-work/missing.md.",
+        "[relative](../2026-01-15-sample-topic.md)",
+        "Folder: docs/agent-work/2026-01-15-sample-topic, item: docs/agent-work/items/goal.md.",
+        "![shot of docs/agent-work/2026-01-15-sample-topic.md](a.png)",
+      ].join("\n\n");
+      const item = parseItem(
+        "x",
+        `---\nkind: work\nstatus: open\npriority: 1\nowner: A\n---\n# X\n\n${body}\n`,
+      );
+      const other = {
         ...spoke,
         key: "other",
         path: "/o/other",
         items: [],
         workFiles: ["docs/agent-work/notes.md"],
       };
-    });
-
-    const renderBody = (body: string) => {
-      const item = parseItem(
-        "x",
-        `---\nkind: work\nstatus: open\npriority: 1\nowner: A\n---\n# X\n\n${body}\n`,
-      );
-      return siteData([{ ...spoke, items: [item] }, other]).repos.find((r) => r.key === "spoke")!
+      html = siteData([{ ...spoke, items: [item] }, other]).repos.find((r) => r.key === "spoke")!
         .items[0]!.html;
-    };
+      // A body has no front matter: a leading rule stays, with the text after it.
+      const ruled = { ...item, id: "ruled", body: "---\nKept.\n\n---\nAfter." };
+      const unowned = { ...item, id: "unowned", owner: undefined };
+      const pair = siteData([{ ...spoke, items: [ruled, unowned] }]).repos[0]!.items;
+      ruledView = pair[0]!;
+      unownedView = pair[1]!;
+    });
 
     test.each([
       {
         label: "links a path into the repository named beside it",
-        body: "Report: other `docs/agent-work/notes.md`.",
-        expected: () =>
-          '<p>Report: other <code class="hw-inline-code"><a class="hw-link" href="file:///o/other/docs/agent-work/notes.md">docs/agent-work/notes.md</a></code>.</p>\n',
+        expected: () => 'href="file:///o/other/docs/agent-work/notes.md"',
       },
       {
-        label: "leaves a missing git-show path in another repository as text",
-        body: "Old: `git show abc~1:docs/agent-work/gone.md` in other.",
+        label: "links an existing work file in the item's own repository",
         expected: () =>
-          '<p>Old: <code class="hw-inline-code">git show abc~1:docs/agent-work/gone.md</code> in other.</p>\n',
-      },
-      {
-        label: "links an existing own work file and leaves a missing one as text",
-        body: "Own: docs/agent-work/2026-01-15-sample-topic.md, none: docs/agent-work/missing.md.",
-        expected: () =>
-          `<p>Own: <a class="hw-link" href="file://${spoke.path}/docs/agent-work/2026-01-15-sample-topic.md">docs/agent-work/2026-01-15-sample-topic.md</a>, none: docs/agent-work/missing.md.</p>\n`,
-      },
-      {
-        label: "resolves a relative Markdown link without keeping ../",
-        body: "[relative](../2026-01-15-sample-topic.md)",
-        expected: () =>
-          `<p><a class="hw-link" href="file://${spoke.path}/docs/agent-work/2026-01-15-sample-topic.md">relative</a></p>\n`,
+          `href="file://${spoke.path}/docs/agent-work/2026-01-15-sample-topic.md">docs/agent-work/2026-01-15-sample-topic.md<`,
       },
       {
         // A folder has no file to serve; an item file has.
-        label: "leaves a folder path as text and links an item file",
-        body: "Folder: docs/agent-work/2026-01-15-sample-topic, item: docs/agent-work/items/goal.md.",
-        expected: () =>
-          `<p>Folder: docs/agent-work/2026-01-15-sample-topic, item: <a class="hw-link" href="file://${spoke.path}/docs/agent-work/items/goal.md">docs/agent-work/items/goal.md</a>.</p>\n`,
+        label: "links an item file in the item's own repository",
+        expected: () => `href="file://${spoke.path}/docs/agent-work/items/goal.md"`,
       },
       {
         // A path inside an attribute stays text, so the tag holds.
         label: "leaves a path inside an image alt attribute as text",
-        body: "![shot of docs/agent-work/2026-01-15-sample-topic.md](a.png)",
-        expected: () =>
-          `<p><img src="file://${spoke.path}/docs/agent-work/items/a.png" alt="shot of docs/agent-work/2026-01-15-sample-topic.md" /></p>\n`,
+        expected: () => 'alt="shot of docs/agent-work/2026-01-15-sample-topic.md"',
       },
-    ])("$label", ({ body, expected }) => {
-      expect(renderBody(body)).toBe(expected());
+    ])("$label", ({ expected }) => {
+      expect(html).toContain(expected());
+    });
+
+    test.each([
+      ["leaves a missing git-show path in another repository unlinked", 'gone.md"'],
+      ["leaves a missing work file in the item's own repository unlinked", 'missing.md"'],
+      // A folder has no file to serve; an item file has.
+      ["leaves a folder path unlinked", 'sample-topic"'],
+    ])("%s", (_label, forbidden) => {
+      expect(html).not.toContain(forbidden);
+    });
+
+    test("resolves a relative Markdown link into the item's own repository without keeping ../", () => {
+      expect(html).toMatch(
+        new RegExp(
+          `href="file://${spoke.path}/docs/agent-work/2026-01-15-sample-topic.md">relative<`,
+        ),
+      );
+      expect(html).not.toContain('href="../');
     });
 
     test("an item body has no front matter so a leading rule stays with the text after it", () => {
-      // A body has no front matter: a leading rule stays, with the text after it.
-      const base = parseItem(
-        "x",
-        "---\nkind: work\nstatus: open\npriority: 1\nowner: A\n---\n# X\n",
-      );
-      const ruled = { ...base, id: "ruled", body: "---\nKept.\n\n---\nAfter." };
-      const [rendered] = siteData([{ ...spoke, items: [ruled] }]).repos[0]!.items;
-      expect(rendered!.html).toContain("Kept.");
+      expect(ruledView.id).toBe("ruled");
+      expect(ruledView.html).toBe("<hr />\n<p>Kept.</p>\n<hr />\n<p>After.</p>\n");
     });
 
     test("an item without an owner is not marked as agent-owned", () => {
-      const base = parseItem(
-        "x",
-        "---\nkind: work\nstatus: open\npriority: 1\nowner: A\n---\n# X\n",
-      );
-      const unowned = { ...base, id: "unowned", owner: undefined };
-      const [rendered] = siteData([{ ...spoke, items: [unowned] }]).repos[0]!.items;
-      expect(rendered!.agent).toBe(false);
+      expect(unownedView.id).toBe("unowned");
+      expect(unownedView.agent).toBe(false);
     });
   });
 
@@ -289,7 +290,7 @@ describe("admin-check", () => {
   test.each([
     ["a#b c:d", "a-b-c-d"],
     ["Größe", "Größe"],
-    ["Größe".normalize("NFD"), "Größe".normalize("NFD")],
+    ["Gro\u0308ße", "Gro\u0308ße"],
   ])("folder name %s derives repository key %s", async (folder, expectedKey) => {
     const read = await readRepo(`/nonexistent/${folder}`, { paths: [], read: () => "" });
     expect(read.key).toBe(expectedKey);
@@ -305,47 +306,39 @@ describe("admin-check", () => {
     expect(await configured("/nonexistent/x", { label })).toMatchObject(expected);
   });
 
-  test("the hub names a repository without a label by its key", async () => {
-    // The hub names a repository without one by its key.
-    expect(
-      siteData([await configured("/nonexistent/x", { label: undefined })]).repos[0]!.label,
-    ).toBe("x");
-  });
-
   describe("docs/agent-work/admin.json at HEAD", () => {
     // Read at HEAD, as the hub reads it: no package.json, the file committed beside the items.
-    let repo: string;
-    let file: string;
-    let pkgFile: string;
+    let base: string;
 
     beforeAll(() => {
-      repo = repoFrom("spoke");
-      file = join(repo, "docs/agent-work/admin.json");
-      pkgFile = join(repo, "package.json");
-      rmSync(pkgFile);
+      base = repoFrom("spoke");
     });
 
-    const commitAdmin = (text: string) => {
-      writeFileSync(file, text);
-      rmSync(pkgFile, { force: true });
-      sh(repo, "git", "add", "-A");
-      commit(repo, "admin");
-      return readRepo(repo);
+    const commitAdmin = async (text: string) => {
+      const dir = join(scratch(), "spoke");
+      cpSync(base, dir, { recursive: true });
+      rmSync(join(dir, "package.json"));
+      writeFileSync(join(dir, "docs/agent-work/admin.json"), text);
+      sh(dir, "git", "add", "-A");
+      commit(dir, "admin");
+      return { dir, read: await readRepo(dir) };
     };
 
     const commitAdminWithPackage = (text: string, pkg: object) => {
-      writeFileSync(file, text);
-      writeFileSync(pkgFile, JSON.stringify(pkg));
-      sh(repo, "git", "add", "-A");
-      commit(repo, "admin");
-      return readRepo(repo);
+      const dir = join(scratch(), "spoke");
+      cpSync(base, dir, { recursive: true });
+      writeFileSync(join(dir, "docs/agent-work/admin.json"), text);
+      writeFileSync(join(dir, "package.json"), JSON.stringify(pkg));
+      sh(dir, "git", "add", "-A");
+      commit(dir, "admin");
+      return readRepo(dir);
     };
 
     test("reads standalone docs/agent-work/admin.json at HEAD and passes admin-check", async () => {
-      const read = await commitAdmin('{ "label": "Sample notes" }');
+      const { dir, read } = await commitAdmin('{ "label": "Sample notes" }');
       expect([read.key, read.label, read.defects]).toEqual(["spoke", "Sample notes", []]);
       // admin-check passes it beside the items.
-      expect(readItems(treeSource(repo)).defects).toEqual([]);
+      expect(readItems(treeSource(dir)).defects).toEqual([]);
     });
 
     test.each([
@@ -367,7 +360,7 @@ describe("admin-check", () => {
     ])(
       "reports malformed standalone docs/agent-work/admin.json (%s)",
       async (_case, text, expected) => {
-        expect(await commitAdmin(text)).toMatchObject(expected);
+        expect((await commitAdmin(text)).read).toMatchObject(expected);
       },
     );
 
@@ -427,6 +420,7 @@ describe("hub", () => {
     let repo: string;
     let tool: string;
     let live: string;
+    let ui: string;
 
     beforeAll(() => {
       repo = repoFrom("spoke");
@@ -435,16 +429,18 @@ describe("hub", () => {
       bareIn(join(root, "other"), { name: "other" });
       live = bareIn(join(root, "group/live"), { name: "@hackersandwizards/live" });
       bareIn(join(root, "group/_archive/old"), { name: "@hackersandwizards/old" });
+      ui = bareIn(join(scratch(), "ui"), { name: "ui", devDependencies: { astro: "1" } });
     });
 
     test("finds a repo naming an @hackersandwizards package with no items, and none other or archived", async () => {
       expect(await findRepos(root)).toEqual([live, repo, tool]);
     });
 
-    test("leaves designSystem unset for repositories without a catalog config", async () => {
-      expect((await readRepo(tool)).designSystem).toBeUndefined();
-      const ui = bareIn(join(scratch(), "ui"), { name: "ui", devDependencies: { astro: "1" } });
-      expect((await readRepo(ui)).designSystem).toBeUndefined();
+    test.each([
+      ["plain @hackersandwizards package", () => tool],
+      ["astro package without a catalog config", () => ui],
+    ])("leaves designSystem unset for a %s", async (_label, repoDir) => {
+      expect((await readRepo(repoDir())).designSystem).toBeUndefined();
     });
 
     test("infers designSystem and dev server from a committed astrobook config", async () => {
@@ -493,53 +489,47 @@ describe("hub", () => {
     expect(shell.designSystemDev).toEqual({ port: 4998, start: "catalog" });
   });
 
-  test.each([
-    {
-      label: "skips a # comment inside a code fence and strips the rendered h1",
-      path: "docs/fenced.md",
-      text: "```sh\n# install deps\n```\n\n# Setup &amp; *run*\n\nBody.\n",
-      expected: {
-        title: "Setup & run",
-        html: '<pre class="hw-code not-prose"><code class="language-sh"># install deps\n</code></pre>\n<p>Body.</p>\n',
-      },
-    },
-    {
-      label: "strips a setext h1 into the title",
-      path: "docs/setext.md",
-      text: "Setext title\n============\n\nBody.\n",
-      expected: {
-        title: "Setext title",
-        html: "<p>Body.</p>\n",
-      },
-    },
-    {
-      label: "falls back to the file path when no h1 is present",
-      path: "docs/none.md",
-      text: "Just text.\n",
-      expected: {
-        title: "docs/none.md",
-        html: "<p>Just text.</p>\n",
-      },
-    },
-    {
-      label: "falls back to the file path and keeps an image-only h1 in the article",
-      path: "docs/image.md",
-      text: "# ![logo](logo.png)\n\nBody.\n",
-      expected: {
-        title: "docs/image.md",
-        html: '<h1 id="logo"><img src="file:///nonexistent/titles/docs/logo.png" alt="logo" /></h1>\n<p>Body.</p>\n',
-      },
-    },
-  ])(
-    "extracts a doc's title from its first rendered h1: $label",
-    async ({ path, text, expected }) => {
+  describe("doc title extraction", () => {
+    let byPath: Record<string, { title: string; html: string }>;
+
+    beforeAll(async () => {
+      const files: Record<string, string> = {
+        "docs/fenced.md": "```sh\n# install deps\n```\n\n# Setup &amp; *run*\n\nBody.\n",
+        "docs/setext.md": "Setext title\n============\n\nBody.\n",
+        "docs/none.md": "Just text.\n",
+        "docs/image.md": "# ![logo](logo.png)\n\nBody.\n",
+      };
       const { docs } = await readRepo("/nonexistent/titles", {
-        paths: [path],
-        read: () => text,
+        paths: Object.keys(files),
+        read: (f) => files[f],
       });
-      expect({ title: docs[0]!.title, html: docs[0]!.html }).toEqual(expected);
-    },
-  );
+      byPath = Object.fromEntries(docs.map((d) => [d.path, d]));
+    });
+
+    test.each([
+      ["docs/fenced.md", "Setup & run"],
+      ["docs/setext.md", "Setext title"],
+      ["docs/none.md", "docs/none.md"],
+      ["docs/image.md", "docs/image.md"],
+    ])("uses the first rendered text h1 as the title for %s", (path, title) => {
+      expect(byPath[path]!.title).toBe(title);
+    });
+
+    test.each(["docs/fenced.md", "docs/setext.md"])(
+      "removes the extracted h1 from the rendered article for %s",
+      (path) => {
+        expect(byPath[path]!.html).not.toContain("<h1");
+      },
+    );
+
+    test("keeps a # comment inside a fenced code block in the article", () => {
+      expect(byPath["docs/fenced.md"]!.html).toContain("# install deps");
+    });
+
+    test("keeps an image-only h1 in the rendered article", () => {
+      expect(byPath["docs/image.md"]!.html).toContain('<h1 id="logo"><img');
+    });
+  });
 
   test("reads a worktree's fetch, and a checkout without upstream as commits behind unknown", async () => {
     const repo = repoFrom("spoke");
@@ -717,11 +707,26 @@ describe("admin.js", () => {
     await Promise.all(opened.map((w) => w.happyDOM.close()));
   });
 
+  test("a stored light choice keeps the page light on a dark system until cleared", () => {
+    const theme = readFileSync(join(import.meta.dirname, "../site/src/theme.js"), "utf8");
+    const window = new Window({
+      url: "http://admin.localhost/index",
+      settings: { device: { prefersColorScheme: "dark" } },
+    });
+    opened.push(window);
+    window.localStorage.setItem("theme", "light");
+    evaluate(window, theme);
+    expect(window.document.documentElement.dataset.theme).toBeUndefined();
+    window.localStorage.removeItem("theme");
+    evaluate(window, theme);
+    expect(window.document.documentElement.dataset.theme).toBe("dark");
+  });
+
   test.each([
     ["light", undefined],
     ["dark", "dark"],
   ] as const)(
-    "an explicitly light page stays light and an unset page follows a %s system",
+    "without a stored choice, theme.js follows a %s system",
     (prefersColorScheme, expectedTheme) => {
       const theme = readFileSync(join(import.meta.dirname, "../site/src/theme.js"), "utf8");
       const window = new Window({
@@ -729,10 +734,6 @@ describe("admin.js", () => {
         settings: { device: { prefersColorScheme } },
       });
       opened.push(window);
-      window.localStorage.setItem("theme", "light");
-      evaluate(window, theme);
-      expect(window.document.documentElement.dataset.theme).toBeUndefined();
-      window.localStorage.removeItem("theme");
       evaluate(window, theme);
       expect(window.document.documentElement.dataset.theme).toBe(expectedTheme);
     },

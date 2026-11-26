@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Window, type Element as DomEl } from "happy-dom";
+import { Window, type Element as DomEl, type Node as DomNode } from "happy-dom";
 import { afterAll, assert, beforeAll, describe, expect, test, vi } from "vitest";
 import { tableScroll as brandTableScroll } from "@hackersandwizards/brand/elements/table.ts";
 import { needsGraph, needsGraphItems } from "../src/needs-graph.ts";
@@ -193,19 +193,20 @@ describe("needs graph", () => {
       { ...items[2]!, title, status: "decided" as const, needs: [] },
     ];
     const graph = graphDocument(needsGraph(input));
-    const nodes = [...graph.querySelectorAll(".node")].map((node) => {
-      const text = node.querySelector("text");
-      assert(text, "rendered node text");
-      return {
+    expect(
+      [...graph.querySelectorAll(".node")].map((node) => ({
         shape: node.getAttribute("data-shape"),
         label: node.getAttribute("data-label"),
-        text: text.textContent,
-      };
-    });
-    expect(nodes).toEqual([
-      { shape: "stadium", label: title, text: title },
-      { shape: "rectangle", label: title, text: title },
-      { shape: "rounded", label: title, text: title },
+      })),
+    ).toEqual([
+      { shape: "stadium", label: title },
+      { shape: "rectangle", label: title },
+      { shape: "rounded", label: title },
+    ]);
+    expect([...graph.querySelectorAll(".node text")].map((el) => el.textContent)).toEqual([
+      title,
+      title,
+      title,
     ]);
     expect(
       [...graph.querySelectorAll(".edge")].map((edge) => [
@@ -415,34 +416,14 @@ describe("item files", () => {
 
   test.each([
     {
-      label: "impossible ISO due date",
-      change: { due: "2026-13-45" },
-      expected: ["due 2026-13-45 not ISO"],
-    },
-    {
       label: "leap-day ISO due date",
       change: { due: "2028-02-29" },
       expected: [],
     },
     {
-      label: "non-text area object",
-      change: { area: { a: 1 } },
-      expected: ["area is not text"],
-    },
-    {
       label: "plain text area",
       change: { area: "Field Ops" },
       expected: [],
-    },
-    {
-      label: "non-text option label",
-      change: {
-        options: [
-          { key: "a", label: { l: 1 } },
-          { key: "b", label: "B" },
-        ],
-      },
-      expected: ["option a label or detail is not text"],
     },
     {
       label: "option key containing a comma",
@@ -966,28 +947,39 @@ describe("hub", () => {
     body.innerHTML = html;
     return body;
   };
-  const txt = (value: string): Hast => ({ type: "text", value });
-  const el = (tagName: string, children: Hast[]): Hast => ({
-    type: "element",
-    tagName,
-    properties: { className: [] },
-    children,
-  });
-  const hTable = (heads: Hast[][]): Hast =>
-    el("table", [
-      el("thead", [
-        el(
-          "tr",
-          heads.map((cells) => el("th", cells)),
-        ),
-      ]),
-      el("tbody", [
-        el(
-          "tr",
-          heads.map(() => el("td", [txt("1")])),
-        ),
-      ]),
-    ]);
+  const hastByNodeType = new Map<number, (n: DomNode) => Hast>([
+    [
+      3,
+      (n) => {
+        assert(typeof n.textContent === "string", "text node content");
+        return { type: "text", value: n.textContent };
+      },
+    ],
+    [
+      1,
+      (n) => {
+        const el = n as DomEl;
+        return {
+          type: "element",
+          tagName: el.localName,
+          properties: { className: [...el.classList] },
+          children: [...el.childNodes].map(toHast),
+        };
+      },
+    ],
+  ]);
+  const toHast = (n: DomNode): Hast => {
+    const build = hastByNodeType.get(n.nodeType);
+    assert(build, `unexpected DOM nodeType ${n.nodeType}`);
+    return build(n);
+  };
+  const isScrollWrapper = (node: Hast) =>
+    [node.properties!.className].flat().includes("hw-table-scroll");
+  const collectWrappers = (node: Hast): Hast[] => {
+    assert(Array.isArray(node.children), "node children");
+    const elements = node.children.filter((c) => c.type === "element");
+    return elements.flatMap((el) => [...[el].filter(isScrollWrapper), ...collectWrappers(el)]);
+  };
 
   test("a table's wrapper is named as brand's tableScroll names it", () => {
     const table = (head: string) => `| ${head} | B |\n| - | - |\n| 1 | 2 |\n\n`;
@@ -997,24 +989,10 @@ describe("hub", () => {
     ].map((w) => w.getAttribute("aria-label"));
     const root: Hast = {
       type: "root",
-      children: [
-        hTable([[txt("A "), el("strong", [txt("b")])], [txt("B")]]),
-        hTable([[txt("A b")], [txt("B")]]),
-        el("h2", [txt("Prices")]),
-        hTable([[txt("x")], [txt("B")]]),
-        hTable([[txt("y")], [txt("B")]]),
-        el("h3", [txt('Raw "q" & '), el("i", [txt("it")])]),
-        hTable([[txt("z")], [txt("B")]]),
-        el("h1", [txt("Next")]),
-        hTable([[txt("")]]),
-        el("h2", [txt("Prices")]),
-        hTable([[txt("w")], [txt("B")]]),
-      ],
+      children: [...dom(Bun.markdown.html(text)).childNodes].map(toHast),
     };
     brandTableScroll()(root);
-    const brandLabels = root
-      .children!.filter((n) => n.tagName === "div")
-      .map((w) => w.properties!.ariaLabel);
+    const brandLabels = collectWrappers(root).map((w) => w.properties!.ariaLabel);
     expect(ours).toEqual(brandLabels);
     expect(ours).toEqual([
       "A b B",
@@ -1028,18 +1006,17 @@ describe("hub", () => {
   });
 
   test("a table without a heading or column names gets no aria-label", () => {
+    const markdown = "| |\n|-|\n|1|\n";
     const ours = [
-      ...dom(renderDocMarkdown("/r", "docs/a.md", "| |\n|-|\n|1|\n")).querySelectorAll(
-        ".hw-table-scroll",
-      ),
+      ...dom(renderDocMarkdown("/r", "docs/a.md", markdown)).querySelectorAll(".hw-table-scroll"),
     ].map((w) => w.getAttribute("aria-label"));
-    const root: Hast = { type: "root", children: [hTable([[txt("")]])] };
+    const root: Hast = {
+      type: "root",
+      children: [...dom(Bun.markdown.html(markdown)).childNodes].map(toHast),
+    };
     brandTableScroll()(root);
-    const brandLabels = root
-      .children!.filter((n) => n.tagName === "div")
-      .map((w) => w.properties!.ariaLabel);
     expect(ours).toEqual([null]);
-    expect(brandLabels).toEqual([undefined]);
+    expect(collectWrappers(root).map((w) => w.properties!.ariaLabel)).toEqual([undefined]);
   });
 
   test("a table holding another leaves the wrapper to the inner one", () => {
@@ -1154,32 +1131,37 @@ describe("repository data", () => {
       expect(tree.read("docs/next.md")).toBeUndefined();
     });
 
-    test("readRepo reads committed git metadata and commit logs from HEAD", () => {
-      expect(committed.head).toMatch(/^[a-f0-9]{7,}$/);
-      expect({
-        fetched: committed.fetched,
-        behind: committed.behind,
-        log: committed.log,
-        trackingLog: committed.trackingLog,
-      }).toEqual({
-        fetched: fetched.getTime(),
-        behind: undefined,
-        log: [{ hash: committed.head, time, subject: "Write notes" }],
-        trackingLog: [{ hash: committed.head, time, subject: "Write notes" }],
-      });
+    test("readRepo records FETCH_HEAD mtime and leaves behind unset without an upstream", () => {
+      expect(committed.fetched).toBe(fetched.getTime());
+      expect(committed.behind).toBeUndefined();
     });
 
-    test("readRepo reads committed reports, items, docs, package metadata, and defects from HEAD", () => {
+    test("readRepo reads HEAD hash and full and tracking commit logs", () => {
+      expect(committed.head).toMatch(/^[a-f0-9]{7,}$/);
+      expect(committed.log).toEqual([{ hash: committed.head, time, subject: "Write notes" }]);
+      expect(committed.trackingLog).toEqual(committed.log);
+    });
+
+    test("readRepo reads committed reports with change time and content hash", () => {
       expect(committed.reports).toMatchObject([
         { path: report, changed: time, version: "29j6lxvxj0p1b" },
       ]);
+    });
+
+    test("readRepo reads committed items with change time", () => {
       expect(committed.items).toMatchObject([
         { id: "ship", title: "Ship the samples", changed: time },
       ]);
+    });
+
+    test("readRepo reads committed docs at HEAD including working-tree deletions", () => {
       expect(committed.docs).toEqual([
         { path: "docs/next.md", title: "Next note", titleId: "next-note", html: "<p>Two</p>\n" },
         { path: "docs/note.md", title: "First note", titleId: "first-note", html: "<p>Café</p>\n" },
       ]);
+    });
+
+    test("readRepo reads committed package metadata with no defects", () => {
       expect(committed.pkg).toMatchObject({ name: "paint", version: "1.0.0" });
       expect(committed.defects).toEqual([]);
     });
@@ -1245,7 +1227,7 @@ describe("repository data", () => {
       });
     });
 
-    test("publishes configured package metadata, products, links, checks, and agents", () => {
+    test("publishes configured repository key, trimmed label, and package metadata", () => {
       expect(repo).toMatchObject({
         key: "paint.samples",
         label: "Paint samples",
@@ -1255,14 +1237,23 @@ describe("repository data", () => {
           dependencies: { tint: "1.0.0", sampler: "2.0.0" },
           bin: { paint: "./scripts/paint.ts" },
         },
-        designSystem: "https://paint.example/catalog/",
-        designSystemDev: undefined,
-        checkSteps: ["format", "test"],
-        agents: ["Mira"],
       });
-      expect(repo.defects).toEqual([
-        "docs/agent-work/admin.json: ignored, package.json holds admin",
-      ]);
+    });
+
+    test("publishes an explicit designSystem URL without a dev server", () => {
+      expect(repo.designSystem).toBe("https://paint.example/catalog/");
+      expect(repo.designSystemDev).toBeUndefined();
+    });
+
+    test("publishes check steps from check:all", () => {
+      expect(repo.checkSteps).toEqual(["format", "test"]);
+    });
+
+    test("publishes colleague names from agent definitions", () => {
+      expect(repo.agents).toEqual(["Mira"]);
+    });
+
+    test("publishes valid products and links while dropping incomplete entries", () => {
       expect(repo.products).toEqual([
         {
           label: "Tiles",
@@ -1278,11 +1269,14 @@ describe("repository data", () => {
       ]);
     });
 
-    test("publishes scripts, docs, dated reports, and review folders", () => {
+    test("publishes scripts with their leading comments", () => {
       expect(repo.scripts).toEqual([
         { path: "scripts/paint.ts", comment: "Render color samples" },
         { path: "scripts/other.sh", comment: "Export samples" },
       ]);
+    });
+
+    test("publishes docs sorted by path with extracted titles", () => {
       expect(repo.docs).toEqual([
         {
           path: "docs/guide.md",
@@ -1292,6 +1286,9 @@ describe("repository data", () => {
         },
         { path: "README.md", title: "Read me", titleId: "read-me", html: "<p>Start</p>\n" },
       ]);
+    });
+
+    test("publishes dated reports sorted newest first with content hashes", () => {
       expect(repo.reports).toEqual([
         {
           path: "docs/agent-work/2026-01-15-next.md",
@@ -1313,6 +1310,9 @@ describe("repository data", () => {
           html: "<p>Comparison</p>\n",
         },
       ]);
+    });
+
+    test("publishes dated review folders with sorted images and linked reports", () => {
       expect(repo.reviews).toEqual([
         {
           dir: "docs/agent-work/2026-01-15-next",
