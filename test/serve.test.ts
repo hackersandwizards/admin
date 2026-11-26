@@ -113,7 +113,7 @@ describe("createSiteStore", () => {
     );
     try {
       await rejection(store.refresh());
-      const logged = errSpy.mock.calls[0]![0];
+      const logged: unknown = errSpy.mock.calls[0]![0];
       expect(logged).toBeInstanceOf(Error);
       expect((logged as Error).name).toBe("Error");
       expect((logged as Error).message).toBe("build failed: exit 1");
