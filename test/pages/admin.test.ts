@@ -28,7 +28,6 @@ import {
 import { buildSite, script } from "../../src/build.ts";
 import { siteData } from "../../src/site-data.ts";
 import { uniqueKeys } from "../../src/hub.ts";
-import { when } from "../../src/display.ts";
 import { treeSource } from "../../src/git.ts";
 import { readRepo } from "../../src/repo.ts";
 import { createHub } from "../../src/serve.ts";
@@ -3281,10 +3280,6 @@ describe("serve", () => {
       },
     ];
 
-    let asked = 0;
-    let afterAsked = 0;
-    let twoMinLater = 0;
-    let later = 0;
     let first = "";
     let homeTwoMinLater = "";
     let decisions: Response;
@@ -3320,9 +3315,7 @@ describe("serve", () => {
         const repo = repoFrom("spoke");
         const hub = createHub({ root: dirname(repo) });
         const get = (path: string) => hub.fetch(new Request(`http://admin.localhost${path}`));
-        asked = Date.now();
         first = await (await get("/")).text();
-        afterAsked = Date.now();
         decisions = await get("/spoke/decisions");
         for (const { label, site, mode, dest } of fetchSiteCases) {
           const res = await hub.fetch(
@@ -3348,12 +3341,10 @@ describe("serve", () => {
         }
 
         // Stage 2: request-time stamping on a cached build and a day later, then returning to base day.
-        twoMinLater = base + 120_000;
-        clock.mockReturnValue(twoMinLater);
+        clock.mockReturnValue(base + 120_000);
         homeTwoMinLater = await (await get("/")).text();
         // So does the hub's other page, a day after its build.
-        later = base + 864e5;
-        clock.mockReturnValue(later);
+        clock.mockReturnValue(base + 864e5);
         packages = await (await get("/architecture")).text();
         clock.mockReturnValue(base);
         nested = await decisions.text();
@@ -3446,7 +3437,7 @@ describe("serve", () => {
 
     test("serves /index.html as an alias for the hub home page", () => {
       expect(indexAliasStatus).toBe(200);
-      expect(indexAliasHtml).toContain("Which variant ships?");
+      expect(sansNonce(indexAliasHtml)).toBe(sansNonce(first));
     });
 
     test("serves /spoke/decisions with hub CSP, security headers, and no-store cache", () => {
@@ -3503,12 +3494,12 @@ describe("serve", () => {
       // The hub says it is current as of the request, in the minute it was asked or the next.
       const stamp = first.match(/· as of <span data-stamp>([^<]*)<\/span>/);
       expect(stamp).not.toBeNull();
-      expect([when(asked), when(afterAsked)]).toContain(stamp![1]!);
-      expect(homeTwoMinLater).toContain(`· as of <span data-stamp>${when(twoMinLater)}</span>`);
+      expect(stamp![1]).toBe("10 May at 12:00");
+      expect(homeTwoMinLater).toContain("· as of <span data-stamp>10 May at 12:02</span>");
     });
 
     test("stamps /architecture with the request time a day after its build", () => {
-      expect(packages).toContain(`· as of <span data-stamp>${when(later)}</span>`);
+      expect(packages).toContain("· as of <span data-stamp>11 May at 12:00</span>");
     });
 
     test("gzips HTML responses when the client accepts gzip", () => {
@@ -3696,7 +3687,7 @@ describe("serve", () => {
       expect(homeAfterTaggedFail.status).toBe(200);
       expect(homeAfterTaggedFail.html).toContain("second could not be read");
       expect(homeAfterRevert.status).toBe(200);
-      expect(homeAfterRevert.html).toContain("Which variant ships?");
+      expect(homeAfterRevert.html).toContain(">second<");
       expect(homeAfterRevert.html).not.toContain("could not be read");
     });
   });
@@ -4006,6 +3997,17 @@ describe("serve", () => {
     });
 
     test("gives a standalone dated report copy and per-section comment controls", () => {
+      expect(
+        [...standalone.querySelectorAll("article h2 + [data-comment]")].map((el) =>
+          el.getAttribute("data-k"),
+        ),
+      ).toEqual([
+        "spoke:2026-01-14-standalone#one",
+        "spoke:2026-01-14-standalone#two",
+        "spoke:2026-01-14-standalone#three",
+        "spoke:2026-01-14-standalone#four",
+        "spoke:2026-01-14-standalone#five",
+      ]);
       expect(standalone.querySelectorAll("[data-comment]")).toHaveLength(5);
       expect(standalone.getElementById("copy")).not.toBeNull();
     });
@@ -4230,7 +4232,7 @@ describe("serve", () => {
     let tallBytes = Buffer.alloc(0);
     let smallEtag: string | null = null;
     let repeatMatched: { status: number; bytes: Buffer };
-    let repeatMismatched: { status: number; bytes: Buffer };
+    let repeatMismatched: { status: number; contentType: string | null; bytes: Buffer };
     let wide960Etag: string | null = null;
 
     beforeAll(async () => {
@@ -4282,6 +4284,7 @@ describe("serve", () => {
       const mismatchedRes = await get("wide.png?w=480", { "if-none-match": '"other-tag"' });
       repeatMismatched = {
         status: mismatchedRes.status,
+        contentType: mismatchedRes.headers.get("content-type"),
         bytes: Buffer.from(await mismatchedRes.bytes()),
       };
       wide960Etag = (await get("wide.png?w=960")).headers.get("etag");
@@ -4334,27 +4337,19 @@ describe("serve", () => {
       expect(wide960Etag).not.toBe(smallEtag);
     });
 
-    test.each([
-      {
-        label: "matching ETag",
-        getReply: () => repeatMatched,
-        expectedStatus: 304,
-        expectedBytes: () => Buffer.alloc(0),
-      },
-      {
-        label: "different ETag",
-        getReply: () => repeatMismatched,
-        expectedStatus: 200,
-        expectedBytes: () => smallBytes,
-      },
-    ])(
-      "responds $expectedStatus to conditional thumbnail request with $label",
-      ({ getReply, expectedStatus, expectedBytes }) => {
-        const reply = getReply();
-        expect(reply.status).toBe(expectedStatus);
-        expect(reply.bytes).toEqual(expectedBytes());
-      },
-    );
+    test("returns 304 with an empty body when If-None-Match matches the thumbnail ETag", () => {
+      expect(repeatMatched.status).toBe(304);
+      expect(repeatMatched.bytes).toEqual(Buffer.alloc(0));
+    });
+
+    test("returns 200 with the WebP thumbnail when If-None-Match does not match", () => {
+      expect(repeatMismatched.status).toBe(200);
+      expect(repeatMismatched.contentType).toBe("image/webp");
+      expect(repeatMismatched.bytes.subarray(0, 4).toString("ascii")).toBe("RIFF");
+      expect(repeatMismatched.bytes.subarray(8, 12).toString("ascii")).toBe("WEBP");
+      // Same bytes as the 480x240 WebP verified by "resizes an oversized wide PNG into the 480w box as WebP".
+      expect(repeatMismatched.bytes).toEqual(smallBytes);
+    });
   });
 });
 
