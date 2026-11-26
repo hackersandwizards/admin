@@ -197,16 +197,12 @@ describe("needs graph", () => {
       [...graph.querySelectorAll(".node")].map((node) => ({
         shape: node.getAttribute("data-shape"),
         label: node.getAttribute("data-label"),
+        texts: [...node.querySelectorAll("text")].map((el) => el.textContent),
       })),
     ).toEqual([
-      { shape: "stadium", label: title },
-      { shape: "rectangle", label: title },
-      { shape: "rounded", label: title },
-    ]);
-    expect([...graph.querySelectorAll(".node text")].map((el) => el.textContent)).toEqual([
-      title,
-      title,
-      title,
+      { shape: "stadium", label: title, texts: [title] },
+      { shape: "rectangle", label: title, texts: [title] },
+      { shape: "rounded", label: title, texts: [title] },
     ]);
     expect(
       [...graph.querySelectorAll(".edge")].map((edge) => [
@@ -416,14 +412,34 @@ describe("item files", () => {
 
   test.each([
     {
+      label: "out-of-range ISO month and day",
+      change: { due: "2026-13-45" },
+      expected: ["due 2026-13-45 not ISO"],
+    },
+    {
       label: "leap-day ISO due date",
       change: { due: "2028-02-29" },
       expected: [],
     },
     {
+      label: "object-valued area on an otherwise valid item",
+      change: { area: { a: 1 } },
+      expected: ["area is not text"],
+    },
+    {
       label: "plain text area",
       change: { area: "Field Ops" },
       expected: [],
+    },
+    {
+      label: "non-text label on the recommended option",
+      change: {
+        options: [
+          { key: "a", label: { l: 1 } },
+          { key: "b", label: "B" },
+        ],
+      },
+      expected: ["option a label or detail is not text"],
     },
     {
       label: "option key containing a comma",
@@ -973,13 +989,11 @@ describe("hub", () => {
     assert(build, `unexpected DOM nodeType ${n.nodeType}`);
     return build(n);
   };
-  const isScrollWrapper = (node: Hast) =>
-    [node.properties!.className].flat().includes("hw-table-scroll");
-  const collectWrappers = (node: Hast): Hast[] => {
-    assert(Array.isArray(node.children), "node children");
-    const elements = node.children.filter((c) => c.type === "element");
-    return elements.flatMap((el) => [...[el].filter(isScrollWrapper), ...collectWrappers(el)]);
-  };
+  const scrollWrapper = (ariaLabel: string) => ({
+    type: "element",
+    tagName: "div",
+    properties: { className: ["hw-table-scroll"], ariaLabel },
+  });
 
   test("a table's wrapper is named as brand's tableScroll names it", () => {
     const table = (head: string) => `| ${head} | B |\n| - | - |\n| 1 | 2 |\n\n`;
@@ -992,9 +1006,7 @@ describe("hub", () => {
       children: [...dom(Bun.markdown.html(text)).childNodes].map(toHast),
     };
     brandTableScroll()(root);
-    const brandLabels = collectWrappers(root).map((w) => w.properties!.ariaLabel);
-    expect(ours).toEqual(brandLabels);
-    expect(ours).toEqual([
+    const expectedLabels = [
       "A b B",
       "A b B (2)",
       "Prices",
@@ -1002,7 +1014,32 @@ describe("hub", () => {
       'Raw "q" & it',
       "Next",
       "Prices (3)",
+    ];
+    expect(root.children).toMatchObject([
+      scrollWrapper("A b B"),
+      { type: "text" },
+      scrollWrapper("A b B (2)"),
+      { type: "text" },
+      { type: "element", tagName: "h2" },
+      { type: "text" },
+      scrollWrapper("Prices"),
+      { type: "text" },
+      scrollWrapper("Prices (2)"),
+      { type: "text" },
+      { type: "element", tagName: "h3" },
+      { type: "text" },
+      scrollWrapper('Raw "q" & it'),
+      { type: "text" },
+      { type: "element", tagName: "h1" },
+      { type: "text" },
+      scrollWrapper("Next"),
+      { type: "text" },
+      { type: "element", tagName: "h2" },
+      { type: "text" },
+      scrollWrapper("Prices (3)"),
+      { type: "text" },
     ]);
+    expect(ours).toEqual(expectedLabels);
   });
 
   test("a table without a heading or column names gets no aria-label", () => {
@@ -1015,8 +1052,19 @@ describe("hub", () => {
       children: [...dom(Bun.markdown.html(markdown)).childNodes].map(toHast),
     };
     brandTableScroll()(root);
+    expect(root.children).toMatchObject([
+      {
+        type: "element",
+        tagName: "div",
+        properties: { className: ["hw-table-scroll"], tabIndex: 0 },
+      },
+      { type: "text" },
+    ]);
+    expect(root.children[0]!.properties).toEqual({
+      className: ["hw-table-scroll"],
+      tabIndex: 0,
+    });
     expect(ours).toEqual([null]);
-    expect(collectWrappers(root).map((w) => w.properties!.ariaLabel)).toEqual([undefined]);
   });
 
   test("a table holding another leaves the wrapper to the inner one", () => {
@@ -1062,7 +1110,9 @@ describe("repository data", () => {
     const report = "docs/agent-work/2026-01-14-first draft.md";
     const fetched = new Date("2026-01-15T10:00:00Z");
     const time = Date.parse("2026-01-14T12:34:00Z") / 1000;
+    const pkgTime = Date.parse("2026-01-14T12:35:00Z") / 1000;
     let repo: string;
+    let trackingHash: string;
     let tree: ReturnType<typeof treeSource>;
     let committed: Awaited<ReturnType<typeof readRepo>>;
 
@@ -1070,19 +1120,19 @@ describe("repository data", () => {
       const generated = join(import.meta.dirname, "../node_modules/.cache");
       mkdirSync(generated, { recursive: true });
       repo = mkdtempSync(join(generated, "admin-repo-"));
-      const git = (...args: string[]) => {
+      const gitAt = (whenIso: string, ...args: string[]) => {
         const result = Bun.spawnSync(["git", ...args], {
           cwd: repo,
           env: {
             ...gitEnv,
-            GIT_AUTHOR_DATE: "2026-01-14T12:34:00Z",
-            GIT_COMMITTER_DATE: "2026-01-14T12:34:00Z",
+            GIT_AUTHOR_DATE: whenIso,
+            GIT_COMMITTER_DATE: whenIso,
           },
         });
         assert.strictEqual(result.exitCode, 0, result.stderr.toString());
         return result.stdout.toString().trim();
       };
-      git("init", "-q");
+      gitAt("2026-01-14T12:34:00Z", "init", "-q");
       const work = "docs/agent-work/items/ship.md";
       await Bun.write(join(repo, report), "# First draft\n");
       await Bun.write(
@@ -1092,9 +1142,9 @@ describe("repository data", () => {
       await Bun.write(join(repo, ".gitignore"), "ignored.txt\n");
       await Bun.write(join(repo, "docs/note.md"), "# First note\n\nCafé");
       await Bun.write(join(repo, "docs/next.md"), "# Next note\n\nTwo");
-      await Bun.write(join(repo, "package.json"), '{"name":"paint","version":"1.0.0"}');
-      git("add", "--", ".gitignore", "docs", "package.json");
-      git(
+      gitAt("2026-01-14T12:34:00Z", "add", "--", ".gitignore", "docs");
+      gitAt(
+        "2026-01-14T12:34:00Z",
         "-c",
         "user.name=Test",
         "-c",
@@ -1102,6 +1152,19 @@ describe("repository data", () => {
         "commit",
         "-qm",
         "Write notes",
+      );
+      trackingHash = gitAt("2026-01-14T12:34:00Z", "rev-parse", "--short", "HEAD");
+      await Bun.write(join(repo, "package.json"), '{"name":"paint","version":"1.0.0"}');
+      gitAt("2026-01-14T12:35:00Z", "add", "--", "package.json");
+      gitAt(
+        "2026-01-14T12:35:00Z",
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-qm",
+        "Add package",
       );
       const fetch = join(repo, ".git/FETCH_HEAD");
       await Bun.write(fetch, "");
@@ -1131,15 +1194,24 @@ describe("repository data", () => {
       expect(tree.read("docs/next.md")).toBeUndefined();
     });
 
-    test("readRepo records FETCH_HEAD mtime and leaves behind unset without an upstream", () => {
+    test("readRepo records the FETCH_HEAD modification time", () => {
       expect(committed.fetched).toBe(fetched.getTime());
+    });
+
+    test("readRepo leaves commits behind unset without an upstream", () => {
       expect(committed.behind).toBeUndefined();
     });
 
-    test("readRepo reads HEAD hash and full and tracking commit logs", () => {
+    test("readRepo reads HEAD and the full commit log", () => {
       expect(committed.head).toMatch(/^[a-f0-9]{7,}$/);
-      expect(committed.log).toEqual([{ hash: committed.head, time, subject: "Write notes" }]);
-      expect(committed.trackingLog).toEqual(committed.log);
+      expect(committed.log).toEqual([
+        { hash: committed.head, time: pkgTime, subject: "Add package" },
+        { hash: trackingHash, time, subject: "Write notes" },
+      ]);
+    });
+
+    test("readRepo restricts trackingLog to commits touching docs/agent-work", () => {
+      expect(committed.trackingLog).toEqual([{ hash: trackingHash, time, subject: "Write notes" }]);
     });
 
     test("readRepo reads committed reports with change time and content hash", () => {
@@ -1212,8 +1284,8 @@ describe("repository data", () => {
           },
         }),
         "docs/agent-work/admin.json": '{"label":"Old label"}',
-        "docs/guide.md": "# Tool &amp; *guide*\n\nInstructions",
         "README.md": "# Read me\n\nStart",
+        "docs/guide.md": "# Tool &amp; *guide*\n\nInstructions",
         [`${report}.md`]: "# Sample review\n\nComparison",
         [`${report}/z.PNG`]: "",
         [`${report}/a.webp`]: "",
@@ -1227,17 +1299,27 @@ describe("repository data", () => {
       });
     });
 
-    test("publishes configured repository key, trimmed label, and package metadata", () => {
-      expect(repo).toMatchObject({
-        key: "paint.samples",
-        label: "Paint samples",
-        pkg: {
-          name: "paint",
-          version: "2.0.0",
-          dependencies: { tint: "1.0.0", sampler: "2.0.0" },
-          bin: { paint: "./scripts/paint.ts" },
-        },
+    test("publishes the configured admin.name as repository key", () => {
+      expect(repo.key).toBe("paint.samples");
+    });
+
+    test("trims whitespace around the configured admin.label", () => {
+      expect(repo.label).toBe("Paint samples");
+    });
+
+    test("publishes package metadata with merged dependencies and string bin", () => {
+      expect(repo.pkg).toMatchObject({
+        name: "paint",
+        version: "2.0.0",
+        dependencies: { tint: "1.0.0", sampler: "2.0.0" },
+        bin: { paint: "./scripts/paint.ts" },
       });
+    });
+
+    test("reports docs/agent-work/admin.json ignored when package.json carries valid admin", () => {
+      expect(repo.defects).toEqual([
+        "docs/agent-work/admin.json: ignored, package.json holds admin",
+      ]);
     });
 
     test("publishes an explicit designSystem URL without a dev server", () => {
@@ -1253,21 +1335,32 @@ describe("repository data", () => {
       expect(repo.agents).toEqual(["Mira"]);
     });
 
-    test("publishes valid products and links while dropping incomplete entries", () => {
-      expect(repo.products).toEqual([
-        {
-          label: "Tiles",
-          description: "Browse the colors",
-          href: "file:///nonexistent/paint%20samples/docs/tiles.html",
-        },
-      ]);
-      expect(repo.links).toEqual([
-        {
-          label: "Guide",
-          href: "file:///nonexistent/paint%20samples/docs/guide.md?print=1#start",
-        },
-      ]);
-    });
+    test.each([
+      [
+        "products",
+        [
+          {
+            label: "Tiles",
+            description: "Browse the colors",
+            href: "file:///nonexistent/paint%20samples/docs/tiles.html",
+          },
+        ],
+      ],
+      [
+        "links",
+        [
+          {
+            label: "Guide",
+            href: "file:///nonexistent/paint%20samples/docs/guide.md?print=1#start",
+          },
+        ],
+      ],
+    ] as const)(
+      "publishes valid %s with resolved file hrefs and drops incomplete entries",
+      (field, expected) => {
+        expect(repo[field]).toEqual(expected);
+      },
+    );
 
     test("publishes scripts with their leading comments", () => {
       expect(repo.scripts).toEqual([

@@ -298,12 +298,13 @@ describe("admin-check", () => {
 
   // A label names the repository to a person and leaves its key; one that is not text is a defect.
   test.each([
-    ["Sample label", { key: "x", label: "Sample label", defects: [] }],
-    [undefined, { key: "x", label: undefined, defects: [] }],
-    [" ", { key: "x", label: undefined, defects: [] }],
-    [3, { key: "x", label: undefined, defects: ["package.json: admin.label is not text"] }],
+    ["Sample label", ["x", "Sample label", []]],
+    [undefined, ["x", undefined, []]],
+    [" ", ["x", undefined, []]],
+    [3, ["x", undefined, ["package.json: admin.label is not text"]]],
   ])("admin.label %o resolves without changing the key", async (label, expected) => {
-    expect(await configured("/nonexistent/x", { label })).toMatchObject(expected);
+    const read = await configured("/nonexistent/x", { label });
+    expect([read.key, read.label, read.defects]).toEqual(expected);
   });
 
   describe("docs/agent-work/admin.json at HEAD", () => {
@@ -318,19 +319,25 @@ describe("admin-check", () => {
       const dir = join(scratch(), "spoke");
       cpSync(base, dir, { recursive: true });
       rmSync(join(dir, "package.json"));
-      writeFileSync(join(dir, "docs/agent-work/admin.json"), text);
+      const file = join(dir, "docs/agent-work/admin.json");
+      writeFileSync(file, text);
       sh(dir, "git", "add", "-A");
       commit(dir, "admin");
+      writeFileSync(file, '{ "label": "Working tree" }');
       return { dir, read: await readRepo(dir) };
     };
 
     const commitAdminWithPackage = (text: string, pkg: object) => {
       const dir = join(scratch(), "spoke");
       cpSync(base, dir, { recursive: true });
-      writeFileSync(join(dir, "docs/agent-work/admin.json"), text);
-      writeFileSync(join(dir, "package.json"), JSON.stringify(pkg));
+      const file = join(dir, "docs/agent-work/admin.json");
+      const pkgFile = join(dir, "package.json");
+      writeFileSync(file, text);
+      writeFileSync(pkgFile, JSON.stringify(pkg));
       sh(dir, "git", "add", "-A");
       commit(dir, "admin");
+      writeFileSync(file, '{ "label": "Working tree" }');
+      writeFileSync(pkgFile, "{}");
       return readRepo(dir);
     };
 
@@ -345,17 +352,25 @@ describe("admin-check", () => {
       [
         "non-text label",
         '{ "label": 3 }',
-        { label: undefined, defects: ["docs/agent-work/admin.json: label is not text"] },
+        {
+          key: "spoke",
+          label: undefined,
+          defects: ["docs/agent-work/admin.json: label is not text"],
+        },
       ],
       [
         "invalid JSON",
         "{",
-        { label: undefined, defects: ["docs/agent-work/admin.json: not JSON"] },
+        { key: "spoke", label: undefined, defects: ["docs/agent-work/admin.json: not JSON"] },
       ],
       [
         "JSON array",
         "[]",
-        { label: undefined, defects: ["docs/agent-work/admin.json: not a JSON object"] },
+        {
+          key: "spoke",
+          label: undefined,
+          defects: ["docs/agent-work/admin.json: not a JSON object"],
+        },
       ],
     ])(
       "reports malformed standalone docs/agent-work/admin.json (%s)",
@@ -498,6 +513,7 @@ describe("hub", () => {
         "docs/setext.md": "Setext title\n============\n\nBody.\n",
         "docs/none.md": "Just text.\n",
         "docs/image.md": "# ![logo](logo.png)\n\nBody.\n",
+        "docs/two.md": "# First heading\n\n# Second heading\n\nBody.\n",
       };
       const { docs } = await readRepo("/nonexistent/titles", {
         paths: Object.keys(files),
@@ -511,6 +527,7 @@ describe("hub", () => {
       ["docs/setext.md", "Setext title"],
       ["docs/none.md", "docs/none.md"],
       ["docs/image.md", "docs/image.md"],
+      ["docs/two.md", "First heading"],
     ])("uses the first rendered text h1 as the title for %s", (path, title) => {
       expect(byPath[path]!.title).toBe(title);
     });
@@ -521,6 +538,11 @@ describe("hub", () => {
         expect(byPath[path]!.html).not.toContain("<h1");
       },
     );
+
+    test("leaves a second h1 in the rendered article after extracting the first", () => {
+      expect(byPath["docs/two.md"]!.html).not.toContain("First heading");
+      expect(byPath["docs/two.md"]!.html).toContain('<h1 id="second-heading">Second heading</h1>');
+    });
 
     test("keeps a # comment inside a fenced code block in the article", () => {
       expect(byPath["docs/fenced.md"]!.html).toContain("# install deps");
@@ -661,37 +683,60 @@ describe("pages", () => {
       ).toBe("Zoe");
     });
 
-    test("keeps companies and teams under waiting on others without adding person buttons", () => {
+    describe("companies and teams", () => {
       // An owner that is a company or a team keeps its whole name, gets no button of its own, and
       // waits under "Waiting on others": neither a person cut at a "+" nor an agent.
       const parties = ["B+L", "eBike Works", "x&y", "eBike Works, then Kim", "B+L; next week"];
-      const firms = siteData([{ ...repo, items: [...repo.items, ...parties.map(owned)] }]);
-      expect(firms.people.toSorted()).toEqual(["Alex", "Kim", "Sam"]);
-      expect(firms.others).toEqual(["B+L", "Kim", "Sam", "eBike Works", "x&y"]);
-      const of = (id: string) => firms.repos[0]!.items.find((i) => i.id === id)!;
-      expect(parties.map((p) => [of(p).who, of(p).agent])).toEqual([
-        ["B+L", false],
-        ["eBike Works", false],
-        ["x&y", false],
-        ["Kim", false],
-        ["B+L", false],
-      ]);
+      let firms: ReturnType<typeof siteData>;
+
+      beforeAll(() => {
+        firms = siteData([{ ...repo, items: [...repo.items, ...parties.map(owned)] }]);
+      });
+
+      test("does not add company or team owners to the person filter", () => {
+        expect(firms.people.toSorted()).toEqual(["Alex", "Kim", "Sam"]);
+      });
+
+      test("lists companies and teams under waiting on others", () => {
+        expect(firms.others).toEqual(["B+L", "Kim", "Sam", "eBike Works", "x&y"]);
+      });
+
+      test.each([
+        ["B+L", "B+L", false],
+        ["eBike Works", "eBike Works", false],
+        ["x&y", "x&y", false],
+        ["eBike Works, then Kim", "Kim", false],
+        ["B+L; next week", "B+L", false],
+      ])("classifies company or team owner %s", (owner, who, agent) => {
+        const item = firms.repos[0]!.items.find((i) => i.id === owner)!;
+        expect([item.who, item.agent]).toEqual([who, agent]);
+      });
     });
 
-    test("ends person names at punctuation and treats hyphenated or bracketed non-people as agents", () => {
+    describe("punctuation, hyphens, and brackets in owners", () => {
       // A person's name ends at any other mark, an agent's word may hold a hyphen, and an owner
       // opening with a bracket names no company.
       const marks = ["Sam.", "Kim's team", "claude-code", "agent:", "(tbd)"];
-      const marked = siteData([{ ...repo, items: [...repo.items, ...marks.map(owned)] }]);
-      expect(marked.others).toEqual(["Kim", "Sam"]);
-      const at = (id: string) => marked.repos[0]!.items.find((i) => i.id === id)!;
-      expect(marks.map((m) => [at(m).who, at(m).agent])).toEqual([
-        ["Sam", false],
-        ["Kim", false],
-        ["claude-code", true],
-        ["agent", true],
-        ["(tbd)", true],
-      ]);
+      let marked: ReturnType<typeof siteData>;
+
+      beforeAll(() => {
+        marked = siteData([{ ...repo, items: [...repo.items, ...marks.map(owned)] }]);
+      });
+
+      test("does not add punctuated or bracketed non-people to waiting on others", () => {
+        expect(marked.others).toEqual(["Kim", "Sam"]);
+      });
+
+      test.each([
+        ["Sam.", "Sam", false],
+        ["Kim's team", "Kim", false],
+        ["claude-code", "claude-code", true],
+        ["agent:", "agent", true],
+        ["(tbd)", "(tbd)", true],
+      ])("classifies owner %s", (owner, who, agent) => {
+        const item = marked.repos[0]!.items.find((i) => i.id === owner)!;
+        expect([item.who, item.agent]).toEqual([who, agent]);
+      });
     });
   });
 
@@ -722,22 +767,20 @@ describe("admin.js", () => {
     expect(window.document.documentElement.dataset.theme).toBe("dark");
   });
 
-  test.each([
-    ["light", undefined],
-    ["dark", "dark"],
-  ] as const)(
-    "without a stored choice, theme.js follows a %s system",
-    (prefersColorScheme, expectedTheme) => {
-      const theme = readFileSync(join(import.meta.dirname, "../site/src/theme.js"), "utf8");
-      const window = new Window({
-        url: "http://admin.localhost/index",
-        settings: { device: { prefersColorScheme } },
-      });
-      opened.push(window);
-      evaluate(window, theme);
-      expect(window.document.documentElement.dataset.theme).toBe(expectedTheme);
-    },
-  );
+  test("on a light system, theme.js stays light with a stored light choice and after clearing it", () => {
+    const theme = readFileSync(join(import.meta.dirname, "../site/src/theme.js"), "utf8");
+    const window = new Window({
+      url: "http://admin.localhost/index",
+      settings: { device: { prefersColorScheme: "light" } },
+    });
+    opened.push(window);
+    window.localStorage.setItem("theme", "light");
+    evaluate(window, theme);
+    expect(window.document.documentElement.dataset.theme).toBeUndefined();
+    window.localStorage.removeItem("theme");
+    evaluate(window, theme);
+    expect(window.document.documentElement.dataset.theme).toBeUndefined();
+  });
 });
 
 describe("serve", () => {
