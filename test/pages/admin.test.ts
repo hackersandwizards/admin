@@ -3294,11 +3294,11 @@ describe("serve", () => {
     let unknownStatus = 0;
     let lost = "";
     let indexAliasStatus = 0;
+    let indexAliasHtml = "";
     const missing404Results = new Map<string, { status: number; html: string }>();
     let packages = "";
     let zippedEncoding: string | null = null;
     let zippedBytes = new Uint8Array(0);
-    let cssMatch: RegExpMatchArray | null = null;
     let cssCacheControl: string | null = null;
     let svgContentType: string | null = null;
     const nodeModulesRejectStatuses = new Map<string, number>();
@@ -3306,137 +3306,147 @@ describe("serve", () => {
     let nonLocalStatus = 0;
     let lfsText = "";
     let cached: BuiltSite;
-    let afterUncommittedEdit: BuiltSite;
+    let afterUncommittedEdit1: BuiltSite;
+    let afterUncommittedEdit2: BuiltSite;
     let afterCommit: BuiltSite;
     let homeAfterCommit = "";
 
     beforeAll(async () => {
-      // Stage 1: initial committed spoke checkout.
-      const repo = repoFrom("spoke");
-      const hub = createHub({ root: dirname(repo) });
-      const get = (path: string) => hub.fetch(new Request(`http://admin.localhost${path}`));
-      asked = Date.now();
-      first = await (await get("/")).text();
-      afterAsked = Date.now();
-      decisions = await get("/spoke/decisions");
-      for (const { label, site, mode, dest } of fetchSiteCases) {
-        const res = await hub.fetch(
-          new Request("http://admin.localhost/_file/spoke/scripts/sample.ts", {
-            headers: { "sec-fetch-site": site, "sec-fetch-mode": mode, "sec-fetch-dest": dest },
+      // Fix a midday clock so +2 minutes stays on the same calendar day and never triggers a day-rollover rebuild.
+      const base = new Date(2026, 4, 10, 12, 0, 0).getTime();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(base);
+      try {
+        // Stage 1: initial committed spoke checkout.
+        const repo = repoFrom("spoke");
+        const hub = createHub({ root: dirname(repo) });
+        const get = (path: string) => hub.fetch(new Request(`http://admin.localhost${path}`));
+        asked = Date.now();
+        first = await (await get("/")).text();
+        afterAsked = Date.now();
+        decisions = await get("/spoke/decisions");
+        for (const { label, site, mode, dest } of fetchSiteCases) {
+          const res = await hub.fetch(
+            new Request("http://admin.localhost/_file/spoke/scripts/sample.ts", {
+              headers: { "sec-fetch-site": site, "sec-fetch-mode": mode, "sec-fetch-dest": dest },
+            }),
+          );
+          fetchSiteStatuses.set(label, res.status);
+        }
+        for (const { path } of bareRedirectCases) {
+          const r = await get(path);
+          redirectResults.set(path, [r.status, r.headers.get("location")]);
+        }
+        const none = await get("/nosuchrepo/");
+        unknownStatus = none.status;
+        lost = await none.text();
+        const indexAlias = await get("/index.html");
+        indexAliasStatus = indexAlias.status;
+        indexAliasHtml = await indexAlias.text();
+        for (const { path } of missing404Cases) {
+          const r = await get(path);
+          missing404Results.set(path, { status: r.status, html: await r.text() });
+        }
+
+        // Stage 2: request-time stamping on a cached build and a day later, then returning to base day.
+        twoMinLater = base + 120_000;
+        clock.mockReturnValue(twoMinLater);
+        homeTwoMinLater = await (await get("/")).text();
+        // So does the hub's other page, a day after its build.
+        later = base + 864e5;
+        clock.mockReturnValue(later);
+        packages = await (await get("/architecture")).text();
+        clock.mockReturnValue(base);
+        nested = await decisions.text();
+        const zipped = await hub.fetch(
+          new Request("http://admin.localhost/spoke/decisions", {
+            headers: { "accept-encoding": "gzip, br" },
           }),
         );
-        fetchSiteStatuses.set(label, res.status);
-      }
-      for (const { path } of bareRedirectCases) {
-        const r = await get(path);
-        redirectResults.set(path, [r.status, r.headers.get("location")]);
-      }
-      const none = await get("/nosuchrepo/");
-      unknownStatus = none.status;
-      lost = await none.text();
-      indexAliasStatus = (await get("/index.html")).status;
-      for (const { path } of missing404Cases) {
-        const r = await get(path);
-        missing404Results.set(path, { status: r.status, html: await r.text() });
-      }
+        zippedEncoding = zipped.headers.get("content-encoding");
+        zippedBytes = await zipped.bytes();
+        const cssMatch = first.match(/href="\.\/(_astro\/[^"]+\.css)"/);
+        assert(
+          cssMatch,
+          'tested by "serves the hub home page with committed items and /_file/ links"',
+        );
+        cssCacheControl = (await get(`/${cssMatch[1]!}`)).headers.get("cache-control");
+        for (const { path } of slashRedirectCases) {
+          const r = await get(path);
+          redirectResults.set(path, [r.status, r.headers.get("location")]);
+        }
+        const svg = await get("/_file/spoke/docs/agent-work/2026-01-15-sample-topic/variant-a.svg");
+        svgContentType = svg.headers.get("content-type");
 
-      // Stage 2: request-time stamping on a cached build and a day later, then returning to today.
-      twoMinLater = afterAsked + 120_000;
-      const shortClock = vi.spyOn(Date, "now").mockReturnValue(twoMinLater);
-      try {
-        homeTwoMinLater = await (await get("/")).text();
-      } finally {
-        shortClock.mockRestore();
-      }
-      // So does the hub's other page, a day after its build.
-      later = Date.now() + 864e5;
-      const clock = vi.spyOn(Date, "now").mockReturnValue(later);
-      try {
-        packages = await (await get("/architecture")).text();
+        // Stage 3: uncommitted files, installed node_modules, escaping symlinks, and non-local host.
+        writeFileSync(join(repo, "uncommitted.txt"), "uncommitted");
+        nodeModulesRejectStatuses.set(
+          "parent-directory traversal",
+          (await get("/_file/spoke/node_modules/..%2Funcommitted.txt")).status,
+        );
+        mkdirSync(join(repo, "node_modules/pkg"), { recursive: true });
+        writeFileSync(join(repo, "node_modules/pkg/tokens.css"), ":root{}");
+        installedCss = await (await get("/_file/spoke/node_modules/pkg/tokens.css")).text();
+        const outside = scratch();
+        writeFileSync(join(outside, "secret.txt"), "secret");
+        symlinkSync(outside, join(repo, "node_modules/escape"));
+        symlinkSync(join(outside, "secret.txt"), join(repo, "node_modules/pkg/secret.txt"));
+        nodeModulesRejectStatuses.set(
+          "escaping directory symlink",
+          (await get("/_file/spoke/node_modules/escape/secret.txt")).status,
+        );
+        nodeModulesRejectStatuses.set(
+          "escaping file symlink",
+          (await get("/_file/spoke/node_modules/pkg/secret.txt")).status,
+        );
+        nonLocalStatus = (await hub.fetch(new Request("http://evil.example/"))).status;
+
+        // Stage 4: LFS object committed after the hub is already warm.
+        const oid = "ab".repeat(32);
+        const store = join(repo, ".git/lfs/objects/ab/ab");
+        mkdirSync(store, { recursive: true });
+        writeFileSync(join(store, oid), "<svg>stored</svg>");
+        writeFileSync(
+          join(repo, "docs/agent-work/lfs.svg"),
+          `version https://git-lfs.github.com/spec/v1\noid sha256:${oid}\nsize 17\n`,
+        );
+        sh(repo, "git", "add", "docs/agent-work/lfs.svg");
+        commit(repo, "l");
+        lfsText = await (await get("/_file/spoke/docs/agent-work/lfs.svg")).text();
+
+        // Stage 5: baseline cached build, uncommitted edit (no rebuild on either call), then commit (rebuild).
+        cached = await hub.pages();
+        const item = join(repo, "docs/agent-work/items/check-the-copy.md");
+        writeFileSync(item, readFileSync(item, "utf8").replace("# ", "# Renamed "));
+        afterUncommittedEdit1 = await hub.pages();
+        afterUncommittedEdit2 = await hub.pages();
+        sh(
+          repo,
+          "git",
+          "-c",
+          "user.name=t",
+          "-c",
+          "user.email=t@example.invalid",
+          "commit",
+          "-qam",
+          "r",
+        );
+        afterCommit = await hub.pages();
+        homeAfterCommit = await (await get("/")).text();
       } finally {
         clock.mockRestore();
       }
-      nested = await decisions.text();
-      const zipped = await hub.fetch(
-        new Request("http://admin.localhost/spoke/decisions", {
-          headers: { "accept-encoding": "gzip, br" },
-        }),
-      );
-      zippedEncoding = zipped.headers.get("content-encoding");
-      zippedBytes = await zipped.bytes();
-      cssMatch = first.match(/href="\.\/(_astro\/[^"]+\.css)"/);
-      if (cssMatch) cssCacheControl = (await get(`/${cssMatch[1]!}`)).headers.get("cache-control");
-      for (const { path } of slashRedirectCases) {
-        const r = await get(path);
-        redirectResults.set(path, [r.status, r.headers.get("location")]);
-      }
-      const svg = await get("/_file/spoke/docs/agent-work/2026-01-15-sample-topic/variant-a.svg");
-      svgContentType = svg.headers.get("content-type");
-
-      // Stage 3: uncommitted files, installed node_modules, escaping symlinks, and non-local host.
-      writeFileSync(join(repo, "uncommitted.txt"), "uncommitted");
-      nodeModulesRejectStatuses.set(
-        "parent-directory traversal",
-        (await get("/_file/spoke/node_modules/..%2Funcommitted.txt")).status,
-      );
-      mkdirSync(join(repo, "node_modules/pkg"), { recursive: true });
-      writeFileSync(join(repo, "node_modules/pkg/tokens.css"), ":root{}");
-      installedCss = await (await get("/_file/spoke/node_modules/pkg/tokens.css")).text();
-      const outside = scratch();
-      writeFileSync(join(outside, "secret.txt"), "secret");
-      symlinkSync(outside, join(repo, "node_modules/escape"));
-      symlinkSync(join(outside, "secret.txt"), join(repo, "node_modules/pkg/secret.txt"));
-      nodeModulesRejectStatuses.set(
-        "escaping directory symlink",
-        (await get("/_file/spoke/node_modules/escape/secret.txt")).status,
-      );
-      nodeModulesRejectStatuses.set(
-        "escaping file symlink",
-        (await get("/_file/spoke/node_modules/pkg/secret.txt")).status,
-      );
-      nonLocalStatus = (await hub.fetch(new Request("http://evil.example/"))).status;
-
-      // Stage 4: LFS object committed after the hub is already warm.
-      const oid = "ab".repeat(32);
-      const store = join(repo, ".git/lfs/objects/ab/ab");
-      mkdirSync(store, { recursive: true });
-      writeFileSync(join(store, oid), "<svg>stored</svg>");
-      writeFileSync(
-        join(repo, "docs/agent-work/lfs.svg"),
-        `version https://git-lfs.github.com/spec/v1\noid sha256:${oid}\nsize 17\n`,
-      );
-      sh(repo, "git", "add", "docs/agent-work/lfs.svg");
-      commit(repo, "l");
-      lfsText = await (await get("/_file/spoke/docs/agent-work/lfs.svg")).text();
-
-      // Stage 5: baseline cached build, uncommitted edit (no rebuild), then commit (rebuild).
-      cached = await hub.pages();
-      const item = join(repo, "docs/agent-work/items/check-the-copy.md");
-      writeFileSync(item, readFileSync(item, "utf8").replace("# ", "# Renamed "));
-      afterUncommittedEdit = await hub.pages();
-      sh(
-        repo,
-        "git",
-        "-c",
-        "user.name=t",
-        "-c",
-        "user.email=t@example.invalid",
-        "commit",
-        "-qam",
-        "r",
-      );
-      afterCommit = await hub.pages();
-      homeAfterCommit = await (await get("/")).text();
     }, testTimeout(60_000));
 
     test("serves the hub home page with committed items and /_file/ links", () => {
       expect(first).toContain("Which variant ships?");
       expect(first).not.toContain("file://");
       expect(first).toContain("/_file/spoke/docs/agent-work/");
+      expect(first).toMatch(/href="\.\/(_astro\/[^"]+\.css)"/);
     });
 
     test("serves /index.html as an alias for the hub home page", () => {
       expect(indexAliasStatus).toBe(200);
+      expect(indexAliasHtml).toContain("Which variant ships?");
     });
 
     test("serves /spoke/decisions with hub CSP, security headers, and no-store cache", () => {
@@ -3510,7 +3520,6 @@ describe("serve", () => {
     });
 
     test("caches hashed _astro stylesheets immutably", () => {
-      expect(cssMatch).not.toBeNull();
       expect(cssCacheControl).toContain("immutable");
     });
 
@@ -3518,14 +3527,12 @@ describe("serve", () => {
     test.each([
       { page: "/", getHtml: () => first },
       { page: "/spoke/decisions", getHtml: () => nested },
-    ])("resolves both scripts on $page under /_astro/", ({ page, getHtml }) => {
+    ])("resolves every script on $page under /_astro/", ({ page, getHtml }) => {
       const paths = [...getHtml().matchAll(/<script[^>]*src="([^"]+)"/g)].map(
         (m) => new URL(m[1]!, `http://admin.localhost${page}`).pathname,
       );
-      expect(paths).toEqual([
-        expect.stringMatching(/^\/_astro\//),
-        expect.stringMatching(/^\/_astro\//),
-      ]);
+      expect(paths.length).toBeGreaterThan(0);
+      expect(paths.filter((p) => !p.startsWith("/_astro/"))).toEqual([]);
     });
 
     test("serves a committed SVG with an image/svg content-type", () => {
@@ -3545,7 +3552,8 @@ describe("serve", () => {
     });
 
     test("rebuilds only after a commit, leaving uncommitted edits unserved", () => {
-      expect(afterUncommittedEdit).toBe(cached);
+      expect(afterUncommittedEdit1).toBe(cached);
+      expect(afterUncommittedEdit2).toBe(cached);
       expect(afterCommit).not.toBe(cached);
       expect(homeAfterCommit).toContain("Renamed ");
     });
@@ -3553,24 +3561,26 @@ describe("serve", () => {
 
   describe("a failed read or build shows on every page and retries on state change or after a minute", () => {
     type BuiltSite = Awaited<ReturnType<ReturnType<typeof createHub>["pages"]>>;
+    type PageReply = { status: number; html: string };
     const problemBox = (html: string) => html.match(/<div id="admin-problem"[^>]*>[\s\S]*?<\/div>/);
 
     let first: BuiltSite;
-    let homeInitial = "";
-    let docInitial = "";
+    let homeInitial: PageReply;
+    let docInitial: PageReply;
     let cachedInitial: BuiltSite;
     let afterFail1: BuiltSite;
     let afterFail2: BuiltSite;
     let buildsAfterCommit = 0;
-    let dashboardAfterFail = "";
+    let dashboardAfterFail: PageReply;
+    let buildsAfterDashboard = 0;
     let afterMinute: BuiltSite;
     let buildsAfterMinute = 0;
     let recoveredBuild: BuiltSite;
-    let homeAfterRebuild1 = "";
-    let homeAfterRebuild2 = "";
-    let homeAfterReadRecovery = "";
-    let homeAfterTaggedFail = "";
-    let homeAfterRevert = "";
+    let homeAfterRebuild1: PageReply;
+    let homeAfterRebuild2: PageReply;
+    let homeAfterReadRecovery: PageReply;
+    let homeAfterTaggedFail: PageReply;
+    let homeAfterRevert: PageReply;
 
     beforeAll(async () => {
       const repo = repoFrom("spoke");
@@ -3584,8 +3594,10 @@ describe("serve", () => {
       const now = Date.now;
       const later = (ms: number) => (Date.now = () => now() + ms);
       const hub = createHub({ root: dirname(repo) });
-      const get = async (path: string) =>
-        (await hub.fetch(new Request(`http://admin.localhost${path}`))).text();
+      const get = async (path: string): Promise<PageReply> => {
+        const res = await hub.fetch(new Request(`http://admin.localhost${path}`));
+        return { status: res.status, html: await res.text() };
+      };
 
       first = await hub.pages();
       homeInitial = await get("/");
@@ -3602,6 +3614,7 @@ describe("serve", () => {
         afterFail2 = await hub.pages();
         buildsAfterCommit = failing.calls();
         dashboardAfterFail = await get("/spoke/dashboard");
+        buildsAfterDashboard = failing.calls();
         later(61_000);
         afterMinute = await hub.pages();
         buildsAfterMinute = failing.calls();
@@ -3638,8 +3651,8 @@ describe("serve", () => {
     }, testTimeout(120_000));
 
     test("shows an unreadable repository notice on every page and caches the initial build", () => {
-      const homeNotice = problemBox(homeInitial);
-      const docNotice = problemBox(docInitial);
+      const homeNotice = problemBox(homeInitial.html);
+      const docNotice = problemBox(docInitial.html);
       expect(homeNotice).not.toBeNull();
       expect(homeNotice![0]).toContain("second could not be read: git cat-file answered");
       expect(docNotice).not.toBeNull();
@@ -3648,7 +3661,7 @@ describe("serve", () => {
     });
 
     test("keeps the last pages with a build-failure notice and skips immediate retry on a failed rebuild", () => {
-      const dashNotice = problemBox(dashboardAfterFail);
+      const dashNotice = problemBox(dashboardAfterFail.html);
       expect(afterFail1).toBe(first);
       expect(afterFail2).toBe(first);
       expect(buildsAfterCommit).toBe(1);
@@ -3659,25 +3672,32 @@ describe("serve", () => {
     });
 
     test("retries a failed rebuild once a minute has passed", () => {
+      expect(buildsAfterDashboard).toBe(1);
       expect(afterMinute).toBe(first);
       expect(buildsAfterMinute).toBe(2);
     });
 
     test("clears the build-failure notice after a successful rebuild while keeping the unread-repository notice", () => {
-      const rebuildNotice = problemBox(homeAfterRebuild1);
+      const rebuildNotice = problemBox(homeAfterRebuild1.html);
       expect(recoveredBuild).not.toBe(first);
       expect(rebuildNotice).not.toBeNull();
       expect(rebuildNotice![0]).not.toContain("The build stopped");
-      expect(homeAfterRebuild2).toContain("second could not be read");
+      expect(homeAfterRebuild2.html).toContain("second could not be read");
     });
 
     test("clears the unread-repository notice once the missing object returns and the retry window passes", () => {
-      expect(homeAfterReadRecovery).not.toContain("could not be read");
+      expect(homeAfterReadRecovery.status).toBe(200);
+      expect(homeAfterReadRecovery.html).toContain("Which variant ships?");
+      expect(homeAfterReadRecovery.html).toContain(">second<");
+      expect(homeAfterReadRecovery.html).not.toContain("could not be read");
     });
 
     test("shows the notice on a new broken state and clears it when the repository reverts to its last read", () => {
-      expect(homeAfterTaggedFail).toContain("second could not be read");
-      expect(homeAfterRevert).not.toContain("could not be read");
+      expect(homeAfterTaggedFail.status).toBe(200);
+      expect(homeAfterTaggedFail.html).toContain("second could not be read");
+      expect(homeAfterRevert.status).toBe(200);
+      expect(homeAfterRevert.html).toContain("Which variant ships?");
+      expect(homeAfterRevert.html).not.toContain("could not be read");
     });
   });
 
@@ -3775,6 +3795,15 @@ describe("serve", () => {
         heading: '<h1 id="read-me">Read me</h1>',
       },
     ];
+    const parityOrder = [
+      "README",
+      "docs/guide/index.md",
+      "docs/agent-work/2026-01-15-sample-topic",
+      "docs/agent-work/2026-01-14-standalone",
+      "docs/shell-html",
+      "docs/shell-title",
+      "docs/rock & roll's",
+    ];
     const shellFilledPages = [
       "README",
       "docs/guide/index.md",
@@ -3786,9 +3815,12 @@ describe("serve", () => {
     const prebuiltTopicPage = "docs/agent-work/2026-01-15-sample-topic";
     const linkedPages = new Map<string, { status: number; html: string }>();
     const servedPages = new Map<string, string>();
+    let docList = "";
+    let builtSiteFiles: ReadonlyMap<string, Buffer> = new Map();
     let readme = "";
     let notesStatus = 0;
     let notes = "";
+    let notesFileStatus = 0;
     let notesFile = "";
     let rock = "";
     let slash: Response;
@@ -3814,19 +3846,25 @@ describe("serve", () => {
       const hub = createHub({ root: dirname(repo) });
       const at = "http://admin.localhost/spoke/docs";
       const get = (path: string) => hub.fetch(new Request(new URL(path, at)));
-      const list = await (await get(at)).text();
+      docList = await (await get(at)).text();
+      builtSiteFiles = (await hub.pages()).files;
       const data = await readRepo(repo);
 
       for (const { path, escapedTitle } of expectedDocs) {
-        const link = list.match(new RegExp(`href="([^"]+)">\\s*${RegExp.escape(escapedTitle)}`));
-        if (!link) continue;
+        const link = docList.match(new RegExp(`href="([^"]+)">\\s*${RegExp.escape(escapedTitle)}`));
+        assert(
+          link,
+          `tested by "links $path from the Docs index and serves its heading" (${path})`,
+        );
         const page = await get(link[1]!);
         linkedPages.set(path, { status: page.status, html: await page.text() });
       }
       readme = await (await get("/spoke/doc/README")).text();
       notesStatus = (await get("/spoke/doc/docs/c%23-notes")).status;
       notes = await (await get("/spoke/doc/docs/c%23-notes")).text();
-      notesFile = await (await get("/_file/spoke/docs/c%23-notes.md")).text();
+      const notesFileRes = await get("/_file/spoke/docs/c%23-notes.md");
+      notesFileStatus = notesFileRes.status;
+      notesFile = await notesFileRes.text();
       rock = await (await get("/spoke/doc/docs/rock%20&%20roll's")).text();
       slash = await get("/spoke/doc/README/?x=1");
       const docFor = async (path: string) => {
@@ -3846,7 +3884,7 @@ describe("serve", () => {
       out = join(scratch(), "out");
       await buildSite(siteData([data]), out);
       served = linker([data]);
-      for (const page of [...shellFilledPages, prebuiltTopicPage])
+      for (const page of parityOrder)
         servedPages.set(page, await (await get(`/spoke/doc/${page}`)).text());
 
       // A doc's slug may itself end in .html, which only the hub's shells serve: Astro builds none.
@@ -3860,11 +3898,11 @@ describe("serve", () => {
 
     test.each(expectedDocs)(
       "links $path from the Docs index and serves its heading",
-      ({ path, heading }) => {
-        const entry = linkedPages.get(path);
-        expect(entry).toBeDefined();
-        expect(entry!.status).toBe(200);
-        expect(entry!.html).toContain(heading);
+      ({ path, escapedTitle, heading }) => {
+        expect(docList).toMatch(new RegExp(`href="([^"]+)">\\s*${RegExp.escape(escapedTitle)}`));
+        const entry = linkedPages.get(path)!;
+        expect(entry.status).toBe(200);
+        expect(entry.html).toContain(heading);
       },
     );
 
@@ -3874,12 +3912,16 @@ describe("serve", () => {
       expect(readme).toContain('href="/spoke/doc/docs/c%23-notes"');
     });
 
-    test("escapes special characters in doc titles and /_file/ links and serves the raw file", () => {
+    test("escapes special characters in doc titles and /_file/ links", () => {
       expect(notesStatus).toBe(200);
       expect(notes).toContain("<title>C# notes &amp; more · Sample spoke · Admin</title>");
       expect(notes).toContain('href="/_file/spoke/docs/c%23-notes.md"');
-      expect(notesFile).toBe(files["docs/c#-notes.md"]);
       expect(rock).toContain('href="/_file/spoke/docs/rock%20%26%20roll%27s.md"');
+    });
+
+    test("serves a committed doc's raw markdown under a percent-encoded /_file/ path", () => {
+      expect(notesFileStatus).toBe(200);
+      expect(notesFile).toBe(files["docs/c#-notes.md"]);
     });
 
     test("redirects a doc address with a trailing slash while keeping its query string", () => {
@@ -3963,9 +4005,12 @@ describe("serve", () => {
       expect(standalone.querySelector("details.item, .admin-diagram")).toBeNull();
     });
 
-    test("gives a standalone dated report copy, comment controls, and a change line", () => {
+    test("gives a standalone dated report copy and per-section comment controls", () => {
       expect(standalone.querySelectorAll("[data-comment]")).toHaveLength(5);
       expect(standalone.getElementById("copy")).not.toBeNull();
+    });
+
+    test("shows the Last changed report metadata line on a standalone dated report", () => {
       const reportMeta = standalone.querySelector("article [data-report]");
       expect(reportMeta).not.toBeNull();
       expect(reportMeta!.textContent).toContain("Last changed");
@@ -3980,33 +4025,33 @@ describe("serve", () => {
 
     test("serves the prebuilt topic report with matching script nonces and full-build parity", () => {
       const built = readFileSync(join(out, `spoke/doc/${prebuiltTopicPage}.html`), "utf8");
-      const got = servedPages.get(prebuiltTopicPage);
-      expect(got).toBeDefined();
-      const nonceMatch = got!.match(/'nonce-([\w-]+)'/);
+      const got = servedPages.get(prebuiltTopicPage)!;
+      expect(builtSiteFiles.has(`spoke/doc/${prebuiltTopicPage}.html`)).toBe(true);
+      const nonceMatch = got.match(/'nonce-([\w-]+)'/);
       expect(nonceMatch).not.toBeNull();
       const nonce = nonceMatch![1]!;
-      expect([...got!.matchAll(/<script nonce="([^"]+)"/g)].map((m) => m[1])).toEqual([
+      expect([...got.matchAll(/<script nonce="([^"]+)"/g)].map((m) => m[1])).toEqual([
         nonce,
         nonce,
       ]);
-      expect(sansNonce(got!)).toBe(sansNonce(served.files(served.pages(built))));
+      expect(sansNonce(got)).toBe(sansNonce(served.files(served.pages(built))));
     });
 
     test.each(shellFilledPages)(
       "fills %s into its shell with matching script nonces and full-build parity",
       (page) => {
         const built = readFileSync(join(out, `spoke/doc/${page}.html`), "utf8");
-        const got = servedPages.get(page);
-        expect(got).toBeDefined();
+        const got = servedPages.get(page)!;
+        expect(builtSiteFiles.has(`spoke/doc/${page}.html`)).toBe(false);
         // A shell's scripts carry the nonce its policy names.
-        const nonceMatch = got!.match(/'nonce-([\w-]+)'/);
+        const nonceMatch = got.match(/'nonce-([\w-]+)'/);
         expect(nonceMatch).not.toBeNull();
         const nonce = nonceMatch![1]!;
-        expect([...got!.matchAll(/<script nonce="([^"]+)"/g)].map((m) => m[1])).toEqual([
+        expect([...got.matchAll(/<script nonce="([^"]+)"/g)].map((m) => m[1])).toEqual([
           nonce,
           nonce,
         ]);
-        expect(sansNonce(got!)).toBe(sansNonce(served.files(served.pages(built))));
+        expect(sansNonce(got)).toBe(sansNonce(served.files(served.pages(built))));
       },
     );
 
@@ -4181,12 +4226,11 @@ describe("serve", () => {
     let reviewsPage = "";
     let small: Response;
     let smallBytes = Buffer.alloc(0);
-    let smallSize: [number, number] = [0, 0];
     let tallRes: Response;
     let tallBytes = Buffer.alloc(0);
-    let tallSize: [number, number] = [0, 0];
     let smallEtag: string | null = null;
-    let repeatStatus = 0;
+    let repeatMatched: { status: number; bytes: Buffer };
+    let repeatMismatched: { status: number; bytes: Buffer };
     let wide960Etag: string | null = null;
 
     beforeAll(async () => {
@@ -4219,12 +4263,8 @@ describe("serve", () => {
         hub.fetch(new Request(`http://admin.localhost${at}/${q}`, { headers }));
       small = await get("wide.png?w=480");
       smallBytes = Buffer.from(await small.bytes());
-      const smallMeta = await new Bun.Image(smallBytes).metadata();
-      smallSize = [smallMeta.width, smallMeta.height];
       tallRes = await get("tall.png?w=480");
       tallBytes = Buffer.from(await tallRes.bytes());
-      const tallMeta = await new Bun.Image(tallBytes).metadata();
-      tallSize = [tallMeta.width, tallMeta.height];
       for (const { query } of originalCases) {
         const res = await get(query);
         fullResponses.set(query, {
@@ -4233,8 +4273,17 @@ describe("serve", () => {
         });
       }
       smallEtag = small.headers.get("etag");
-      if (smallEtag)
-        repeatStatus = (await get("wide.png?w=480", { "if-none-match": smallEtag })).status;
+      assert(smallEtag, 'tested by "assigns distinct ETags per thumbnail width"');
+      const matchedRes = await get("wide.png?w=480", { "if-none-match": smallEtag });
+      repeatMatched = {
+        status: matchedRes.status,
+        bytes: Buffer.from(await matchedRes.bytes()),
+      };
+      const mismatchedRes = await get("wide.png?w=480", { "if-none-match": '"other-tag"' });
+      repeatMismatched = {
+        status: mismatchedRes.status,
+        bytes: Buffer.from(await mismatchedRes.bytes()),
+      };
       wide960Etag = (await get("wide.png?w=960")).headers.get("etag");
     }, testTimeout(60_000));
 
@@ -4250,24 +4299,23 @@ describe("serve", () => {
         label: "wide PNG",
         getRes: () => small,
         getBytes: () => smallBytes,
-        getSize: () => smallSize,
         expectedSize: [480, 240],
       },
       {
         label: "tall PNG",
         getRes: () => tallRes,
         getBytes: () => tallBytes,
-        getSize: () => tallSize,
         expectedSize: [54, 270],
       },
     ])(
       "resizes an oversized $label into the 480w box as WebP",
-      ({ getRes, getBytes, getSize, expectedSize }) => {
+      async ({ getRes, getBytes, expectedSize }) => {
         const bytes = getBytes();
         expect(getRes().headers.get("content-type")).toBe("image/webp");
         expect(bytes.subarray(0, 4).toString("ascii")).toBe("RIFF");
         expect(bytes.subarray(8, 12).toString("ascii")).toBe("WEBP");
-        expect(getSize()).toEqual(expectedSize);
+        const meta = await new Bun.Image(bytes).metadata();
+        expect([meta.width, meta.height]).toEqual(expectedSize);
       },
     );
 
@@ -4280,12 +4328,33 @@ describe("serve", () => {
       expect(res!.bytes).toEqual(originals.get(file)!);
     });
 
-    test("returns 304 for a matching thumbnail etag and varies etags by width", () => {
+    test("assigns distinct ETags per thumbnail width", () => {
       expect(smallEtag).not.toBeNull();
       expect(wide960Etag).not.toBeNull();
-      expect(repeatStatus).toBe(304);
       expect(wide960Etag).not.toBe(smallEtag);
     });
+
+    test.each([
+      {
+        label: "matching ETag",
+        getReply: () => repeatMatched,
+        expectedStatus: 304,
+        expectedBytes: () => Buffer.alloc(0),
+      },
+      {
+        label: "different ETag",
+        getReply: () => repeatMismatched,
+        expectedStatus: 200,
+        expectedBytes: () => smallBytes,
+      },
+    ])(
+      "responds $expectedStatus to conditional thumbnail request with $label",
+      ({ getReply, expectedStatus, expectedBytes }) => {
+        const reply = getReply();
+        expect(reply.status).toBe(expectedStatus);
+        expect(reply.bytes).toEqual(expectedBytes());
+      },
+    );
   });
 });
 
