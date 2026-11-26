@@ -280,6 +280,7 @@ describe("serve hub failure, concurrency, and rescan pinning", () => {
     let afterFail: Awaited<ReturnType<ReturnType<typeof createHub>["pages"]>>;
     let dashboard: Response;
     let body = "";
+    let initialErrors = 0;
 
     beforeAll(async () => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(base);
@@ -295,14 +296,16 @@ describe("serve hub failure, concurrency, and rescan pinning", () => {
         afterFail = await hub.pages();
         dashboard = await hub.fetch(new Request("http://admin.localhost/second/dashboard"));
         body = await dashboard.text();
+        initialErrors = errSpy.mock.calls.length;
       } finally {
         errSpy.mockRestore();
         clock.mockRestore();
       }
     }, TIMEOUT);
 
-    test("keeps the repository's last pages and names it in the last-read notice", () => {
+    test("keeps the repository's last pages, logs once, and names it in the last-read notice", () => {
       expect(dashboard.status).toBe(200);
+      expect(initialErrors).toBe(1);
       expect(body).toContain("second could not be read:");
       expect(body).toContain("Its pages show its last read.");
     });

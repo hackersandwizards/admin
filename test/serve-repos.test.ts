@@ -1,6 +1,6 @@
 import { rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test, vi } from "vitest";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 import { rejection } from "@hackersandwizards/scaffolding/rejection";
 import type { RepoData } from "../src/repo.ts";
 import {
@@ -291,62 +291,52 @@ describe("createRepoCache", () => {
     }
   });
 
-  test("loads healthy repos alongside failures and records unread notice for never-read repo", async () => {
-    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  describe("mixed load and pruning", () => {
     const dataA = sampleRepo("a", "/r/a");
-    const readers = new Map<string, () => Promise<RepoData>>([
-      ["/r/a", async () => dataA],
-      [
-        "/r/b",
-        async () => {
-          throw new Error("b broken");
+    let reads = 0;
+    let cache: ReturnType<typeof createRepoCache>;
+    let readFetched: (repo: string) => number | undefined;
+    let firstLoad: Awaited<ReturnType<ReturnType<typeof createRepoCache>["load"]>>;
+
+    beforeAll(async () => {
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const readers = new Map<string, () => Promise<RepoData>>([
+        ["/r/a", async () => dataA],
+        [
+          "/r/b",
+          async () => {
+            throw new Error("b broken");
+          },
+        ],
+      ]);
+      const states = new Map([
+        ["/r/a", { state: "a1", fetched: 500 }],
+        ["/r/b", { state: "b1", fetched: undefined }],
+      ]);
+      cache = createRepoCache(
+        (p) => {
+          reads++;
+          return readers.get(p)!();
         },
-      ],
-    ]);
-    const states = new Map([
-      ["/r/a", { state: "a1", fetched: 500 }],
-      ["/r/b", { state: "b1", fetched: undefined }],
-    ]);
-    try {
-      const cache = createRepoCache(
-        (p) => readers.get(p)!(),
         async (p) => states.get(p)!,
       );
-      const firstLoad = await cache.load((await cache.probe(["/r/a", "/r/b"])).states);
-      const readFetched = cache.fetchedTime;
+      try {
+        firstLoad = await cache.load((await cache.probe(["/r/a", "/r/b"])).states);
+        readFetched = cache.fetchedTime;
+      } finally {
+        errSpy.mockRestore();
+      }
+    });
+
+    test("loads healthy repos alongside failures and records unread notice for never-read repo", () => {
       expect(firstLoad).toEqual({ repos: [dataA], fresh: true });
       expect(readFetched("/r/a")).toBe(500);
       expect(cache.unreadNotices()).toEqual([
         { name: "b", message: "b broken", hasLastRead: false },
       ]);
-    } finally {
-      errSpy.mockRestore();
-    }
-  });
+    });
 
-  test("prunes vanished repositories from read, unread, and fetched caches on probe", async () => {
-    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const dataA = sampleRepo("a", "/r/a");
-    const readers = new Map<string, () => Promise<RepoData>>([
-      ["/r/a", async () => dataA],
-      [
-        "/r/b",
-        async () => {
-          throw new Error("b broken");
-        },
-      ],
-    ]);
-    const readOne = vi.fn((p: string) => readers.get(p)!());
-    const states = new Map([
-      ["/r/a", { state: "a1", fetched: 500 }],
-      ["/r/b", { state: "b1", fetched: undefined }],
-    ]);
-    try {
-      const cache = createRepoCache(readOne, async (p) => states.get(p)!);
-      await cache.load((await cache.probe(["/r/a", "/r/b"])).states);
-      const readFetched = cache.fetchedTime;
-      expect(readFetched("/r/a")).toBe(500);
-
+    test("prunes vanished repositories from read, unread, and fetched caches on probe", async () => {
       await cache.probe(["/r/a"]);
       expect(cache.unreadNotices()).toEqual([]);
 
@@ -354,9 +344,7 @@ describe("createRepoCache", () => {
       expect(readFetched("/r/a")).toBeUndefined();
 
       await cache.load((await cache.probe(["/r/a"])).states);
-      expect(readOne).toHaveBeenCalledTimes(3);
-    } finally {
-      errSpy.mockRestore();
-    }
+      expect(reads).toBe(3);
+    });
   });
 });

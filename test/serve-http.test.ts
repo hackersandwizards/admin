@@ -1,4 +1,4 @@
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, beforeAll, describe, expect, test, vi } from "vitest";
 import { rejection } from "@hackersandwizards/scaffolding/rejection";
 import { SHELL, shellPath } from "../src/build.ts";
 import type { RepoData } from "../src/repo.ts";
@@ -174,40 +174,41 @@ describe("responseHeaders and isCompressible", () => {
 describe("createResponder", () => {
   const bigHtml = "<p>hello</p>".repeat(200);
 
-  test("gzips compressible built pages with no-store and hub CSP", async () => {
-    const responder = createResponder();
-    const req: ParsedRequest = {
-      url: new URL("http://admin.localhost/"),
-      path: "/",
-      gzip: true,
-      ifNoneMatch: null,
-    };
-    const res = responder.page(req, Buffer.from(bigHtml), "index.html");
-    expect(res.headers.get("content-encoding")).toBe("gzip");
-    expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(res.headers.get("content-security-policy")).toBe(HUB_CSP);
-    expect(Buffer.from(Bun.gunzipSync(await res.bytes())).toString("utf8")).toBe(bigHtml);
-  });
+  describe("gzipped built page responses", () => {
+    let first: Response;
+    let second: Response;
+    let gzipCalls = 0;
 
-  test("reuses cached gzip bytes across repeated page responses for the same buffer", async () => {
-    const responder = createResponder();
-    const body = Buffer.from(bigHtml);
-    const req: ParsedRequest = {
-      url: new URL("http://admin.localhost/"),
-      path: "/",
-      gzip: true,
-      ifNoneMatch: null,
-    };
-    const gzipSpy = vi.spyOn(Bun, "gzipSync");
-    try {
-      const first = responder.page(req, body, "index.html");
-      const second = responder.page(req, body, "index.html");
+    beforeAll(() => {
+      const responder = createResponder();
+      const body = Buffer.from(bigHtml);
+      const req: ParsedRequest = {
+        url: new URL("http://admin.localhost/"),
+        path: "/",
+        gzip: true,
+        ifNoneMatch: null,
+      };
+      const gzipSpy = vi.spyOn(Bun, "gzipSync");
+      try {
+        first = responder.page(req, body, "index.html");
+        second = responder.page(req, body, "index.html");
+        gzipCalls = gzipSpy.mock.calls.length;
+      } finally {
+        gzipSpy.mockRestore();
+      }
+    });
+
+    test("gzips compressible built pages with no-store and hub CSP", async () => {
+      expect(first.headers.get("content-encoding")).toBe("gzip");
+      expect(first.headers.get("cache-control")).toBe("no-store");
+      expect(first.headers.get("content-security-policy")).toBe(HUB_CSP);
       expect(Buffer.from(Bun.gunzipSync(await first.bytes())).toString("utf8")).toBe(bigHtml);
+    });
+
+    test("reuses cached gzip bytes on repeat responses for the same buffer", async () => {
+      expect(gzipCalls).toBe(1);
       expect(Buffer.from(Bun.gunzipSync(await second.bytes())).toString("utf8")).toBe(bigHtml);
-      expect(gzipSpy).toHaveBeenCalledTimes(1);
-    } finally {
-      gzipSpy.mockRestore();
-    }
+    });
   });
 
   test.each<{
