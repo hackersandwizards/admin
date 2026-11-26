@@ -1060,7 +1060,7 @@ describe("hub", () => {
       },
       { type: "text" },
     ]);
-    expect(root.children[0]!.properties).toEqual({
+    expect(root.children![0]!.properties).toEqual({
       className: ["hw-table-scroll"],
       tabIndex: 0,
     });
