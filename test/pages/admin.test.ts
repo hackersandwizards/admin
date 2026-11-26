@@ -1,4 +1,5 @@
 import { afterAll, assert, beforeAll, describe, expect, test, vi } from "vitest";
+import { defined } from "@hackersandwizards/scaffolding/defined";
 import {
   cpSync,
   existsSync,
@@ -43,6 +44,12 @@ import {
   sh,
   stubBuildSpawn,
 } from "../admin-fixtures.ts";
+
+declare global {
+  interface Window {
+    __adminDefined: typeof defined;
+  }
+}
 
 const testTimeout = (ms: number) =>
   ms * (Number(process.env.SCAFFOLDING_TEST_TIMEOUT_MS || 5000) / 5000);
@@ -127,8 +134,10 @@ describe("pages", () => {
     let docPath = "";
     let docHtml = "";
     let plainDocsHtml = "";
-    const where = (html: string) => html.match(/<nav[^>]*aria-label="Where"[\s\S]*?<\/nav>/)![0];
-    const repos = (html: string) => html.match(/<div id="admin-repos"[\s\S]*?<\/div>/)![0];
+    const where = (html: string) =>
+      defined(html.match(/<nav[^>]*aria-label="Where"[\s\S]*?<\/nav>/), "Where navigation")[0];
+    const repos = (html: string) =>
+      defined(html.match(/<div id="admin-repos"[\s\S]*?<\/div>/), "repository menu")[0];
 
     beforeAll(async () => {
       repo = repoFrom("spoke");
@@ -166,7 +175,9 @@ describe("pages", () => {
         /<section[^>]*>\s*<h2[^>]*>Settled<\/h2>[\s\S]*?<\/section>/,
       );
       expect(settledSection).not.toBeNull();
-      expect(settledSection![0]).toContain('id="spoke:name-the-command"');
+      expect(defined(settledSection, "settled section")[0]).toContain(
+        'id="spoke:name-the-command"',
+      );
     });
 
     test("the hub's Waiting on others section links each person's item to its row and names prerequisites", () => {
@@ -186,12 +197,14 @@ describe("pages", () => {
         /<section[^>]*>\s*<h2[^>]*>Agents on it<\/h2>[\s\S]*?<\/section>/,
       );
       expect(agentsSection).not.toBeNull();
-      const disclosure = agentsSection![0].match(
+      const disclosure = defined(agentsSection, "agents section")[0].match(
         /<details[^>]*data-group[^>]*>[\s\S]*?<\/details>/,
       );
       expect(disclosure).not.toBeNull();
-      expect(agentsSection![0]).not.toMatch(/<details[^>]*data-group[^>]* open/);
-      expect(disclosure![0]).toContain("Sort the sample files");
+      expect(defined(agentsSection, "agents section")[0]).not.toMatch(
+        /<details[^>]*data-group[^>]* open/,
+      );
+      expect(defined(disclosure, "agents disclosure")[0]).toContain("Sort the sample files");
     });
 
     test("the hub's Agents on it rows link to their work rows without textareas or person attributes", () => {
@@ -199,7 +212,7 @@ describe("pages", () => {
         /<section[^>]*>\s*<h2[^>]*>Agents on it<\/h2>[\s\S]*?<\/section>/,
       );
       expect(agentsSection).not.toBeNull();
-      const agents = agentsSection![0];
+      const agents = defined(agentsSection, "agents section")[0];
       expect(agents).toContain('href="spoke/work.html#spoke:sort-the-samples"');
       expect(agents).not.toContain("<textarea");
       expect(agents).not.toMatch(/<div[^>]*data-row[^>]*data-who/);
@@ -293,7 +306,7 @@ describe("pages", () => {
     ])("index.md doc $title in plain links to $to and renders its heading", ({ title, id, to }) => {
       const match = plainDocsHtml.match(new RegExp(`href="([^"]+)">\\s*${title}`));
       assert(match, `link for ${title} should exist on plain/docs.html`);
-      const link = match[1]!;
+      const link = defined(match[1], "link URL capture");
       expect(link.startsWith(to)).toBe(true);
       expect(readFileSync(join(out, "plain", link), "utf8")).toContain(
         `<h1 id="${id}">${title}</h1>`,
@@ -315,8 +328,8 @@ describe("pages", () => {
       expect(scriptTags.length).toBeGreaterThan(0);
       expect(scriptTags.filter((tag) => !validScript.test(tag))).toEqual([]);
       expect(text).not.toContain('"/_astro/');
-      const assetRefs = [...text.matchAll(/(?:href|src)="([^"]*_astro\/[^"]+)"/g)].map(
-        ([, ref]) => ref!,
+      const assetRefs = [...text.matchAll(/(?:href|src)="([^"]*_astro\/[^"]+)"/g)].map(([, ref]) =>
+        defined(ref, "asset reference"),
       );
       expect(assetRefs.length).toBeGreaterThan(0);
       expect(
@@ -341,7 +354,7 @@ describe("pages", () => {
       expect(docHtml).toMatch(/<article[^>]*><p[^>]*data-report[\s\S]*?<\/nav><p>A report/);
       const article = docHtml.match(/<article[^>]*>[\s\S]*?<\/article>/);
       expect(article).not.toBeNull();
-      expect(article![0]).not.toContain("<h1");
+      expect(defined(article, "doc article")[0]).not.toContain("<h1");
     });
 
     test("a built report renders prose links with hw-link and without not-prose", () => {
@@ -351,7 +364,9 @@ describe("pages", () => {
 
     test("a built report loads the typography plugin stylesheet", () => {
       const sheets = [...docHtml.matchAll(/href="([^"]+\.css)"/g)]
-        .map(([, css]) => readFileSync(resolve(dirname(docPath), css!), "utf8"))
+        .map(([, css]) =>
+          readFileSync(resolve(dirname(docPath), defined(css, "stylesheet reference")), "utf8"),
+        )
         .join("");
       // Typography's plugin is loaded: without it, prose styles nothing.
       expect(sheets).toContain(".prose :where(p)");
@@ -371,7 +386,10 @@ describe("pages", () => {
       // brand's element script reaches the page as one classic script, which a page from disk loads.
       const scriptMatch = decisionsHtml.match(/<script nonce="[^"]+" src="([^"]*admin[^"]*\.js)"/);
       assert(scriptMatch, "decisions page should link the bundled admin script");
-      const bundled = readFileSync(resolve(out, "spoke", scriptMatch[1]!), "utf8");
+      const bundled = readFileSync(
+        resolve(out, "spoke", defined(scriptMatch[1], "script path capture")),
+        "utf8",
+      );
       expect(bundled).toContain("hw-menu");
       expect(bundled).not.toMatch(/^import\b/m);
       // brand's enhance() wires the Copy button by its data-hw-copy attribute.
@@ -418,7 +436,10 @@ describe("pages", () => {
 
     beforeAll(async () => {
       const spoke = await readRepo(repoFrom("spoke"));
-      const base = spoke.items.find((i) => i.id === "ask-the-printer")!;
+      const base = defined(
+        spoke.items.find((i) => i.id === "ask-the-printer"),
+        "item ask-the-printer",
+      );
       const late = { ...base, id: "late", owner: "Alex", order: 80 };
       // Kim's, ranked first in its repository: the Repositories table counts every person's items,
       // so its Most urgent names Kim's, while the dashboard's names the hub's user's own.
@@ -431,7 +452,10 @@ describe("pages", () => {
         due: "2020-01-01",
       };
       // An assumption stated by its recommended option alone.
-      const picked = spoke.items.find((i) => i.id === "pick-a-variant")!;
+      const picked = defined(
+        spoke.items.find((i) => i.id === "pick-a-variant"),
+        "item pick-a-variant",
+      );
       const bare = { ...picked, id: "bare", status: "assumed" as const };
       const other = {
         ...spoke,
@@ -460,11 +484,11 @@ describe("pages", () => {
       // A line linking to an item names its repository by label too.
       const kimsLink = html.match(/<div[^>]*data-k="spoke:kims"[\s\S]*?<\/div>/);
       expect(kimsLink).not.toBeNull();
-      expect(kimsLink![0]).toContain("Sample spoke · ");
+      expect(defined(kimsLink, "Kim's link")[0]).toContain("Sample spoke · ");
       // Each row names its repository.
       const earlySummary = html.match(/id="other:early"[\s\S]*?<\/summary>/);
       expect(earlySummary).not.toBeNull();
-      expect(earlySummary![0]).toContain("Zebra repo · to do");
+      expect(defined(earlySummary, "early repository summary")[0]).toContain("Zebra repo · to do");
     });
 
     test("the hub's Repositories table includes the Decide P2 column", () => {
@@ -472,7 +496,9 @@ describe("pages", () => {
         /<section[^>]*>\s*<h2[^>]*>Repositories<\/h2>[\s\S]*?<\/section>/,
       );
       expect(repoSection).not.toBeNull();
-      const headers = [...repoSection![0].matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map((m) => m[1]);
+      const headers = [
+        ...defined(repoSection, "repository section")[0].matchAll(/<th[^>]*>([^<]+)<\/th>/g),
+      ].map((m) => m[1]);
       expect(headers).toEqual([
         "Repo",
         "Decide P1",
@@ -497,7 +523,7 @@ describe("pages", () => {
       );
       expect(repoSection).not.toBeNull();
       const topByRepo = [
-        ...repoSection![0].matchAll(
+        ...defined(repoSection, "repository section")[0].matchAll(
           /<tr data-row data-repo-row="([^"]+)">(?:(?!<\/tr>)[\s\S])*?<td class="max-w-md max-sm:hidden">([^<]*)<\/td>/g,
         ),
       ].map(([, key, title]) => [key, title]);
@@ -548,7 +574,7 @@ describe("pages", () => {
       // An opened decision shows its options before its context.
       const variantMatch = html.match(/id="spoke:pick-a-variant"[\s\S]*?<\/details>/);
       expect(variantMatch).not.toBeNull();
-      const variant = variantMatch![0];
+      const variant = defined(variantMatch, "variant row")[0];
       const markers = [
         ...variant.matchAll(
           /Pick recommended|role="radiogroup" aria-label="[^"]+"|value="a"|>Context</g,
@@ -569,10 +595,12 @@ describe("pages", () => {
       expect(variantMatch).not.toBeNull();
       // A letter key, which the item's text names an option by, stands before its label; a word key,
       // which restates the label, stays out.
-      expect(variantMatch![0]).toMatch(/data-option-key[^>]*>a<\/span>\s*<b>Variant A<\/b>/);
+      expect(defined(variantMatch, "variant row")[0]).toMatch(
+        /data-option-key[^>]*>a<\/span>\s*<b>Variant A<\/b>/,
+      );
       const recipientsMatch = html.match(/id="spoke:pick-recipients"[\s\S]*?<\/details>/);
       expect(recipientsMatch).not.toBeNull();
-      expect(recipientsMatch![0]).not.toContain("data-option-key");
+      expect(defined(recipientsMatch, "recipients row")[0]).not.toContain("data-option-key");
     });
 
     test("provenance lists checkouts behind their push branch and sits after Settled", () => {
@@ -581,7 +609,9 @@ describe("pages", () => {
       expect(html).toMatch(/class="admin-provenance[^>]*>[^<]*· as of <span data-stamp>\d/);
       const provenance = html.match(/<p class="admin-provenance[^>]*>([^<]*)/);
       expect(provenance).not.toBeNull();
-      expect(provenance![1]).toContain("1 behind their push branch: other");
+      expect(defined(provenance, "repository provenance match")[1]).toContain(
+        "1 behind their push branch: other",
+      );
       expect(readFileSync(join(out, "other/dashboard.html"), "utf8")).toContain(
         "2 commits behind the push branch, fetched",
       );
@@ -601,7 +631,10 @@ describe("pages", () => {
 
     beforeAll(async () => {
       const spoke = await readRepo(repoFrom("spoke"));
-      const base = spoke.items.find((i) => i.id === "pick-recipients")!;
+      const base = defined(
+        spoke.items.find((i) => i.id === "pick-recipients"),
+        "item pick-recipients",
+      );
       const shown = {
         ...base,
         id: "shown",
@@ -689,6 +722,8 @@ describe("pages", () => {
 
     const openPage = async (owner: Awaited<ReturnType<typeof browser.createBrowserContext>>) => {
       const page = await owner.newPage();
+      // Puppeteer runs page callbacks in Chrome, outside Vitest’s module scope.
+      await page.evaluateOnNewDocument(`window.__adminDefined = (${defined.toString()});`);
       const violations: string[] = [];
       await page.exposeFunction("__adminCsp", (msg: string) => {
         violations.push(msg);
@@ -744,9 +779,11 @@ describe("pages", () => {
         doc.body.innerHTML = readForDom(workPath);
         const fold = doc.querySelector("details:has(figure.admin-diagram)");
         expect(fold).not.toBeNull();
-        const links = [...fold!.querySelectorAll("svg a")];
-        expect(fold!.hasAttribute("open")).toBe(false);
-        expect(fold!.querySelectorAll("svg .node")).toHaveLength(6);
+        const links = [...defined(fold, "needs graph disclosure").querySelectorAll("svg a")];
+        expect(defined(fold, "needs graph disclosure").hasAttribute("open")).toBe(false);
+        expect(defined(fold, "needs graph disclosure").querySelectorAll("svg .node")).toHaveLength(
+          6,
+        );
         expect(links.map((link) => link.getAttribute("href")).sort()).toEqual([
           "decisions.html#spoke:cache-folder",
           "decisions.html#spoke:check-the-copy",
@@ -766,13 +803,18 @@ describe("pages", () => {
             `details:has(figure.admin-diagram) svg a[href="${file}#${id}"]`,
           );
           expect(link).not.toBeNull();
-          expect(link!.querySelectorAll(".node")).toHaveLength(1);
-          expect(link!.querySelector(".node text")!.textContent).toBe(title);
+          expect(defined(link, "needs graph link").querySelectorAll(".node")).toHaveLength(1);
+          expect(
+            defined(
+              defined(link, "needs graph link").querySelector(".node text"),
+              "element matching .node text",
+            ).textContent,
+          ).toBe(title);
           const target = new Window().document;
           target.body.innerHTML = readForDom(join(dirname(workPath), file));
           const row = target.getElementById(id);
           expect(row).not.toBeNull();
-          expect(row!.hasAttribute("data-row")).toBe(true);
+          expect(defined(row, "item row").hasAttribute("data-row")).toBe(true);
         },
       );
 
@@ -837,16 +879,22 @@ describe("pages", () => {
         async ({ rel, width }) => {
           const context = await browser.createBrowserContext();
           try {
-            const page = await context.newPage();
+            const { page } = await openPage(context);
             await page.setViewport({ width, height: 844 });
             await page.goto(`file://${join(out, rel)}`, { waitUntil: "load" });
             await page.evaluate(() => document.fonts.ready);
             const gap = await page.evaluate(() => {
-              const right = document
-                .querySelector("[popovertarget=admin-repos]")!
+              const right = window
+                .__adminDefined(
+                  document.querySelector("[popovertarget=admin-repos]"),
+                  "element matching [popovertarget=admin-repos]",
+                )
                 .getBoundingClientRect().right;
-              const left = document
-                .querySelector("[data-admin-theme]")!
+              const left = window
+                .__adminDefined(
+                  document.querySelector("[data-admin-theme]"),
+                  "element matching [data-admin-theme]",
+                )
                 .getBoundingClientRect().left;
               return left - right;
             });
@@ -872,7 +920,10 @@ describe("pages", () => {
         // Five more people, each with an open item, so the person buttons run wider than a phone.
         const more = ["Annabelle", "Bartholomew", "Constance", "Dorothea", "Evangeline"].map(
           (owner) => ({
-            ...spoke.items.find((i) => i.id === "ask-the-printer")!,
+            ...defined(
+              spoke.items.find((i) => i.id === "ask-the-printer"),
+              "item ask-the-printer",
+            ),
             id: owner,
             owner,
           }),
@@ -885,39 +936,37 @@ describe("pages", () => {
         async ({ width, height }) => {
           const context = await browser.createBrowserContext();
           try {
-            const page = await context.newPage();
+            const { page } = await openPage(context);
             await page.setViewport({ width, height });
             // A page long enough that the row can reach the top, as on a full repository's page.
             await page.goto(`file://${out}/spoke/work.html`);
-            const row = await page.evaluate(
-              () =>
-                new Promise<{ open: boolean; belowBar: boolean; inView: boolean }>((resolve) => {
-                  document.body.append(
-                    Object.assign(document.createElement("div"), { style: "height:200vh" }),
-                  );
-                  addEventListener(
-                    "hashchange",
-                    () =>
-                      requestAnimationFrame(() => {
-                        const el = document.getElementById(
-                          "spoke:ask-the-printer",
-                        ) as HTMLDetailsElement;
-                        const bar = document
-                          .querySelector(".admin-action")!
-                          .getBoundingClientRect();
-                        const rect = el.getBoundingClientRect();
-                        const summary = el.firstElementChild!.getBoundingClientRect();
-                        resolve({
-                          open: el.open,
-                          belowBar: rect.top >= bar.bottom,
-                          inView: summary.bottom <= innerHeight,
-                        });
-                      }),
-                    { once: true },
-                  );
-                  location.hash = "#spoke:ask-the-printer";
-                }),
-            );
+            const row = await page.evaluate(async () => {
+              document.body.append(
+                Object.assign(document.createElement("div"), { style: "height:200vh" }),
+              );
+              await new Promise<void>((resolve) => {
+                addEventListener("hashchange", () => requestAnimationFrame(() => resolve()), {
+                  once: true,
+                });
+                location.hash = "#spoke:ask-the-printer";
+              });
+              const el = window.__adminDefined(
+                document.getElementById("spoke:ask-the-printer"),
+                "ask-the-printer row",
+              ) as HTMLDetailsElement;
+              const bar = window
+                .__adminDefined(document.querySelector(".admin-action"), "copy bar")
+                .getBoundingClientRect();
+              const rect = el.getBoundingClientRect();
+              const summary = window
+                .__adminDefined(el.firstElementChild, "item summary")
+                .getBoundingClientRect();
+              return {
+                open: el.open,
+                belowBar: rect.top >= bar.bottom,
+                inView: summary.bottom <= innerHeight,
+              };
+            });
             expect(row).toEqual({ open: true, belowBar: true, inView: true });
           } finally {
             await context.close();
@@ -931,17 +980,22 @@ describe("pages", () => {
         async () => {
           const context = await browser.createBrowserContext();
           try {
-            const page = await context.newPage();
+            const { page } = await openPage(context);
             await page.setViewport({ width: 390, height: 844 });
             await page.goto(`file://${out}/index.html`);
             const buttons = await page.evaluate(() => {
               const all = [...document.querySelectorAll("[data-who-button], [data-kind-button]")];
               const shown = all.filter((b) => !b.hasAttribute("hidden"));
               return {
-                labels: shown.map((b) => b.textContent!.trim().replace(/\s+/g, " ")),
+                labels: shown.map((b) =>
+                  window
+                    .__adminDefined(b.textContent, "filter button text")
+                    .trim()
+                    .replace(/\s+/g, " "),
+                ),
                 cut: all
                   .filter((b) => b.getBoundingClientRect().right > innerWidth)
-                  .map((b) => b.textContent!.trim()),
+                  .map((b) => window.__adminDefined(b.textContent, "filter button text").trim()),
               };
             });
             expect(buttons.labels).toEqual([
@@ -971,7 +1025,7 @@ describe("pages", () => {
         async () => {
           const context = await browser.createBrowserContext();
           try {
-            const page = await context.newPage();
+            const { page } = await openPage(context);
             await page.setViewport({ width: 1440, height: 900 });
             await page.goto(`file://${out}/index.html`);
             await page.evaluate(() => {
@@ -982,10 +1036,15 @@ describe("pages", () => {
               const all = [...document.querySelectorAll("[data-who-button], [data-kind-button]")];
               const shown = all.filter((b) => !b.hasAttribute("hidden"));
               return {
-                labels: shown.map((b) => b.textContent!.trim().replace(/\s+/g, " ")),
+                labels: shown.map((b) =>
+                  window
+                    .__adminDefined(b.textContent, "filter button text")
+                    .trim()
+                    .replace(/\s+/g, " "),
+                ),
                 cut: all
                   .filter((b) => b.getBoundingClientRect().right > innerWidth)
-                  .map((b) => b.textContent!.trim()),
+                  .map((b) => window.__adminDefined(b.textContent, "filter button text").trim()),
               };
             });
             expect(buttons.labels).toEqual([
@@ -1016,16 +1075,27 @@ describe("pages", () => {
         async ({ width, height }) => {
           const context = await browser.createBrowserContext();
           try {
-            const page = await context.newPage();
+            const { page } = await openPage(context);
             await page.setViewport({ width, height });
             await page.goto(`file://${out}/index.html`);
             // A settled row's closed line holds two lines at most, however long its text.
             const lines = await page.evaluate(() => {
-              const line = document.querySelector<HTMLElement>(
-                '[data-status="assumed"] summary .line-clamp-2',
-              )!;
-              line.closest<HTMLDetailsElement>("details[data-group]")!.open = true;
-              document.querySelector<HTMLElement>('[data-who-button="all"]')!.click();
+              const line = window.__adminDefined(
+                document.querySelector<HTMLElement>(
+                  '[data-status="assumed"] summary .line-clamp-2',
+                ),
+                'element matching [data-status="assumed"] summary .line-clamp-2',
+              );
+              window.__adminDefined(
+                line.closest<HTMLDetailsElement>("details[data-group]"),
+                "ancestor matching details[data-group]",
+              ).open = true;
+              window
+                .__adminDefined(
+                  document.querySelector<HTMLElement>('[data-who-button="all"]'),
+                  'element matching [data-who-button="all"]',
+                )
+                .click();
               line.textContent = "Assumed: a long assumption. ".repeat(40);
               return line.offsetHeight / parseFloat(getComputedStyle(line).lineHeight);
             });
@@ -1043,22 +1113,37 @@ describe("pages", () => {
         async ({ width, height }) => {
           const context = await browser.createBrowserContext();
           try {
-            const page = await context.newPage();
+            const { page } = await openPage(context);
             await page.setViewport({ width, height });
             // A row without a recommendation or an answer leaves no empty line where Reset waits: the
             // next line sits one gap below the one before.
             await page.goto(`file://${out}/spoke/work.html#spoke:ask-the-printer`);
             const gaps = await page.evaluate(() => {
-              const line = document
-                .getElementById("spoke:ask-the-printer")!
-                .querySelector(".clear")!.parentElement!;
+              const line = window.__adminDefined(
+                window.__adminDefined(
+                  window
+                    .__adminDefined(
+                      document.getElementById("spoke:ask-the-printer"),
+                      "element spoke:ask-the-printer",
+                    )
+                    .querySelector(".clear"),
+                  "element matching .clear",
+                ).parentElement,
+                "Reset row",
+              );
               const box = (e: Element) => e.getBoundingClientRect();
               return [
-                box(line.nextElementSibling!).top - box(line.previousElementSibling!).bottom,
-                parseFloat(getComputedStyle(line.parentElement!).rowGap),
+                box(window.__adminDefined(line.nextElementSibling, "next row after Reset")).top -
+                  box(
+                    window.__adminDefined(line.previousElementSibling, "previous row before Reset"),
+                  ).bottom,
+                parseFloat(
+                  getComputedStyle(window.__adminDefined(line.parentElement, "Reset row container"))
+                    .rowGap,
+                ),
               ];
             });
-            expect(gaps[0]).toBeCloseTo(gaps[1]!);
+            expect(gaps[0]).toBeCloseTo(defined(gaps[1], "computed row gap"));
           } finally {
             await context.close();
           }
@@ -1102,23 +1187,37 @@ describe("pages", () => {
         const response = await page.goto(new URL(SAMPLE_REPORT, server.url).href);
         await page.click('nav[aria-label="Contents"] a[href="#next"]');
         await page.waitForFunction(() => {
-          const bar = document.querySelector(".admin-action")!.getBoundingClientRect();
-          const heading = document.getElementById("next")!.getBoundingClientRect();
+          const bar = window
+            .__adminDefined(
+              document.querySelector(".admin-action"),
+              "element matching .admin-action",
+            )
+            .getBoundingClientRect();
+          const heading = window
+            .__adminDefined(document.getElementById("next"), "element next")
+            .getBoundingClientRect();
           const hashMiss = Number(location.hash !== "#next") * -1e6;
           return (
             Math.min(hashMiss, heading.top - bar.bottom, innerHeight - heading.bottom - 1e-6) >= 0
           );
         });
         const pos = await page.evaluate(() => {
-          const bar = document.querySelector(".admin-action")!.getBoundingClientRect();
-          const heading = document.getElementById("next")!.getBoundingClientRect();
+          const bar = window
+            .__adminDefined(
+              document.querySelector(".admin-action"),
+              "element matching .admin-action",
+            )
+            .getBoundingClientRect();
+          const heading = window
+            .__adminDefined(document.getElementById("next"), "element next")
+            .getBoundingClientRect();
           return {
             hash: location.hash,
             belowBar: heading.top >= bar.bottom,
             inView: heading.bottom < innerHeight,
           };
         });
-        return { page, violations, status: response!.status(), pos };
+        return { page, violations, status: defined(response, "navigation response").status(), pos };
       };
 
       const copyCommentStage = async (
@@ -1130,7 +1229,13 @@ describe("pages", () => {
         await stage.page.bringToFront();
         await stage.page.click("#copy");
         await stage.page.waitForFunction(() =>
-          document.querySelector("#state")!.textContent!.includes("copied at"),
+          window
+            .__adminDefined(
+              window.__adminDefined(document.querySelector("#state"), "element matching #state")
+                .textContent,
+              "copy state text",
+            )
+            .includes("copied at"),
         );
         const clipboard = await stage.page.evaluate(() => navigator.clipboard.readText());
         return { ...stage, clipboard };
@@ -1238,10 +1343,12 @@ describe("pages", () => {
             (field) => (field as HTMLTextAreaElement).value,
           );
           versions = await stage.page.evaluate((key) => {
-            const stored = JSON.parse(localStorage.getItem("admin-answers:versions")!) as Record<
-              string,
-              string
-            >;
+            const stored = JSON.parse(
+              window.__adminDefined(
+                localStorage.getItem("admin-answers:versions"),
+                "storage entry admin-answers:versions",
+              ),
+            ) as Record<string, string>;
             return [stored[key], stored[`#${key}`]] as [string | undefined, string | undefined];
           }, `spoke:${stem}`);
           violations = stage.violations;
@@ -1300,19 +1407,28 @@ describe("pages", () => {
           view = await diagram.evaluate(async (svg) => {
             await document.fonts.ready;
             const { width, height } = svg.getBoundingClientRect();
-            const figure = svg.parentElement!;
+            const figure = window.__adminDefined(svg.parentElement, "diagram figure");
             const nodes = [...svg.querySelectorAll(".node")];
             const measurements = nodes.map((node) => {
-              const label = node.querySelector("text")!;
-              const box = node.querySelector("rect")!;
+              const label = window.__adminDefined(
+                node.querySelector("text"),
+                "element matching text",
+              );
+              const box = window.__adminDefined(
+                node.querySelector("rect"),
+                "element matching rect",
+              );
               return {
-                label: label.textContent!,
+                label: window.__adminDefined(label.textContent, "diagram label text"),
                 width: label.getBBox().width,
                 box: box.getBBox().width,
               };
             });
             const root = document.documentElement;
-            const first = nodes[0]!.querySelector("rect")!;
+            const first = window.__adminDefined(
+              window.__adminDefined(nodes[0], "first diagram node").querySelector("rect"),
+              "element matching rect",
+            );
             root.dataset.theme = "light";
             const day = getComputedStyle(first).fill;
             root.dataset.theme = "dark";
@@ -1322,7 +1438,12 @@ describe("pages", () => {
               scrollWidth: figure.scrollWidth,
               clientWidth: figure.clientWidth,
               overflow: getComputedStyle(figure).overflowX,
-              font: getComputedStyle(nodes[0]!.querySelector("text")!).fontFamily,
+              font: getComputedStyle(
+                window.__adminDefined(
+                  window.__adminDefined(nodes[0], "first diagram node").querySelector("text"),
+                  "element matching text",
+                ),
+              ).fontFamily,
               measurements,
               day,
               night: getComputedStyle(first).fill,
@@ -1405,8 +1526,15 @@ describe("pages", () => {
             const [member, mono, sans] = await page.$eval(".admin-diagram text.mono", (label) => {
               const reference = document.createElement("span");
               reference.style.fontFamily = "var(--font-mono)";
-              label.closest("figure")!.append(reference);
-              const title = label.closest("svg")!.querySelector("text:not(.mono)")!;
+              window
+                .__adminDefined(label.closest("figure"), "ancestor matching figure")
+                .append(reference);
+              const title = window.__adminDefined(
+                window
+                  .__adminDefined(label.closest("svg"), "ancestor matching svg")
+                  .querySelector("text:not(.mono)"),
+                "element matching text:not(.mono)",
+              );
               return [
                 getComputedStyle(label).fontFamily,
                 getComputedStyle(reference).fontFamily,
@@ -1469,20 +1597,24 @@ describe("pages", () => {
         (name) => {
           const match = xHtml.match(new RegExp(`href="([^"]*)">${name}<`));
           assert(match, `doc link ${name} should exist on x.html`);
-          expect(existsSync(decodeURIComponent(new URL(match[1]!).pathname))).toBe(true);
+          expect(
+            existsSync(decodeURIComponent(new URL(defined(match[1], "link URL capture")).pathname)),
+          ).toBe(true);
         },
       );
 
       test("linker rewrites a doc's encoded q&a file link to its served route", () => {
         const match = xHtml.match(/href="([^"]*)">qa</);
         assert(match, "qa link should exist on x.html");
-        expect(linker([data]).pages(`href="${match[1]!}"`)).toBe('href="/r/doc/docs/q%26a"');
+        expect(linker([data]).pages(`href="${defined(match[1], "link URL capture")}"`)).toBe(
+          'href="/r/doc/docs/q%26a"',
+        );
       });
 
       const openDiskPageStage = async (
         context: Awaited<ReturnType<typeof browser.createBrowserContext>>,
       ) => {
-        const page = await context.newPage();
+        const { page } = await openPage(context);
         await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
         const requests: string[] = [];
         page.on("request", (r) => {
@@ -1494,7 +1626,7 @@ describe("pages", () => {
         const initial = await page.evaluate(() => ({
           title: document.title,
           theme: document.documentElement.dataset.theme,
-          activeId: document.activeElement!.id,
+          activeId: window.__adminDefined(document.activeElement, "focused element").id,
         }));
         return { page, requests, initial };
       };
@@ -1502,7 +1634,9 @@ describe("pages", () => {
       const readThemeState = (page: Awaited<ReturnType<typeof browser.newPage>>) =>
         page.evaluate(() => [
           document.documentElement.dataset.theme,
-          document.getElementById("theme-toggle")!.getAttribute("aria-pressed"),
+          window
+            .__adminDefined(document.getElementById("theme-toggle"), "element theme-toggle")
+            .getAttribute("aria-pressed"),
           localStorage.getItem("theme"),
         ]);
 
@@ -1793,13 +1927,22 @@ describe("admin.js", () => {
 
   test("a browser that blocks site data can pick and clear an answer during the visit", () => {
     const page = open("spoke/decisions", null);
-    const row = page.document.getElementById("spoke:pick-a-variant")!;
+    const row = defined(
+      page.document.getElementById("spoke:pick-a-variant"),
+      "element spoke:pick-a-variant",
+    );
     (row.querySelector("summary + div .pick") as DomElement).click();
-    expect(row.querySelector(".mark")!.textContent).toBe("✓ Variant A");
-    expect(page.document.getElementById("copy")!.textContent).toBe("Copy 1 answer");
+    expect(defined(row.querySelector(".mark"), "element matching .mark").textContent).toBe(
+      "✓ Variant A",
+    );
+    expect(defined(page.document.getElementById("copy"), "element copy").textContent).toBe(
+      "Copy 1 answer",
+    );
     (row.querySelector(".clear") as DomElement).click();
-    expect(row.querySelector(".mark")!.textContent).toBe("");
-    expect(page.document.getElementById("copy")!.textContent).not.toContain("1 answer");
+    expect(defined(row.querySelector(".mark"), "element matching .mark").textContent).toBe("");
+    expect(defined(page.document.getElementById("copy"), "element copy").textContent).not.toContain(
+      "1 answer",
+    );
   });
 
   test("full storage keeps the theme switch working while unexpected write errors propagate", () => {
@@ -1860,7 +2003,7 @@ describe("admin.js", () => {
       getItem: (k: string) => backing.getItem(k),
       setItem: (k: string, v: string) => {
         attempted.push(k);
-        writeByKey[k]!(k, v);
+        defined(writeByKey[k], `storage write handler for ${k}`)(k, v);
       },
       removeItem: (k: string) => backing.removeItem(k),
       key: (i: number) => backing.key(i),
@@ -1928,15 +2071,27 @@ describe("admin.js", () => {
         at: "2026-01-01T12:00:00.000Z",
       }),
     });
-    const field = page.document.querySelector<DomTextArea>("#spoke\\:check-the-copy textarea")!;
+    const field = defined(
+      page.document.querySelector<DomTextArea>("#spoke\\:check-the-copy textarea"),
+      "element matching #spoke\\\\:check-the-copy textarea",
+    );
     expect(field.value).toBe(expected);
   });
 
   test("opening a variant image gives the dialog an accessible name before it opens", () => {
     const page = open("spoke/decisions", {});
-    const row = page.document.getElementById("spoke:pick-a-variant")!;
-    const shot = row.querySelector<DomButton>('button[aria-label="light, 600 px: open large"]')!;
-    const dialog = page.document.querySelector<DomDialog>("dialog#admin-zoom")!;
+    const row = defined(
+      page.document.getElementById("spoke:pick-a-variant"),
+      "element spoke:pick-a-variant",
+    );
+    const shot = defined(
+      row.querySelector<DomButton>('button[aria-label="light, 600 px: open large"]'),
+      'element matching button[aria-label="light, 600 px: open large"]',
+    );
+    const dialog = defined(
+      page.document.querySelector<DomDialog>("dialog#admin-zoom"),
+      "element matching dialog#admin-zoom",
+    );
     const observer = new page.MutationObserver(() => {});
     observer.observe(dialog, { attributes: true, attributeFilter: ["aria-label", "open"] });
     shot.click();
@@ -1955,14 +2110,26 @@ describe("admin.js", () => {
 
   test("closing the variant image dialog shuts it without errors and keeps its accessible name", () => {
     const page = open("spoke/decisions", {});
-    const row = page.document.getElementById("spoke:pick-a-variant")!;
-    const shot = row.querySelector<DomButton>('button[aria-label="light, 600 px: open large"]')!;
-    const dialog = page.document.querySelector<DomDialog>("dialog#admin-zoom")!;
+    const row = defined(
+      page.document.getElementById("spoke:pick-a-variant"),
+      "element spoke:pick-a-variant",
+    );
+    const shot = defined(
+      row.querySelector<DomButton>('button[aria-label="light, 600 px: open large"]'),
+      'element matching button[aria-label="light, 600 px: open large"]',
+    );
+    const dialog = defined(
+      page.document.querySelector<DomDialog>("dialog#admin-zoom"),
+      "element matching dialog#admin-zoom",
+    );
     const errors: unknown[] = [];
     page.addEventListener("error", (event) => errors.push(event));
     shot.click();
     assert(dialog.open, "zoom dialog must open before closing");
-    dialog.querySelector<DomButton>('button[aria-label="Close"]')!.click();
+    defined(
+      dialog.querySelector<DomButton>('button[aria-label="Close"]'),
+      'element matching button[aria-label="Close"]',
+    ).click();
     expect(dialog.open).toBe(false);
     expect(dialog.getAttribute("aria-label")).toBe("light, 600 px");
     expect(errors).toEqual([]);
@@ -1971,10 +2138,16 @@ describe("admin.js", () => {
   test("a click on an option card's text picks the option", () => {
     const doc = open("spoke/decisions", {}).document;
     const card = (key: string) =>
-      doc
-        .getElementById("spoke:pick-a-variant")!
-        .querySelector(`input[data-option][value="${key}"]`)!
-        .closest("label")!;
+      defined(
+        defined(
+          defined(
+            doc.getElementById("spoke:pick-a-variant"),
+            "element spoke:pick-a-variant",
+          ).querySelector(`input[data-option][value="${key}"]`),
+          `element matching input[data-option][value="${key}"]`,
+        ).closest("label"),
+        "ancestor matching label",
+      );
     // The card's label names its option's input, though the image's button stands before it.
     for (const key of ["a", "b"])
       expect((card(key) as unknown as HTMLLabelElement).control?.dataset.option).toBe("");
@@ -2031,8 +2204,13 @@ describe("admin.js", () => {
         at: "2026-01-01T12:00:00.000Z",
       }),
     });
-    const row = page.document.getElementById("spoke:pick-a-variant")!;
-    expect(row.querySelector(".mark")!.textContent).toBe("✓ note");
+    const row = defined(
+      page.document.getElementById("spoke:pick-a-variant"),
+      "element spoke:pick-a-variant",
+    );
+    expect(defined(row.querySelector(".mark"), "element matching .mark").textContent).toBe(
+      "✓ note",
+    );
     expect((page.document.getElementById("copy") as DomElement).dataset.hwCopy).toContain(
       "spoke:pick-a-variant: ask the printer",
     );
@@ -2040,23 +2218,38 @@ describe("admin.js", () => {
 
   test("an answer is stored as it is given, reveals Reset, and the copy button counts it", () => {
     const page = open("spoke/decisions", {});
-    const row = page.document.getElementById("spoke:pick-a-variant")!;
+    const row = defined(
+      page.document.getElementById("spoke:pick-a-variant"),
+      "element spoke:pick-a-variant",
+    );
     // Reset shows only once there is an answer to take back.
     expect((row.querySelector(".clear") as DomElement).hidden).toBe(true);
     const pick = row.querySelector('input[data-option][value="b"]') as DomInput;
     pick.checked = true;
     row.dispatchEvent(new page.Event("change"));
     expect(
-      JSON.parse(page.localStorage.getItem("admin-answers:spoke:pick-a-variant")!),
+      JSON.parse(
+        defined(
+          page.localStorage.getItem("admin-answers:spoke:pick-a-variant"),
+          "storage entry admin-answers:spoke:pick-a-variant",
+        ),
+      ),
     ).toMatchObject({ option: "b", label: ["Variant B"] });
-    expect(row.querySelector(".mark")!.textContent).toBe("✓ Variant B");
-    expect(page.document.getElementById("copy")!.textContent).toBe("Copy 1 answer");
+    expect(defined(row.querySelector(".mark"), "element matching .mark").textContent).toBe(
+      "✓ Variant B",
+    );
+    expect(defined(page.document.getElementById("copy"), "element copy").textContent).toBe(
+      "Copy 1 answer",
+    );
     expect((row.querySelector(".clear") as DomElement).hidden).toBe(false);
   });
 
   test("resetting an answer hides Reset and moves focus to the row's first answer", () => {
     const page = open("spoke/decisions", {});
-    const row = page.document.getElementById("spoke:pick-a-variant")!;
+    const row = defined(
+      page.document.getElementById("spoke:pick-a-variant"),
+      "element spoke:pick-a-variant",
+    );
     const pick = row.querySelector('input[data-option][value="b"]') as DomInput;
     pick.checked = true;
     row.dispatchEvent(new page.Event("change"));
@@ -2072,7 +2265,10 @@ describe("admin.js", () => {
     const page = open("spoke/decisions", {});
     // Where a search hid the first option, focus goes to the first one shown.
     (page.document.querySelector('[data-who-button="all"]') as DomElement).click();
-    const list = page.document.getElementById("spoke:pick-recipients")!;
+    const list = defined(
+      page.document.getElementById("spoke:pick-recipients"),
+      "element spoke:pick-recipients",
+    );
     const second = list.querySelectorAll("input[data-option]")[1] as DomInput;
     second.checked = true;
     list.dispatchEvent(new page.Event("change"));
@@ -2100,7 +2296,9 @@ describe("admin.js", () => {
       veto.checked = true;
       cache.dispatchEvent(new state.page.Event("change"));
       (cache.querySelector("textarea") as unknown as HTMLTextAreaElement).value = "keep a line";
-      cache.querySelector("textarea")!.dispatchEvent(new state.page.Event("input"));
+      defined(cache.querySelector("textarea"), "element matching textarea").dispatchEvent(
+        new state.page.Event("input"),
+      );
       return { ...state, cache };
     };
 
@@ -2118,7 +2316,9 @@ describe("admin.js", () => {
       const state = afterDeferringLogo();
       const review = state.row("spoke:check-the-copy");
       (review.querySelector("textarea") as unknown as HTMLTextAreaElement).value = "looks fine";
-      review.querySelector("textarea")!.dispatchEvent(new state.page.Event("input"));
+      defined(review.querySelector("textarea"), "element matching textarea").dispatchEvent(
+        new state.page.Event("input"),
+      );
       const off = review.querySelector("input[data-later]") as DomInput;
       off.checked = true;
       off.dispatchEvent(new state.page.Event("change", { bubbles: true }));
@@ -2140,7 +2340,9 @@ describe("admin.js", () => {
       state.later.dispatchEvent(new state.page.Event("change", { bubbles: true }));
       (state.logo.querySelector("textarea") as unknown as HTMLTextAreaElement).value =
         "ask the printer";
-      state.logo.querySelector("textarea")!.dispatchEvent(new state.page.Event("input"));
+      defined(state.logo.querySelector("textarea"), "element matching textarea").dispatchEvent(
+        new state.page.Event("input"),
+      );
       return state;
     };
 
@@ -2151,7 +2353,9 @@ describe("admin.js", () => {
       });
 
       test("marks the picked recommendation on the row", () => {
-        expect(stage.variant.querySelector(".mark")!.textContent).toBe("✓ Variant A");
+        expect(
+          defined(stage.variant.querySelector(".mark"), "element matching .mark").textContent,
+        ).toBe("✓ Variant A");
       });
 
       test("shows no recommendation button on an assumption", () => {
@@ -2167,7 +2371,9 @@ describe("admin.js", () => {
       });
 
       test("marks the assumption vetoed and keeps its task list ticks", () => {
-        expect(stage.cache.querySelector(".mark")!.textContent).toBe("✓ veto");
+        expect(
+          defined(stage.cache.querySelector(".mark"), "element matching .mark").textContent,
+        ).toBe("✓ veto");
         // The item's own task list keeps its ticks.
         expect(
           [...stage.cache.querySelectorAll(".task-list-item-checkbox")].map(
@@ -2186,7 +2392,9 @@ describe("admin.js", () => {
       test("clears the pick, marks the row later, and leaves it out of the copy", () => {
         // Putting a question off clears its pick, and the copy leaves it out.
         expect(stage.logo.querySelectorAll("input[data-option]:checked").length).toBe(0);
-        expect(stage.logo.querySelector(".mark")!.textContent).toBe("later");
+        expect(
+          defined(stage.logo.querySelector(".mark"), "element matching .mark").textContent,
+        ).toBe("later");
         const text = (stage.page.document.getElementById("copy") as DomElement).dataset.hwCopy;
         expect(text).toContain("spoke:pick-a-variant: a (Variant A)");
         expect(text).toContain("spoke:cache-folder: veto, keep a line");
@@ -2275,7 +2483,12 @@ describe("admin.js", () => {
       test("stores the option as a pick rather than deferring the question", () => {
         // An option whose key is "later" or "done" is a pick like any other.
         expect(
-          JSON.parse(stage.page.localStorage.getItem("admin-answers:spoke:pick-a-variant")!),
+          JSON.parse(
+            defined(
+              stage.page.localStorage.getItem("admin-answers:spoke:pick-a-variant"),
+              "storage entry admin-answers:spoke:pick-a-variant",
+            ),
+          ),
         ).toMatchObject({ option: "later", later: false });
       });
     });
@@ -2301,7 +2514,10 @@ describe("admin.js", () => {
       const at = new Date(2026, 0, 1, 9).toISOString();
       const first = open("spoke/decisions", {});
       const asked = (k: string) =>
-        (first.document.getElementById(k) as unknown as HTMLElement).dataset.asked!;
+        defined(
+          (first.document.getElementById(k) as unknown as HTMLElement).dataset.asked,
+          "item asked version",
+        );
       const page = open("spoke/decisions", {
         // A label the item no longer carries for its key.
         "admin-answers:spoke:pick-a-variant": JSON.stringify({
@@ -2370,26 +2586,39 @@ describe("admin.js", () => {
     ])(
       "loads stored answers according to whether their question changed ($label)",
       ({ id, expectedChecked, expectedMark, staleHidden }) => {
-        const row = shared.page.document.getElementById(id)!;
+        const row = defined(shared.page.document.getElementById(id), `element ${id}`);
         const checked = [...row.querySelectorAll("input[data-option]:checked")]
           .map((i) => (i as DomInput).value)
           .sort();
         expect(checked).toEqual(expectedChecked);
-        expect(row.querySelector(".mark")!.textContent).toBe(expectedMark);
-        expect(row.querySelector("[data-stale]")!.hasAttribute("hidden")).toBe(staleHidden);
+        expect(defined(row.querySelector(".mark"), "element matching .mark").textContent).toBe(
+          expectedMark,
+        );
+        expect(
+          defined(row.querySelector("[data-stale]"), "element matching [data-stale]").hasAttribute(
+            "hidden",
+          ),
+        ).toBe(staleHidden);
       },
     );
 
     test("a stale answer's notice quotes the old label and when it was answered", () => {
-      const notice = shared.page.document
-        .getElementById("spoke:pick-a-variant")!
-        .querySelector("[data-stale]")!;
+      const notice = defined(
+        defined(
+          shared.page.document.getElementById("spoke:pick-a-variant"),
+          "element spoke:pick-a-variant",
+        ).querySelector("[data-stale]"),
+        "element matching [data-stale]",
+      );
       expect(notice.textContent).toContain("The old label");
       expect(notice.textContent).toMatch(/1 Jan.*09:00/);
     });
 
     test("the copy block formats stale and multi-pick answers in page order", () => {
-      const block = (shared.page.document.getElementById("copy") as DomElement).dataset.hwCopy!;
+      const block = defined(
+        (shared.page.document.getElementById("copy") as DomElement).dataset.hwCopy,
+        "answer copy payload",
+      );
       expect(block).toContain("spoke:pick-a-variant: a (The old label), go; answered ");
       expect(block).toMatch(/spoke:name-the-command: short \(A short name\); answered .*changed/);
       expect(block).toContain(
@@ -2403,7 +2632,9 @@ describe("admin.js", () => {
         "name-the-command",
       ];
       const renderedOrder = [...shared.page.document.querySelectorAll("details.item[data-k]")]
-        .map((d) => (d as unknown as HTMLElement).dataset.k!.slice("spoke:".length))
+        .map((d) =>
+          defined((d as unknown as HTMLElement).dataset.k, "item key").slice("spoke:".length),
+        )
         .filter((k) => expectedOrder.includes(k));
       expect(renderedOrder).toEqual(expectedOrder);
       expect([...block.matchAll(/^spoke:([\w-]+):/gm)].map((m) => m[1])).toEqual(expectedOrder);
@@ -2411,15 +2642,27 @@ describe("admin.js", () => {
 
     test("picking again on a stale row records the current question and clears its notice", () => {
       const { page, asked } = openStaleAnswersPage();
-      const row = page.document.getElementById("spoke:pick-a-variant")!;
+      const row = defined(
+        page.document.getElementById("spoke:pick-a-variant"),
+        "element spoke:pick-a-variant",
+      );
       // Picking again is the answer to the question as it stands now.
       const pick = row.querySelector('input[value="b"]') as DomInput;
       pick.checked = true;
       row.dispatchEvent(new page.Event("change"));
       expect(
-        JSON.parse(page.localStorage.getItem("admin-answers:spoke:pick-a-variant")!),
+        JSON.parse(
+          defined(
+            page.localStorage.getItem("admin-answers:spoke:pick-a-variant"),
+            "storage entry admin-answers:spoke:pick-a-variant",
+          ),
+        ),
       ).toMatchObject({ option: "b", label: ["Variant B"], asked: asked("spoke:pick-a-variant") });
-      expect(row.querySelector("[data-stale]")!.hasAttribute("hidden")).toBe(true);
+      expect(
+        defined(row.querySelector("[data-stale]"), "element matching [data-stale]").hasAttribute(
+          "hidden",
+        ),
+      ).toBe(true);
     });
   });
 
@@ -2445,9 +2688,17 @@ describe("admin.js", () => {
       expect(copy.dataset.hwCopy).toContain("spoke:check-the-copy: fine");
       expect(copy.dataset.hwCopy).not.toContain("pick-a-logo");
       expect(copy.textContent).toBe("Copy 1 answer");
-      expect(first.document.getElementById("state")!.textContent).toContain("1 not copied yet");
       expect(
-        first.document.getElementById("spoke:pick-a-logo")!.querySelector(".saved")!.textContent,
+        defined(first.document.getElementById("state"), "element state").textContent,
+      ).toContain("1 not copied yet");
+      expect(
+        defined(
+          defined(
+            first.document.getElementById("spoke:pick-a-logo"),
+            "element spoke:pick-a-logo",
+          ).querySelector(".saved"),
+          "element matching .saved",
+        ).textContent,
       ).toBe("saved 10:00, copied 12:00");
     });
 
@@ -2459,7 +2710,13 @@ describe("admin.js", () => {
       expect(again.textContent).toBe("Copy 2 answers again");
       // The row says it went out.
       expect(
-        done.document.getElementById("spoke:pick-a-logo")!.querySelector(".mark")!.textContent,
+        defined(
+          defined(
+            done.document.getElementById("spoke:pick-a-logo"),
+            "element spoke:pick-a-logo",
+          ).querySelector(".mark"),
+          "element matching .mark",
+        ).textContent,
       ).toContain("copied");
     });
 
@@ -2467,7 +2724,13 @@ describe("admin.js", () => {
       const page = open("spoke/decisions", copySeed());
       // A copy made in another tab marks the rows here too.
       const mark = () =>
-        page.document.getElementById("spoke:check-the-copy")!.querySelector(".mark")!.textContent;
+        defined(
+          defined(
+            page.document.getElementById("spoke:check-the-copy"),
+            "element spoke:check-the-copy",
+          ).querySelector(".mark"),
+          "element matching .mark",
+        ).textContent;
       expect(mark()).not.toContain("copied");
       page.localStorage.setItem("admin-answers:copied", at(14));
       page.dispatchEvent(new page.StorageEvent("storage", { key: "admin-answers:copied" }));
@@ -2499,7 +2762,9 @@ describe("admin.js", () => {
       );
       evaluate(window, code);
       const fold = (id: string) =>
-        window.document.getElementById(id)!.closest("details[data-group]") as unknown as {
+        defined(window.document.getElementById(id), `element ${id}`).closest(
+          "details[data-group]",
+        ) as unknown as {
           open: boolean;
         };
       expect(fold("spoke:alex-task").open).toBe(true);
@@ -2513,9 +2778,19 @@ describe("admin.js", () => {
     const button = (attr: string, v: string) =>
       doc.querySelector(`[${attr}="${v}"]`) as unknown as HTMLButtonElement;
     const count = (k: string) =>
-      Number(button("data-kind-button", k).querySelector("[data-kind-count]")!.textContent);
+      Number(
+        defined(
+          button("data-kind-button", k).querySelector("[data-kind-count]"),
+          "element matching [data-kind-count]",
+        ).textContent,
+      );
     const people = (p: string) =>
-      Number(button("data-who-button", p).querySelector("[data-who-count]")!.textContent);
+      Number(
+        defined(
+          button("data-who-button", p).querySelector("[data-who-count]"),
+          "element matching [data-who-count]",
+        ).textContent,
+      );
     expect(count("all")).toBe(3);
     // Each person's button counts their open rows, All every one, which the rail's count names.
     expect(people("Alex")).toBe(3);
@@ -2530,13 +2805,26 @@ describe("admin.js", () => {
     (doc.querySelector('[data-kind-button="all"]') as unknown as HTMLButtonElement).click();
     // Kim's rows show under "Needs you", not a second time under "Waiting on others".
     (doc.querySelector('[data-who-button="Kim"]') as unknown as HTMLButtonElement).click();
-    const kim = doc.querySelector('[data-who-group="Kim"]')!;
+    const kim = defined(
+      doc.querySelector('[data-who-group="Kim"]'),
+      'element matching [data-who-group="Kim"]',
+    );
     expect(kim.closest("[hidden]")).not.toBeNull();
     expect(
-      Number(doc.querySelector('[data-kind-button="all"] [data-kind-count]')!.textContent),
+      Number(
+        defined(
+          doc.querySelector('[data-kind-button="all"] [data-kind-count]'),
+          'element matching [data-kind-button="all"] [data-kind-count]',
+        ).textContent,
+      ),
     ).toBe(1);
     // Kim has no Priority 2 or 3 row open by default: a fold with rows opens.
-    const needs = doc.querySelector("[data-who-button]")!.closest("section")!;
+    const needs = defined(
+      defined(doc.querySelector("[data-who-button]"), "element matching [data-who-button]").closest(
+        "section",
+      ),
+      "ancestor matching section",
+    );
     const visibleFolds = [...needs.querySelectorAll("details[data-group]")].filter(
       (g) => !g.closest("[hidden]"),
     );
@@ -2553,10 +2841,17 @@ describe("admin.js", () => {
     search.dispatchEvent(new page.Event("input"));
     const visible = [...doc.querySelectorAll("[data-row]")].filter((r) => !r.closest("[hidden]"));
     expect(visible).toEqual([]);
-    expect(doc.getElementById("admin-nohit")!.hasAttribute("hidden")).toBe(false);
-    expect(doc.getElementById("admin-nohit")!.textContent).toContain("“updated”");
+    expect(
+      defined(doc.getElementById("admin-nohit"), "element admin-nohit").hasAttribute("hidden"),
+    ).toBe(false);
+    expect(defined(doc.getElementById("admin-nohit"), "element admin-nohit").textContent).toContain(
+      "“updated”",
+    );
     // Every section without a row to show steps aside, but the one holding the filters.
-    const filters = doc.querySelector('[data-who-button="all"]')!.closest("section");
+    const filters = defined(
+      doc.querySelector('[data-who-button="all"]'),
+      'element matching [data-who-button="all"]',
+    ).closest("section");
     const left = [...doc.querySelectorAll("main section")].filter((x) => !x.hasAttribute("hidden"));
     expect(left).toEqual([filters]);
     search.value = "";
@@ -2573,7 +2868,12 @@ describe("admin.js", () => {
     const search = doc.getElementById("admin-search") as DomInput;
     search.value = "printer";
     search.dispatchEvent(new page.Event("input"));
-    const waiting = doc.querySelector("[data-who-group]")!.closest("section")!;
+    const waiting = defined(
+      defined(doc.querySelector("[data-who-group]"), "element matching [data-who-group]").closest(
+        "section",
+      ),
+      "ancestor matching section",
+    );
     const heading = waiting.querySelector("h2");
     assert(heading, "Waiting on others section heading must exist");
     assert(heading.textContent === "Waiting on others", "section must be Waiting on others");
@@ -2581,7 +2881,9 @@ describe("admin.js", () => {
       .filter((r) => !r.closest("[hidden]"))
       .map((r) => (r as unknown as HTMLElement).dataset.k);
     expect(visibleWaitingKeys).toEqual(["spoke:ask-the-printer"]);
-    expect(doc.getElementById("admin-nohit")!.hasAttribute("hidden")).toBe(true);
+    expect(
+      defined(doc.getElementById("admin-nohit"), "element admin-nohit").hasAttribute("hidden"),
+    ).toBe(true);
   });
 
   test("a search matching only another person's row on Decisions says so", () => {
@@ -2590,9 +2892,9 @@ describe("admin.js", () => {
     const find = decisions.document.getElementById("admin-search") as DomInput;
     find.value = "monthly";
     find.dispatchEvent(new decisions.Event("input"));
-    expect(decisions.document.getElementById("admin-nohit")!.textContent).toContain(
-      "1 row of other people does",
-    );
+    expect(
+      defined(decisions.document.getElementById("admin-nohit"), "element admin-nohit").textContent,
+    ).toContain("1 row of other people does");
   });
 
   test("following a hash link shows its row whatever person the filter is on", () => {
@@ -2629,15 +2931,25 @@ describe("admin.js", () => {
     test("hiding a repository removes its rows from the hub, zeros counts, announces it, and marks its table row", () => {
       const doc = hiddenHub.document;
       expect(shownRepoRows(doc)).toBe(0);
-      expect(doc.querySelector('[data-kind-button="all"] [data-kind-count]')!.textContent).toBe(
-        "0",
-      );
-      expect(doc.querySelector("[data-repo-count]")!.textContent).toBe("0 of 1");
-      expect(doc.querySelector("[data-repo-said]")!.textContent).toBe(
-        "1 repository hidden: Sample spoke.",
-      );
       expect(
-        doc.querySelector('[data-repo-row="spoke"] [data-repo-off]')!.hasAttribute("hidden"),
+        defined(
+          doc.querySelector('[data-kind-button="all"] [data-kind-count]'),
+          'element matching [data-kind-button="all"] [data-kind-count]',
+        ).textContent,
+      ).toBe("0");
+      expect(
+        defined(doc.querySelector("[data-repo-count]"), "element matching [data-repo-count]")
+          .textContent,
+      ).toBe("0 of 1");
+      expect(
+        defined(doc.querySelector("[data-repo-said]"), "element matching [data-repo-said]")
+          .textContent,
+      ).toBe("1 repository hidden: Sample spoke.");
+      expect(
+        defined(
+          doc.querySelector('[data-repo-row="spoke"] [data-repo-off]'),
+          'element matching [data-repo-row="spoke"] [data-repo-off]',
+        ).hasAttribute("hidden"),
       ).toBe(false);
     });
 
@@ -2645,19 +2957,40 @@ describe("admin.js", () => {
       const doc = hiddenHub.document;
       // The fixture's admin.label names it wherever a person reads it; the key stays its address.
       expect(
-        doc.querySelector('[data-repo-box][value="spoke"]')!.closest("label")!.textContent,
+        defined(
+          defined(
+            doc.querySelector('[data-repo-box][value="spoke"]'),
+            'element matching [data-repo-box][value="spoke"]',
+          ).closest("label"),
+          "ancestor matching label",
+        ).textContent,
       ).toMatch(/^\s*Sample spoke\s+spoke\s*$/);
-      expect(doc.querySelector('[data-repo-row="spoke"] a')!.textContent!.trim()).toBe(
-        "Sample spoke",
-      );
       expect(
-        open("spoke/decisions", null).document.querySelector(".hw-nav-group")!.textContent!.trim(),
+        defined(
+          defined(
+            doc.querySelector('[data-repo-row="spoke"] a'),
+            'element matching [data-repo-row="spoke"] a',
+          ).textContent,
+          "repository link text",
+        ).trim(),
+      ).toBe("Sample spoke");
+      expect(
+        defined(
+          defined(
+            open("spoke/decisions", null).document.querySelector(".hw-nav-group"),
+            "element matching .hw-nav-group",
+          ).textContent,
+          "repository navigation text",
+        ).trim(),
       ).toBe("Sample spoke");
     });
 
     test("hiding a repository is not an answer and leaves the copy block with real answers alone", () => {
       // The choice is no answer: the copy holds the one answer alone.
-      const copy = (hiddenHub.document.getElementById("copy") as DomElement).dataset.hwCopy!;
+      const copy = defined(
+        (hiddenHub.document.getElementById("copy") as DomElement).dataset.hwCopy,
+        "answer copy payload",
+      );
       expect(copy).toBe("Answers from the admin pages:\nspoke:check-the-copy: fine");
     });
 
@@ -2674,7 +3007,7 @@ describe("admin.js", () => {
       const search = doc.getElementById("admin-search") as DomInput;
       search.value = "monthly";
       search.dispatchEvent(new page.Event("input"));
-      expect(doc.getElementById("admin-nohit")!.textContent).toMatch(
+      expect(defined(doc.getElementById("admin-nohit"), "element admin-nohit").textContent).toMatch(
         /rows? in hidden repositories/,
       );
     });
@@ -2685,7 +3018,11 @@ describe("admin.js", () => {
       // A link to an item there opens it.
       page.location.hash = "#spoke:pick-a-variant";
       page.dispatchEvent(new page.Event("hashchange"));
-      expect(doc.getElementById("spoke:pick-a-variant")!.closest("[hidden]")).toBeNull();
+      expect(
+        defined(doc.getElementById("spoke:pick-a-variant"), "element spoke:pick-a-variant").closest(
+          "[hidden]",
+        ),
+      ).toBeNull();
       expect(shownRepoKeys(doc)).toEqual(["spoke:pick-a-variant"]);
       // Once the address names another row, the row it named before hides with its repository.
       page.location.hash = "";
@@ -2702,7 +3039,10 @@ describe("admin.js", () => {
       (doc.querySelector("[data-repo-all]") as unknown as HTMLButtonElement).click();
       expect(shownRepoRows(doc)).toBe(9);
       expect(stored(page)["admin-answers:repos"]).toBeUndefined();
-      expect(doc.querySelector("[data-repo-said]")!.textContent).toBe("");
+      expect(
+        defined(doc.querySelector("[data-repo-said]"), "element matching [data-repo-said]")
+          .textContent,
+      ).toBe("");
     });
 
     test("after opening a row by hash and clicking Show all, Hide all hides every other row, stores the choice, and swaps the buttons", () => {
@@ -2716,9 +3056,17 @@ describe("admin.js", () => {
       none.click();
       expect(shownRepoKeys(doc)).toEqual(["spoke:pick-a-variant"]);
       expect(stored(page)["admin-answers:repos"]).toBe('["spoke"]');
-      expect(doc.querySelector("[data-repo-count]")!.textContent).toBe("0 of 1");
+      expect(
+        defined(doc.querySelector("[data-repo-count]"), "element matching [data-repo-count]")
+          .textContent,
+      ).toBe("0 of 1");
       expect(none.hasAttribute("hidden")).toBe(true);
-      expect(doc.querySelector("[data-repo-all]")!.hasAttribute("hidden")).toBe(false);
+      expect(
+        defined(
+          doc.querySelector("[data-repo-all]"),
+          "element matching [data-repo-all]",
+        ).hasAttribute("hidden"),
+      ).toBe(false);
     });
 
     test("after opening a row by hash, Hide all and Show all each move focus to the repository choice button", () => {
@@ -2726,8 +3074,14 @@ describe("admin.js", () => {
       const doc = page.document;
       page.location.hash = "#spoke:pick-a-variant";
       page.dispatchEvent(new page.Event("hashchange"));
-      const showAll = doc.querySelector<DomButton>("[data-repo-all]")!;
-      const none = doc.querySelector<DomButton>("[data-repo-none]")!;
+      const showAll = defined(
+        doc.querySelector<DomButton>("[data-repo-all]"),
+        "element matching [data-repo-all]",
+      );
+      const none = defined(
+        doc.querySelector<DomButton>("[data-repo-none]"),
+        "element matching [data-repo-none]",
+      );
       showAll.click();
       expect(none.hasAttribute("hidden")).toBe(false);
       // Each steps aside; focus goes to the choice's own button rather than the page's top.
@@ -2779,12 +3133,22 @@ describe("admin.js", () => {
       page.localStorage.removeItem("admin-answers:repos");
       page.dispatchEvent(new page.StorageEvent("storage", { key: "admin-answers:repos" }));
       expect(shownRepoRows(doc)).toBe(9);
-      expect(doc.querySelector('[data-repo-row="spoke"]')!.hasAttribute("hidden")).toBe(false);
+      expect(
+        defined(
+          doc.querySelector('[data-repo-row="spoke"]'),
+          'element matching [data-repo-row="spoke"]',
+        ).hasAttribute("hidden"),
+      ).toBe(false);
       // The word on a repository's "hidden" mark is no text a search finds.
       const search = doc.getElementById("admin-search") as DomInput;
       search.value = "hidden";
       search.dispatchEvent(new page.Event("input"));
-      expect(doc.querySelector('[data-repo-row="spoke"]')!.hasAttribute("hidden")).toBe(true);
+      expect(
+        defined(
+          doc.querySelector('[data-repo-row="spoke"]'),
+          'element matching [data-repo-row="spoke"]',
+        ).hasAttribute("hidden"),
+      ).toBe(true);
     });
   });
 
@@ -2803,7 +3167,7 @@ describe("admin.js", () => {
       readForDom(join(out, "spoke/decisions.html")).replace(/<script[^>]*><\/script>/g, ""),
     );
     evaluate(window, code);
-    const gone = window.document.getElementById("admin-gone")!;
+    const gone = defined(window.document.getElementById("admin-gone"), "element admin-gone");
     expect(gone.hasAttribute("hidden")).toBe(false);
     expect(gone.textContent).toContain("spoke:gone-item is no longer open");
   });
@@ -2823,7 +3187,10 @@ describe("admin.js", () => {
   });
 
   const commentField = (w: Window) =>
-    w.document.querySelector<DomTextArea>("#next + [data-comment] textarea")!;
+    defined(
+      w.document.querySelector<DomTextArea>("#next + [data-comment] textarea"),
+      "element matching #next + [data-comment] textarea",
+    );
   const typeComment = (w: Window) => {
     const field = commentField(w);
     field.value = "why   dotted?\n  Any reason?";
@@ -2841,7 +3208,7 @@ describe("admin.js", () => {
     assert(fold, "heading comment fold must exist");
     expect(fold.hasAttribute("open")).toBe(false);
     typeComment(first);
-    const copy = first.document.getElementById("copy")!;
+    const copy = defined(first.document.getElementById("copy"), "element copy");
     expect(copy.getAttribute("data-hw-copy")).toBe(
       "Answers from the admin pages:\nspoke:2026-01-15-sample-topic#next: why dotted? Any reason?",
     );
@@ -2871,7 +3238,10 @@ describe("admin.js", () => {
     const same = open(SAMPLE_REPORT, copied);
     expect(stored(same)[commentKey]).toBe(copied[commentKey]);
     const written = {
-      ...(JSON.parse(copied[commentKey]!) as Record<string, unknown>),
+      ...(JSON.parse(defined(copied[commentKey], "copied report comment")) as Record<
+        string,
+        unknown
+      >),
       version: "earlier",
     };
     const changed = open(SAMPLE_REPORT, { ...copied, [commentKey]: JSON.stringify(written) });
@@ -2883,15 +3253,23 @@ describe("admin.js", () => {
 
   test("a raw heading id keeps Unicode and cannot add a line to the copy block", () => {
     const page = open(rawReport, {});
-    const heading = [...page.document.querySelectorAll("article h2")].find(
-      (h) => h.textContent === "Überblick",
-    )!;
+    const heading = defined(
+      [...page.document.querySelectorAll("article h2")].find((h) => h.textContent === "Überblick"),
+      "Überblick heading",
+    );
     const id = "überblick_日本語-١-cafe\u0301-spoke-pick-a-variant--a--Variant-A--x";
     expect(heading.id).toBe(id);
-    const field = heading.nextElementSibling!.querySelector<DomTextArea>("textarea")!;
+    const field = defined(
+      defined(heading.nextElementSibling, "heading comment fold").querySelector<DomTextArea>(
+        "textarea",
+      ),
+      "element matching textarea",
+    );
     field.value = "Review this paragraph.";
     field.dispatchEvent(new page.Event("input", { bubbles: true }));
-    expect(page.document.getElementById("copy")!.getAttribute("data-hw-copy")).toBe(
+    expect(
+      defined(page.document.getElementById("copy"), "element copy").getAttribute("data-hw-copy"),
+    ).toBe(
       `Answers from the admin pages:\nspoke:2026-01-13-raw-heading#${id}: Review this paragraph.`,
     );
   });
@@ -2927,7 +3305,10 @@ describe("admin.js", () => {
     const page = open("spoke/doc/docs/comment-field", {});
     const errors: unknown[] = [];
     page.addEventListener("error", (event) => errors.push(event));
-    const field = page.document.querySelector<DomTextArea>("article textarea")!;
+    const field = defined(
+      page.document.querySelector<DomTextArea>("article textarea"),
+      "element matching article textarea",
+    );
     field.value = "Sample field";
     field.dispatchEvent(new page.Event("input", { bubbles: true }));
     expect(errors).toEqual([]);
@@ -2941,7 +3322,10 @@ describe("admin.js", () => {
     const copied = copiedComment(first);
     expect(stored(open("spoke/docs", copied))[commentKey]).toBe(copied[commentKey]);
     const written = {
-      ...(JSON.parse(copied[commentKey]!) as Record<string, unknown>),
+      ...(JSON.parse(defined(copied[commentKey], "copied report comment")) as Record<
+        string,
+        unknown
+      >),
       version: "earlier",
     };
     const changed = open("spoke/docs", { ...copied, [commentKey]: JSON.stringify(written) });
@@ -2952,12 +3336,16 @@ describe("admin.js", () => {
     const first = open(SAMPLE_REPORT, {});
     typeComment(first);
     const storage = copiedComment(first);
-    const versions = JSON.parse(storage["admin-answers:versions"]!) as Record<string, string>;
+    const versions = JSON.parse(
+      defined(storage["admin-answers:versions"], "stored answer versions"),
+    ) as Record<string, string>;
     expect(versions[sampleVersionKey]).toBeTruthy();
     for (const path of ["index", "spoke/decisions"]) {
       const away = stored(open(path, storage));
       expect(away[commentKey], path).toBe(storage[commentKey]);
-      const awayVersions = JSON.parse(away["admin-answers:versions"]!) as Record<string, string>;
+      const awayVersions = JSON.parse(
+        defined(away["admin-answers:versions"], "stored answer versions"),
+      ) as Record<string, string>;
       expect(awayVersions[sampleVersionKey], path).toBe(versions[sampleVersionKey]);
 
       const back = stored(
@@ -2980,13 +3368,19 @@ describe("admin.js", () => {
   test("a report row says it changed since the visit before on Docs and Latest reports", () => {
     const old = Date.now() - 2 * 36e5;
     for (const path of ["spoke/docs", "spoke/dashboard"]) {
-      const mark = (w: Window) => w.document.querySelector("[data-report] [data-updated]")!;
+      const mark = (w: Window) =>
+        defined(
+          w.document.querySelector("[data-report] [data-updated]"),
+          "element matching [data-report] [data-updated]",
+        );
       expect(mark(open(path, {})).hasAttribute("hidden")).toBe(true);
       const back = open(path, { "admin-answers:seen": String(old) });
       expect(mark(back).hasAttribute("hidden")).toBe(false);
       expect(mark(back).textContent).toBe("Changed since your last visit");
       const first = stored(open(path, {}));
-      const versions = JSON.parse(first["admin-answers:versions"]!) as Record<string, string>;
+      const versions = JSON.parse(
+        defined(first["admin-answers:versions"], "stored answer versions"),
+      ) as Record<string, string>;
       expect(versions["#spoke:2026-01-15-sample-topic"]).toBeTruthy();
     }
   });
@@ -3012,13 +3406,14 @@ describe("admin.js", () => {
 
     test("a fold with changed rows counts them and the page banner reports how many changed", () => {
       // Each fold that holds a marked row counts it, and the page says how many changed.
-      const fold = back.document.querySelector(
-        "details[data-group] [data-updated-count]:not([hidden])",
-      )!;
-      expect(fold.textContent).toBe("· 1 updated");
-      expect(back.document.getElementById("admin-since")!.textContent).toContain(
-        "9 items on this page changed since your last visit",
+      const fold = defined(
+        back.document.querySelector("details[data-group] [data-updated-count]:not([hidden])"),
+        "element matching details[data-group] [data-updated-count]:not([hidden])",
       );
+      expect(fold.textContent).toBe("· 1 updated");
+      expect(
+        defined(back.document.getElementById("admin-since"), "element admin-since").textContent,
+      ).toContain("9 items on this page changed since your last visit");
     });
 
     test("a hidden repository's changed rows count nowhere unless a hash link opens one", () => {
@@ -3028,11 +3423,17 @@ describe("admin.js", () => {
         "admin-answers:repos": '["spoke"]',
       });
       expect(away.document.querySelector("[data-updated-count]:not([hidden])")).toBeNull();
-      expect(away.document.getElementById("admin-since")!.hasAttribute("hidden")).toBe(true);
+      expect(
+        defined(away.document.getElementById("admin-since"), "element admin-since").hasAttribute(
+          "hidden",
+        ),
+      ).toBe(true);
       // But the row a link opens there.
       away.location.hash = "#spoke:check-the-copy";
       away.dispatchEvent(new away.Event("hashchange"));
-      expect(away.document.getElementById("admin-since")!.textContent).toMatch(/^1 item /);
+      expect(
+        defined(away.document.getElementById("admin-since"), "element admin-since").textContent,
+      ).toMatch(/^1 item /);
     });
   });
 
@@ -3040,7 +3441,10 @@ describe("admin.js", () => {
     const changed = "spoke:pick-a-variant";
     let rawVersions = "";
     beforeAll(() => {
-      rawVersions = stored(open("index", {}))["admin-answers:versions"]!;
+      rawVersions = defined(
+        stored(open("index", {}))["admin-answers:versions"],
+        "stored answer versions",
+      );
     });
 
     test("a row shown on the visit before compares its file, not its commit time", () => {
@@ -3053,7 +3457,7 @@ describe("admin.js", () => {
         Object.values(versions).every((version: unknown) => typeof version === "string"),
         "Expected stored versions to map row keys to strings",
       );
-      const [file] = versions[changed]!.split(" ");
+      const [file] = defined(versions[changed], `version for ${changed}`).split(" ");
       // Every item's commit is newer than the visit, but only one file differs from what it showed.
       const back = open("index", {
         "admin-answers:seen": String(Date.now() - 2 * 36e5),
@@ -3077,7 +3481,7 @@ describe("admin.js", () => {
       ["edited ·", "only the stored file hash differs", (asked: string) => `older ${asked}`],
     ])("a changed row marks %s when %s", (expectedMark, _reason, storedVersion) => {
       const versions = JSON.parse(rawVersions) as Record<string, string>;
-      const [file, askedHash] = versions[changed]!.split(" ");
+      const [file, askedHash] = defined(versions[changed], `version for ${changed}`).split(" ");
       assert(file, "stored version must hold a file hash");
       assert(askedHash, "stored version must hold an asked hash");
       // A stored question that differs says the question changed; the file alone, that it was edited.
@@ -3360,7 +3764,9 @@ describe("serve", () => {
           cssMatch,
           'tested by "serves the hub home page with committed items and /_file/ links"',
         );
-        cssCacheControl = (await get(`/${cssMatch[1]!}`)).headers.get("cache-control");
+        cssCacheControl = (
+          await get(`/${defined(cssMatch[1], "stylesheet path capture")}`)
+        ).headers.get("cache-control");
         for (const { path } of slashRedirectCases) {
           const r = await get(path);
           redirectResults.set(path, [r.status, r.headers.get("location")]);
@@ -3484,9 +3890,9 @@ describe("serve", () => {
       ({ path, expectedLine }) => {
         const res = missing404Results.get(path);
         expect(res).toBeDefined();
-        expect(res!.status).toBe(404);
-        expect(res!.html).not.toContain("admin-missing-path");
-        expect(res!.html).toContain(expectedLine);
+        expect(defined(res, "HTTP response").status).toBe(404);
+        expect(defined(res, "HTTP response").html).not.toContain("admin-missing-path");
+        expect(defined(res, "HTTP response").html).toContain(expectedLine);
       },
     );
 
@@ -3494,7 +3900,7 @@ describe("serve", () => {
       // The hub says it is current as of the request, in the minute it was asked or the next.
       const stamp = first.match(/· as of <span data-stamp>([^<]*)<\/span>/);
       expect(stamp).not.toBeNull();
-      expect(stamp![1]).toBe("10 May at 12:00");
+      expect(defined(stamp, "timestamp match")[1]).toBe("10 May at 12:00");
       expect(homeTwoMinLater).toContain("· as of <span data-stamp>10 May at 12:02</span>");
     });
 
@@ -3520,7 +3926,7 @@ describe("serve", () => {
       { page: "/spoke/decisions", getHtml: () => nested },
     ])("resolves every script on $page under /_astro/", ({ page, getHtml }) => {
       const paths = [...getHtml().matchAll(/<script[^>]*src="([^"]+)"/g)].map(
-        (m) => new URL(m[1]!, `http://admin.localhost${page}`).pathname,
+        (m) => new URL(defined(m[1], "href capture"), `http://admin.localhost${page}`).pathname,
       );
       expect(paths.length).toBeGreaterThan(0);
       expect(paths.filter((p) => !p.startsWith("/_astro/"))).toEqual([]);
@@ -3645,9 +4051,11 @@ describe("serve", () => {
       const homeNotice = problemBox(homeInitial.html);
       const docNotice = problemBox(docInitial.html);
       expect(homeNotice).not.toBeNull();
-      expect(homeNotice![0]).toContain("second could not be read: git cat-file answered");
+      expect(defined(homeNotice, "home notice")[0]).toContain(
+        "second could not be read: git cat-file answered",
+      );
       expect(docNotice).not.toBeNull();
-      expect(docNotice![0]).toContain("It is left out.");
+      expect(defined(docNotice, "document notice")[0]).toContain("It is left out.");
       expect(cachedInitial).toBe(first);
     });
 
@@ -3657,7 +4065,7 @@ describe("serve", () => {
       expect(afterFail2).toBe(first);
       expect(buildsAfterCommit).toBe(1);
       expect(dashNotice).not.toBeNull();
-      expect(dashNotice![0]).toMatch(
+      expect(defined(dashNotice, "dashboard notice")[0]).toMatch(
         /could not rebuild on [^<]+<\/b> These pages show the repositories as of [\s\S]*The build stopped: build failed: TypeError: boom/,
       );
     });
@@ -3672,7 +4080,7 @@ describe("serve", () => {
       const rebuildNotice = problemBox(homeAfterRebuild1.html);
       expect(recoveredBuild).not.toBe(first);
       expect(rebuildNotice).not.toBeNull();
-      expect(rebuildNotice![0]).not.toContain("The build stopped");
+      expect(defined(rebuildNotice, "rebuild notice")[0]).not.toContain("The build stopped");
       expect(homeAfterRebuild2.html).toContain("second could not be read");
     });
 
@@ -3847,7 +4255,7 @@ describe("serve", () => {
           link,
           `tested by "links $path from the Docs index and serves its heading" (${path})`,
         );
-        const page = await get(link[1]!);
+        const page = await get(defined(link[1], "linked page URL capture"));
         linkedPages.set(path, { status: page.status, html: await page.text() });
       }
       readme = await (await get("/spoke/doc/README")).text();
@@ -3891,7 +4299,7 @@ describe("serve", () => {
       "links $path from the Docs index and serves its heading",
       ({ path, escapedTitle, heading }) => {
         expect(docList).toMatch(new RegExp(`href="([^"]+)">\\s*${RegExp.escape(escapedTitle)}`));
-        const entry = linkedPages.get(path)!;
+        const entry = defined(linkedPages.get(path), `page at ${path}`);
         expect(entry.status).toBe(200);
         expect(entry.html).toContain(heading);
       },
@@ -3926,34 +4334,38 @@ describe("serve", () => {
     test("renders open decision options and the pick-recommended button on the topic report", () => {
       const options = topic.querySelector('details.item[id="spoke:pick-a-variant"]');
       expect(options).not.toBeNull();
-      expect(options!.querySelector('input[data-option][value="a"]')).not.toBeNull();
-      const pick = options!.querySelector(".pick");
+      expect(
+        defined(options, "variant options").querySelector('input[data-option][value="a"]'),
+      ).not.toBeNull();
+      const pick = defined(options, "variant options").querySelector(".pick");
       expect(pick).not.toBeNull();
-      expect(pick!.textContent).toContain("Pick recommended");
+      expect(defined(pick, "recommended option button").textContent).toContain("Pick recommended");
     });
 
     test("renders the topic prerequisite graph collapsed with four nodes and two edges", () => {
       const graph = topic.querySelector("details:has(figure.admin-diagram)");
       expect(graph).not.toBeNull();
-      expect(graph!.hasAttribute("open")).toBe(false);
-      expect(graph!.querySelectorAll("svg .node")).toHaveLength(4);
-      expect(graph!.querySelectorAll("svg .edge")).toHaveLength(2);
+      expect(defined(graph, "needs graph").hasAttribute("open")).toBe(false);
+      expect(defined(graph, "needs graph").querySelectorAll("svg .node")).toHaveLength(4);
+      expect(defined(graph, "needs graph").querySelectorAll("svg .edge")).toHaveLength(2);
     });
 
     test("groups settled items under Assumed and decided on the topic report", () => {
       const settled = topic.getElementById("spoke:cache-folder");
       expect(settled).not.toBeNull();
-      const group = settled!.closest("[data-group]");
+      const group = defined(settled, "settled item").closest("[data-group]");
       expect(group).not.toBeNull();
-      const summary = group!.querySelector("summary");
+      const summary = defined(group, "settled group").querySelector("summary");
       expect(summary).not.toBeNull();
-      expect(summary!.textContent).toContain("Assumed and decided");
+      expect(defined(summary, "settled group summary").textContent).toContain(
+        "Assumed and decided",
+      );
     });
 
     test("orders topic sections before the report article", () => {
       const content = topic.querySelector("#admin-content");
       expect(content).not.toBeNull();
-      const topicHtml = content!.innerHTML;
+      const topicHtml = defined(content, "topic content").innerHTML;
       const openIdx = topicHtml.indexOf("Open questions");
       const waitsIdx = topicHtml.indexOf("What waits on what");
       const assumedIdx = topicHtml.indexOf("Assumed and decided");
@@ -3987,7 +4399,7 @@ describe("serve", () => {
     test("shows the Last changed report metadata line on the topic report", () => {
       const reportMeta = topic.querySelector("article [data-report]");
       expect(reportMeta).not.toBeNull();
-      expect(reportMeta!.textContent).toContain("Last changed");
+      expect(defined(reportMeta, "report metadata").textContent).toContain("Last changed");
     });
 
     test("omits the contents navigation, items, and diagram on a standalone dated report with five headings", () => {
@@ -4015,7 +4427,7 @@ describe("serve", () => {
     test("shows the Last changed report metadata line on a standalone dated report", () => {
       const reportMeta = standalone.querySelector("article [data-report]");
       expect(reportMeta).not.toBeNull();
-      expect(reportMeta!.textContent).toContain("Last changed");
+      expect(defined(reportMeta, "report metadata").textContent).toContain("Last changed");
     });
 
     test("serves an ordinary doc without copy or comment controls", () => {
@@ -4027,11 +4439,11 @@ describe("serve", () => {
 
     test("serves the prebuilt topic report with matching script nonces and full-build parity", () => {
       const built = readFileSync(join(out, `spoke/doc/${prebuiltTopicPage}.html`), "utf8");
-      const got = servedPages.get(prebuiltTopicPage)!;
+      const got = defined(servedPages.get(prebuiltTopicPage), `page at ${prebuiltTopicPage}`);
       expect(builtSiteFiles.has(`spoke/doc/${prebuiltTopicPage}.html`)).toBe(true);
       const nonceMatch = got.match(/'nonce-([\w-]+)'/);
       expect(nonceMatch).not.toBeNull();
-      const nonce = nonceMatch![1]!;
+      const nonce = defined(defined(nonceMatch, "script nonce match")[1], "script nonce capture");
       expect([...got.matchAll(/<script nonce="([^"]+)"/g)].map((m) => m[1])).toEqual([
         nonce,
         nonce,
@@ -4043,12 +4455,12 @@ describe("serve", () => {
       "fills %s into its shell with matching script nonces and full-build parity",
       (page) => {
         const built = readFileSync(join(out, `spoke/doc/${page}.html`), "utf8");
-        const got = servedPages.get(page)!;
+        const got = defined(servedPages.get(page), `page at ${page}`);
         expect(builtSiteFiles.has(`spoke/doc/${page}.html`)).toBe(false);
         // A shell's scripts carry the nonce its policy names.
         const nonceMatch = got.match(/'nonce-([\w-]+)'/);
         expect(nonceMatch).not.toBeNull();
-        const nonce = nonceMatch![1]!;
+        const nonce = defined(defined(nonceMatch, "script nonce match")[1], "script nonce capture");
         expect([...got.matchAll(/<script nonce="([^"]+)"/g)].map((m) => m[1])).toEqual([
           nonce,
           nonce,
@@ -4149,7 +4561,7 @@ describe("serve", () => {
     test.each(datedReports)(
       "serves $label at its encoded address with its heading and change line",
       ({ stem, title }) => {
-        const { status, html } = responses.get(stem)!;
+        const { status, html } = defined(responses.get(stem), `response for ${stem}`);
         expect(status).toBe(200);
         expect(html).toContain(`>${title}</h1>`);
         expect(html).toContain("Last changed");
@@ -4166,7 +4578,7 @@ describe("serve", () => {
     ])(
       "gives copy and comment controls only to plain dated report names ($label)",
       ({ stem, expected }) => {
-        const { status, html } = responses.get(stem)!;
+        const { status, html } = defined(responses.get(stem), `response for ${stem}`);
         expect(status).toBe(200);
         expect(html.includes('id="copy"')).toBe(expected);
         expect(html.includes("data-comment data-k")).toBe(expected);
@@ -4176,16 +4588,16 @@ describe("serve", () => {
     test.each(datedReports)(
       "omits the topic graph on $label without work or a goal for a plain topic",
       ({ stem }) => {
-        const { status, html } = responses.get(stem)!;
+        const { status, html } = defined(responses.get(stem), `response for ${stem}`);
         expect(status).toBe(200);
         expect(html).not.toContain("What waits on what");
       },
     );
 
     test("the archive page links the served page of the report whose stem ends in .html", () => {
-      expect(responses.get("2026-01-15-archive")!.html).toContain(
-        'href="/spoke/doc/docs/agent-work/2026-01-15-archive.html.html"',
-      );
+      expect(
+        defined(responses.get("2026-01-15-archive"), "response for 2026-01-15-archive").html,
+      ).toContain('href="/spoke/doc/docs/agent-work/2026-01-15-archive.html.html"');
     });
   });
 
@@ -4293,8 +4705,10 @@ describe("serve", () => {
     test("renders thumbnail src and srcset on /spoke/reviews", () => {
       const img = reviewsPage.match(/<img[^>]*small\.png[^>]*>/);
       expect(img).not.toBeNull();
-      expect(img![0]).toContain(`src="${at}/small.png?w=480"`);
-      expect(img![0]).toContain(`srcset="${at}/small.png?w=480 480w, ${at}/small.png?w=960 960w"`);
+      expect(defined(img, "rendered image")[0]).toContain(`src="${at}/small.png?w=480"`);
+      expect(defined(img, "rendered image")[0]).toContain(
+        `srcset="${at}/small.png?w=480 480w, ${at}/small.png?w=960 960w"`,
+      );
     });
 
     test.each([
@@ -4327,8 +4741,10 @@ describe("serve", () => {
     test.each(originalCases)("serves the original PNG for $label", ({ query, file }) => {
       const res = fullResponses.get(query);
       expect(res).toBeDefined();
-      expect(res!.contentType).toBe("image/png");
-      expect(res!.bytes).toEqual(originals.get(file)!);
+      expect(defined(res, "HTTP response").contentType).toBe("image/png");
+      expect(defined(res, "HTTP response").bytes).toEqual(
+        defined(originals.get(file), `original image bytes for ${file}`),
+      );
     });
 
     test("assigns distinct ETags per thumbnail width", () => {
@@ -4392,7 +4808,9 @@ describe("catalog", () => {
       expect(html).toContain("Every page and component of the admin engine");
       const sheet = html.match(/href="(\/catalog\/_astro\/[^"]+\.css)"/);
       assert(sheet, "catalog home should link its stylesheet");
-      expect((await get(sheet[1]!)).headers.get("cache-control")).toContain("immutable");
+      expect(
+        (await get(defined(sheet[1], "stylesheet URL capture"))).headers.get("cache-control"),
+      ).toContain("immutable");
     },
     testTimeout(60_000),
   );
@@ -4404,8 +4822,12 @@ describe("catalog", () => {
       expect(story.status).toBe(200);
       const src = (await story.text()).match(/<img[^>]*src="([^"]+)"/);
       assert(src, "captioned shot story should render an image");
-      expect(src[1]!.startsWith("/catalog/test/fixtures/spoke/")).toBe(true);
-      expect((await get(src[1]!)).headers.get("content-type")).toContain("image/svg");
+      expect(
+        defined(src[1], "image source capture").startsWith("/catalog/test/fixtures/spoke/"),
+      ).toBe(true);
+      expect(
+        (await get(defined(src[1], "image source capture"))).headers.get("content-type"),
+      ).toContain("image/svg");
     },
     testTimeout(60_000),
   );
@@ -4427,7 +4849,7 @@ describe("catalog", () => {
       const graph = await get(graphPath);
       graphStatus = graph.status;
       graphHrefs = [...(await graph.text()).matchAll(/href="([^"]+)"><g class="node"/g)].map(
-        ([, href]) => href!,
+        ([, href]) => defined(href, "href capture"),
       );
     }, testTimeout(60_000));
 

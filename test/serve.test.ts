@@ -1,4 +1,5 @@
 import { assert, describe, expect, test, vi } from "vitest";
+import { defined } from "@hackersandwizards/scaffolding/defined";
 import { rejection } from "@hackersandwizards/scaffolding/rejection";
 import type { RepoData } from "../src/repo.ts";
 import {
@@ -113,7 +114,7 @@ describe("createSiteStore", () => {
     );
     try {
       const rejected = await rejection(store.refresh());
-      const logged: unknown = errSpy.mock.calls[0]![0];
+      const logged: unknown = defined(errSpy.mock.calls[0], "first logged error")[0];
       expect(rejected).toBe("Error: build failed: exit 1");
       expect(logged).toBeInstanceOf(Error);
       expect((logged as Error).name).toBe("Error");
@@ -187,7 +188,9 @@ describe("createSiteStore", () => {
       },
       async (key: string, repos: RepoData[]) => makeSite(key, repos),
     ];
-    const build = vi.fn((key: string, repos: RepoData[]) => outcomes.shift()!(key, repos));
+    const build = vi.fn((key: string, repos: RepoData[]) =>
+      defined(outcomes.shift(), "next build outcome")(key, repos),
+    );
     try {
       const store = createSiteStore(async () => ["/r/a"], repoCache, build);
       await rejection(store.refresh());
@@ -215,10 +218,10 @@ describe("createSiteStore", () => {
     ];
     const readers = new Map<string, () => Promise<RepoData>>([
       ["/r/a", async () => repoA],
-      ["/r/b", () => bReads.shift()!()],
+      ["/r/b", () => defined(bReads.shift(), "next repository B read")()],
     ]);
     const repoCache = createRepoCache(
-      (p) => readers.get(p)!(),
+      (p) => defined(readers.get(p), `repository reader for ${p}`)(),
       async (p) => ({ state: `state:${p}`, fetched: undefined }),
     );
     const build = vi.fn(async (key: string, repos: RepoData[]) => makeSite(key, repos));
@@ -251,15 +254,18 @@ describe("createSiteStore", () => {
     ];
     const readers = new Map<string, () => Promise<RepoData>>([
       ["/r/a", async () => repoA],
-      ["/r/b", () => bReads.shift()!()],
+      ["/r/b", () => defined(bReads.shift(), "next repository B read")()],
     ]);
     const states = new Map([
       ["/r/a", "a1"],
       ["/r/b", "b1"],
     ]);
     const repoCache = createRepoCache(
-      (p) => readers.get(p)!(),
-      async (p) => ({ state: states.get(p)!, fetched: undefined }),
+      (p) => defined(readers.get(p), `repository reader for ${p}`)(),
+      async (p) => ({
+        state: defined(states.get(p), `repository state for ${p}`),
+        fetched: undefined,
+      }),
     );
     const outcomes = [
       async (key: string, repos: RepoData[]) => makeSite(key, repos),
@@ -268,7 +274,9 @@ describe("createSiteStore", () => {
       },
       async (key: string, repos: RepoData[]) => makeSite(key, repos),
     ];
-    const build = vi.fn((key: string, repos: RepoData[]) => outcomes.shift()!(key, repos));
+    const build = vi.fn((key: string, repos: RepoData[]) =>
+      defined(outcomes.shift(), "next build outcome")(key, repos),
+    );
     try {
       const store = createSiteStore(async () => ["/r/a", "/r/b"], repoCache, build);
       const first = await store.refresh();
@@ -303,7 +311,9 @@ describe("createSiteStore", () => {
         throw new BuildError("build failed: TypeError: boom");
       },
     ];
-    const build = vi.fn((key: string, repos: RepoData[]) => outcomes.shift()!(key, repos));
+    const build = vi.fn((key: string, repos: RepoData[]) =>
+      defined(outcomes.shift(), "next build outcome")(key, repos),
+    );
     try {
       const store = createSiteStore(async () => ["/r/a"], repoCache, build);
       const first = await store.refresh();

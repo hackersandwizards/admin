@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { defined } from "@hackersandwizards/scaffolding/defined";
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { Window } from "happy-dom";
@@ -94,14 +95,22 @@ describe("admin-check", () => {
         items: [],
         workFiles: ["docs/agent-work/notes.md"],
       };
-      html = siteData([{ ...spoke, items: [item] }, other]).repos.find((r) => r.key === "spoke")!
-        .items[0]!.html;
+      html = defined(
+        defined(
+          siteData([{ ...spoke, items: [item] }, other]).repos.find((r) => r.key === "spoke"),
+          "spoke repository",
+        ).items[0],
+        "first spoke item",
+      ).html;
       // A body has no front matter: a leading rule stays, with the text after it.
       const ruled = { ...item, id: "ruled", body: "---\nKept.\n\n---\nAfter." };
       const unowned = { ...item, id: "unowned", owner: undefined };
-      const pair = siteData([{ ...spoke, items: [ruled, unowned] }]).repos[0]!.items;
-      ruledView = pair[0]!;
-      unownedView = pair[1]!;
+      const pair = defined(
+        siteData([{ ...spoke, items: [ruled, unowned] }]).repos[0],
+        "first rendered repository",
+      ).items;
+      ruledView = defined(pair[0], "ruled item");
+      unownedView = defined(pair[1], "unowned item");
     });
 
     test.each([
@@ -166,7 +175,7 @@ describe("admin-check", () => {
       paths: Object.keys(files),
       read: (f) => files[f],
     });
-    expect(links[0]!.href).toBe("file:///nonexistent/x/a.html?v=1#t");
+    expect(defined(links[0], "first link").href).toBe("file:///nonexistent/x/a.html?v=1#t");
   });
 
   test("an admin href links only over http(s) or as a path; any other scheme shows as text", async () => {
@@ -191,7 +200,11 @@ describe("admin-check", () => {
     for (const h of [" javascript:x", "java\tscript:x"]) {
       const files = { "package.json": JSON.stringify({ admin: config(h) }) };
       const r = await fromFiles(files);
-      for (const out of [r.designSystem, r.products[0]!.href, r.links[0]!.href])
+      for (const out of [
+        r.designSystem,
+        defined(r.products[0], "first product").href,
+        defined(r.links[0], "first link").href,
+      ])
         expect(out?.startsWith("file:///nonexistent/x/")).toBe(true);
     }
     const files = {
@@ -200,7 +213,7 @@ describe("admin-check", () => {
       }),
     };
     const ok = await fromFiles(files);
-    expect(ok.products[0]!.href).toBe("https://a.test/");
+    expect(defined(ok.products[0], "first product").href).toBe("https://a.test/");
     expect(ok.defects).toEqual([]);
   });
 
@@ -221,7 +234,10 @@ describe("admin-check", () => {
     };
     for (const html of [
       renderDocMarkdown("/r", "docs/a.md", body),
-      siteData([repo]).repos[0]!.items[0]!.html,
+      defined(
+        defined(siteData([repo]).repos[0], "first rendered repository").items[0],
+        "item at index 0",
+      ).html,
     ]) {
       expect(html).not.toMatch(/<meta/i);
       expect(html).toContain("&lt;meta http-equiv=");
@@ -237,7 +253,12 @@ describe("admin-check", () => {
       ...(await readRepo(join(FIX, "spoke"), treeSource(join(FIX, "spoke")))),
       items: [item],
     };
-    const html = withLinks(siteData([repo]).repos[0]!.items[0]!.html);
+    const html = withLinks(
+      defined(
+        defined(siteData([repo]).repos[0], "first rendered repository").items[0],
+        "item at index 0",
+      ).html,
+    );
     expect(html).toContain("Write to &lt;repo&gt;/docs as &lt;title&gt;");
     expect(html).toContain("&lt;details&gt;");
     expect(html).toContain(
@@ -481,7 +502,9 @@ describe("hub", () => {
       );
       expect(owned.designSystem).toBe(`file://${owned.path}/catalog.html`);
       expect(owned.designSystemDev).toBeUndefined();
-      expect(owned.products[0]!.href).toBe(`file://${owned.path}/a.html#x`);
+      expect(defined(owned.products[0], "first product").href).toBe(
+        `file://${owned.path}/a.html#x`,
+      );
     });
   });
 
@@ -526,34 +549,42 @@ describe("hub", () => {
       ["docs/setext.md", "Setext title"],
       ["docs/two.md", "First heading"],
     ])("uses the first rendered text h1 as the title for %s", (path, title) => {
-      expect(byPath[path]!.title).toBe(title);
+      expect(defined(byPath[path], `document at ${path}`).title).toBe(title);
     });
 
     test.each(["docs/none.md", "docs/image.md"])(
       "titles %s by its path where no h1 holds text",
       (path) => {
-        expect(byPath[path]!.title).toBe(path);
+        expect(defined(byPath[path], `document at ${path}`).title).toBe(path);
       },
     );
 
     test.each(["docs/fenced.md", "docs/setext.md"])(
       "removes the extracted h1 from the rendered article for %s",
       (path) => {
-        expect(byPath[path]!.html).not.toContain("<h1");
+        expect(defined(byPath[path], `document at ${path}`).html).not.toContain("<h1");
       },
     );
 
     test("leaves a second h1 in the rendered article after extracting the first", () => {
-      expect(byPath["docs/two.md"]!.html).not.toContain("First heading");
-      expect(byPath["docs/two.md"]!.html).toContain('<h1 id="second-heading">Second heading</h1>');
+      expect(defined(byPath["docs/two.md"], "document docs/two.md").html).not.toContain(
+        "First heading",
+      );
+      expect(defined(byPath["docs/two.md"], "document docs/two.md").html).toContain(
+        '<h1 id="second-heading">Second heading</h1>',
+      );
     });
 
     test("keeps a # comment inside a fenced code block in the article", () => {
-      expect(byPath["docs/fenced.md"]!.html).toContain("# install deps");
+      expect(defined(byPath["docs/fenced.md"], "document docs/fenced.md").html).toContain(
+        "# install deps",
+      );
     });
 
     test("keeps an image-only h1 in the rendered article", () => {
-      expect(byPath["docs/image.md"]!.html).toContain('<h1 id="logo"><img');
+      expect(defined(byPath["docs/image.md"], "document docs/image.md").html).toContain(
+        '<h1 id="logo"><img',
+      );
     });
   });
 
@@ -617,7 +648,7 @@ describe("pages", () => {
     });
 
     const owned = (owner: string) => ({
-      ...repo.items[0]!,
+      ...defined(repo.items[0], "item at index 0"),
       id: owner,
       status: "open" as const,
       owner,
@@ -669,21 +700,34 @@ describe("pages", () => {
       // The person is whoever the owner names, wherever: an agent drafting first leaves the item
       // the person's.
       const sends = siteData([{ ...repo, items: [...repo.items, owned("Ivo drafts, Kim sends")] }]);
-      const row = sends.repos[0]!.items.find((i) => i.id === "Ivo drafts, Kim sends")!;
+      const row = defined(
+        defined(sends.repos[0], "first rendered repository").items.find(
+          (i) => i.id === "Ivo drafts, Kim sends",
+        ),
+        "item Ivo drafts, Kim sends",
+      );
       expect([row.who, row.agent]).toEqual(["Kim", false]);
     });
 
     test("matches whole person names so Kim does not stand for Kim-Lee", () => {
       // A name is whole: Kim never stands for Kim-Lee.
       const pair = siteData([{ ...repo, items: [owned("Kim"), owned("Kim-Lee")] }]);
-      expect(pair.repos[0]!.items.map((i) => i.who)).toEqual(["Kim", "Kim-Lee"]);
+      expect(defined(pair.repos[0], "first rendered repository").items.map((i) => i.who)).toEqual([
+        "Kim",
+        "Kim-Lee",
+      ]);
     });
 
     test("recognizes the hub user when only a later word of an owner names them", () => {
       // The hub's user counts as a person where only a later word of an owner names them.
       expect(
-        siteData([{ ...repo, items: [owned("Ivo drafts, Zoe sends")] }], "Zoe").repos[0]!.items[0]!
-          .who,
+        defined(
+          defined(
+            siteData([{ ...repo, items: [owned("Ivo drafts, Zoe sends")] }], "Zoe").repos[0],
+            "first rendered repository",
+          ).items[0],
+          "item at index 0",
+        ).who,
       ).toBe("Zoe");
     });
 
@@ -712,7 +756,10 @@ describe("pages", () => {
         ["eBike Works, then Kim", "Kim", false],
         ["B+L; next week", "B+L", false],
       ])("classifies company or team owner %s", (owner, who, agent) => {
-        const item = firms.repos[0]!.items.find((i) => i.id === owner)!;
+        const item = defined(
+          defined(firms.repos[0], "first rendered repository").items.find((i) => i.id === owner),
+          `item ${owner}`,
+        );
         expect([item.who, item.agent]).toEqual([who, agent]);
       });
     });
@@ -738,7 +785,10 @@ describe("pages", () => {
         ["agent:", "agent", true],
         ["(tbd)", "(tbd)", true],
       ])("classifies owner %s", (owner, who, agent) => {
-        const item = marked.repos[0]!.items.find((i) => i.id === owner)!;
+        const item = defined(
+          defined(marked.repos[0], "first rendered repository").items.find((i) => i.id === owner),
+          `item ${owner}`,
+        );
         expect([item.who, item.agent]).toEqual([who, agent]);
       });
     });

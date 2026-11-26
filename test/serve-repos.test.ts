@@ -1,6 +1,7 @@
 import { rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
+import { defined } from "@hackersandwizards/scaffolding/defined";
 import { rejection } from "@hackersandwizards/scaffolding/rejection";
 import type { RepoData } from "../src/repo.ts";
 import {
@@ -171,7 +172,7 @@ describe("createRepoScanner", () => {
     let resolveSecond!: (paths: string[]) => void;
     const second = new Promise<string[]>((r) => (resolveSecond = r));
     const replies = [Promise.resolve(["/r/a"]), second];
-    const find = vi.fn(() => replies.shift()!);
+    const find = vi.fn(() => defined(replies.shift(), "next discovery reply"));
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_000);
     try {
       const list = createRepoScanner("/r", 500, find);
@@ -195,7 +196,7 @@ describe("createRepoScanner", () => {
     const slow = new Promise<string[]>((r) => (resolveSlow = r));
     const fast = new Promise<string[]>((r) => (resolveFast = r));
     const replies = [Promise.resolve(["/r/initial"]), slow, fast];
-    const find = vi.fn(() => replies.shift()!);
+    const find = vi.fn(() => defined(replies.shift(), "next discovery reply"));
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_000);
     try {
       const list = createRepoScanner("/r", 100, find);
@@ -216,7 +217,7 @@ describe("createRepoScanner", () => {
 
   test("retries after an initial scan failure", async () => {
     const replies = [Promise.reject(new Error("scan failed")), Promise.resolve(["/r/ok"])];
-    const find = vi.fn(() => replies.shift()!);
+    const find = vi.fn(() => defined(replies.shift(), "next discovery reply"));
     const list = createRepoScanner("/r", 500, find);
     expect(await rejection(list())).toContain("scan failed");
     expect(await list()).toEqual(["/r/ok"]);
@@ -234,7 +235,7 @@ describe("createRepoCache", () => {
       },
       async () => dataB,
     ];
-    const readOne = vi.fn(() => reads.shift()!());
+    const readOne = vi.fn(() => defined(reads.shift(), "next repository read")());
     try {
       const cache = createRepoCache(readOne, async () => ({ state: "b1", fetched: undefined }));
       const p1 = await cache.probe(["/r/b"]);
@@ -269,7 +270,7 @@ describe("createRepoCache", () => {
     ];
     try {
       const cache = createRepoCache(
-        () => reads.shift()!(),
+        () => defined(reads.shift(), "next repository read")(),
         async () => ({ state: currentState, fetched: undefined }),
       );
       await cache.load((await cache.probe(["/r/a"])).states);
@@ -309,8 +310,10 @@ describe("createRepoCache", () => {
         ["/r/a", { state: "a1", fetched: 500 }],
         ["/r/b", { state: "b1", fetched: undefined }],
       ]);
-      const read = vi.fn((p: string) => readers.get(p)!());
-      const cache = createRepoCache(read, async (p) => states.get(p)!);
+      const read = vi.fn((p: string) => defined(readers.get(p), `repository reader for ${p}`)());
+      const cache = createRepoCache(read, async (p) =>
+        defined(states.get(p), `repository state for ${p}`),
+      );
       try {
         const firstLoad = await cache.load((await cache.probe(["/r/a", "/r/b"])).states);
         return { cache, read, firstLoad };

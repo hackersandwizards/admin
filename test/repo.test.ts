@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
+import { defined } from "@hackersandwizards/scaffolding/defined";
 import { rejection } from "@hackersandwizards/scaffolding/rejection";
 import type { Item } from "../src/items.ts";
 import { commit, scratch, sh } from "./admin-fixtures.ts";
@@ -125,7 +126,7 @@ describe("readRepo evaluation and key order", () => {
       },
     ];
     const readers: Record<string, () => string | undefined> = {
-      "docs/agent-work/items/goal.md": () => itemReads.shift()!(),
+      "docs/agent-work/items/goal.md": () => defined(itemReads.shift(), "next item read")(),
       "docs/agent-work/2026-01-15-r.md": () => {
         throw new Error("report-boom");
       },
@@ -200,7 +201,7 @@ describe("readRepo evaluation and key order", () => {
       paths: Object.keys(files),
       read: (path) => files[path],
     });
-    expect(Object.keys(repo.reports[0]!)).toEqual([
+    expect(Object.keys(defined(repo.reports[0], "reports entry at index 0"))).toEqual([
       "path",
       "title",
       "titleId",
@@ -210,7 +211,7 @@ describe("readRepo evaluation and key order", () => {
       "changed",
       "version",
     ]);
-    expect(Object.keys(repo.reports[1]!)).toEqual([
+    expect(Object.keys(defined(repo.reports[1], "reports entry at index 1"))).toEqual([
       "path",
       "title",
       "html",
@@ -219,8 +220,17 @@ describe("readRepo evaluation and key order", () => {
       "changed",
       "version",
     ]);
-    expect(Object.keys(repo.docs[0]!)).toEqual(["path", "title", "titleId", "html"]);
-    expect(Object.keys(repo.docs[1]!)).toEqual(["path", "title", "html"]);
+    expect(Object.keys(defined(repo.docs[0], "docs entry at index 0"))).toEqual([
+      "path",
+      "title",
+      "titleId",
+      "html",
+    ]);
+    expect(Object.keys(defined(repo.docs[1], "docs entry at index 1"))).toEqual([
+      "path",
+      "title",
+      "html",
+    ]);
   });
 
   test("preserves Item, Review, ScriptFile, and Commit property order", async () => {
@@ -239,7 +249,7 @@ describe("readRepo evaluation and key order", () => {
     commit(dir, "initial");
 
     const repo = await readRepo(dir);
-    expect(Object.keys(repo.items[0]!)).toEqual([
+    expect(Object.keys(defined(repo.items[0], "item at index 0"))).toEqual([
       "kind",
       "status",
       "id",
@@ -263,9 +273,20 @@ describe("readRepo evaluation and key order", () => {
       "changed",
       "version",
     ]);
-    expect(Object.keys(repo.reviews[0]!)).toEqual(["dir", "images", "report"]);
-    expect(Object.keys(repo.scripts[0]!)).toEqual(["path", "comment"]);
-    expect(Object.keys(repo.log[0]!)).toEqual(["hash", "time", "subject"]);
+    expect(Object.keys(defined(repo.reviews[0], "reviews entry at index 0"))).toEqual([
+      "dir",
+      "images",
+      "report",
+    ]);
+    expect(Object.keys(defined(repo.scripts[0], "scripts entry at index 0"))).toEqual([
+      "path",
+      "comment",
+    ]);
+    expect(Object.keys(defined(repo.log[0], "log entry at index 0"))).toEqual([
+      "hash",
+      "time",
+      "subject",
+    ]);
   });
 });
 

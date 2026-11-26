@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { defined } from "@hackersandwizards/scaffolding/defined";
 import { MemoryStorage, createStore } from "../site/src/storage.ts";
 import {
   isGoneItem,
@@ -25,7 +26,7 @@ class FailingWriteStorage extends MemoryStorage {
 
   override setItem(key: string): void {
     this.attempted.push(key);
-    this.#onWrite[key]!();
+    defined(this.#onWrite[key], `storage write handler for ${key}`)();
   }
 }
 

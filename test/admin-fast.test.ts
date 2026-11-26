@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:
 import { dirname, join } from "node:path";
 import { Window, type Element as DomEl, type Node as DomNode } from "happy-dom";
 import { afterAll, assert, beforeAll, describe, expect, test, vi } from "vitest";
+import { defined } from "@hackersandwizards/scaffolding/defined";
 import { tableScroll as brandTableScroll } from "@hackersandwizards/brand/elements/table.ts";
 import { needsGraph, needsGraphItems } from "../src/needs-graph.ts";
 import { siteData } from "../src/site-data.ts";
@@ -59,11 +60,14 @@ test("prerequisite labels list open ids and pluralize the count", () => {
 describe("needs graph", () => {
   const fixture = async () => {
     const dir = join(FIX, "spoke");
-    return siteData([await readRepo(dir, treeSource(dir))]).repos[0]!;
+    return defined(
+      siteData([await readRepo(dir, treeSource(dir))]).repos[0],
+      "first rendered repository",
+    );
   };
   const graphDocument = (html: string | undefined) => {
     const doc = new Window().document;
-    doc.body.innerHTML = html!.replace(/<style>[\s\S]*?<\/style>/g, "");
+    doc.body.innerHTML = defined(html, "needs graph SVG").replace(/<style>[\s\S]*?<\/style>/g, "");
     return doc;
   };
 
@@ -79,8 +83,11 @@ describe("needs graph", () => {
       connected = needsGraphItems(items);
       const idByTitle = new Map(connected.map((item) => [item.title, item.id]));
       for (const node of graph.querySelectorAll(".node")) {
-        const itemId = idByTitle.get(node.getAttribute("data-label")!)!;
-        itemByNode.set(node.getAttribute("data-id")!, itemId);
+        const itemId = defined(
+          idByTitle.get(defined(node.getAttribute("data-label"), "attribute data-label")),
+          "item ID for graph node label",
+        );
+        itemByNode.set(defined(node.getAttribute("data-id"), "attribute data-id"), itemId);
         nodeByItem.set(itemId, node);
       }
     });
@@ -113,8 +120,8 @@ describe("needs graph", () => {
       expect(
         [...graph.querySelectorAll(".edge")]
           .map((edge) => ({
-            from: itemByNode.get(edge.getAttribute("data-from")!),
-            to: itemByNode.get(edge.getAttribute("data-to")!),
+            from: itemByNode.get(defined(edge.getAttribute("data-from"), "attribute data-from")),
+            to: itemByNode.get(defined(edge.getAttribute("data-to"), "attribute data-to")),
             style: edge.getAttribute("data-style"),
             dashed: edge.hasAttribute("stroke-dasharray"),
           }))
@@ -132,7 +139,10 @@ describe("needs graph", () => {
     test.each(["goal", "pick-a-variant"])(
       "draws ready stadium %s with corner radius equal to half its height",
       (id) => {
-        const rect = nodeByItem.get(id)!.querySelector("rect")!;
+        const rect = defined(
+          defined(nodeByItem.get(id), `graph node for ${id}`).querySelector("rect"),
+          "element matching rect",
+        );
         const radius = Number(rect.getAttribute("rx"));
         const halfHeight = Number(rect.getAttribute("height")) / 2;
         expect(halfHeight).toBeGreaterThan(0);
@@ -143,7 +153,10 @@ describe("needs graph", () => {
     test.each(["check-the-copy", "work-wire-the-gate"])(
       "draws waiting rectangle %s with corner radius 0",
       (id) => {
-        const rect = nodeByItem.get(id)!.querySelector("rect")!;
+        const rect = defined(
+          defined(nodeByItem.get(id), `graph node for ${id}`).querySelector("rect"),
+          "element matching rect",
+        );
         expect(Number(rect.getAttribute("rx"))).toBe(0);
       },
     );
@@ -151,7 +164,10 @@ describe("needs graph", () => {
     test.each(["cache-folder", "name-the-command"])(
       "draws settled rounded node %s with corner radius strictly between 0 and half its height",
       (id) => {
-        const rect = nodeByItem.get(id)!.querySelector("rect")!;
+        const rect = defined(
+          defined(nodeByItem.get(id), `graph node for ${id}`).querySelector("rect"),
+          "element matching rect",
+        );
         const radius = Number(rect.getAttribute("rx"));
         const halfHeight = Number(rect.getAttribute("height")) / 2;
         expect(radius).toBeGreaterThan(0);
@@ -162,14 +178,25 @@ describe("needs graph", () => {
 
   test("the prerequisite stands on the left in the Mermaid source and the SVG", async () => {
     const { items } = await fixture();
-    const wire = items.find((item) => item.id === "work-wire-the-gate")!;
-    const check = items.find((item) => item.id === "check-the-copy")!;
+    const wire = defined(
+      items.find((item) => item.id === "work-wire-the-gate"),
+      "item work-wire-the-gate",
+    );
+    const check = defined(
+      items.find((item) => item.id === "check-the-copy"),
+      "item check-the-copy",
+    );
     const render = vi.spyOn(diagrams, "diagram");
     try {
       const graph = graphDocument(needsGraph([wire, check]));
       expect(graph.querySelectorAll(".edge")).toHaveLength(1);
       const x = (id: string) =>
-        Number(graph.querySelector(`[data-id="${id}"] rect`)!.getAttribute("x"));
+        Number(
+          defined(
+            graph.querySelector(`[data-id="${id}"] rect`),
+            `element matching [data-id="${id}"] rect`,
+          ).getAttribute("x"),
+        );
       expect(x("n1")).toBeLessThan(x("n0"));
       expect(render.mock.calls[0]?.[0].split("\n").slice(-1)).toEqual(["n1 --> n0"]);
     } finally {
@@ -182,15 +209,22 @@ describe("needs graph", () => {
     const title =
       'Try " ] ) | < > & # ; ` %% ]) <br> **plain** ~~plain~~ \\n &#93;\u2028A\u2029B\rC\nn7 --> n8\nD';
     const input = [
-      { ...items[0]!, id: "try--this", title, status: "open" as const, waitingOn: [], needs: [] },
       {
-        ...items[1]!,
+        ...defined(items[0], "first graph item"),
+        id: "try--this",
+        title,
+        status: "open" as const,
+        waitingOn: [],
+        needs: [],
+      },
+      {
+        ...defined(items[1], "second graph item"),
         title,
         status: "open" as const,
         waitingOn: ["try--this"],
         needs: ["try--this"],
       },
-      { ...items[2]!, title, status: "decided" as const, needs: [] },
+      { ...defined(items[2], "third graph item"), title, status: "decided" as const, needs: [] },
     ];
     const graph = graphDocument(needsGraph(input));
     expect(
@@ -228,7 +262,9 @@ describe("needs graph", () => {
       "docs/agent-work/items/check.md":
         "---\nkind: review\nstatus: assumed\npriority: 2\nowner: an agent\nassumption: Proceed\n---\n# Check",
     });
-    const graph = graphDocument(siteData([repo]).repos[0]!.needsSvg);
+    const graph = graphDocument(
+      defined(siteData([repo]).repos[0], "first rendered repository").needsSvg,
+    );
     expect(graph.querySelector('[data-label="Draft"]')?.getAttribute("data-shape")).toBe("stadium");
   });
 
@@ -241,7 +277,9 @@ describe("needs graph", () => {
       "docs/agent-work/items/isolated.md":
         "---\nkind: work\nstatus: open\npriority: 2\nowner: an agent\nneeds: [isolated]\n---\n# Isolated",
     });
-    const graph = graphDocument(siteData([repo]).repos[0]!.needsSvg);
+    const graph = graphDocument(
+      defined(siteData([repo]).repos[0], "first rendered repository").needsSvg,
+    );
     expect(graph.querySelectorAll(".node")).toHaveLength(2);
     const edges = [...graph.querySelectorAll(".edge")];
     expect(edges).toHaveLength(1);
@@ -481,12 +519,12 @@ describe("item files", () => {
       area: { a: 1 },
       due: "2026-13-45",
     } as unknown as Item);
-    expect([shown.area, shown.due, shown.options!.map((o) => o.key), shown.recommended]).toEqual([
-      undefined,
-      undefined,
-      ["0", "1"],
-      ["1"],
-    ]);
+    expect([
+      shown.area,
+      shown.due,
+      defined(shown.options, "displayed item options").map((o) => o.key),
+      shown.recommended,
+    ]).toEqual([undefined, undefined, ["0", "1"], ["1"]]);
   });
 
   test("a folder matching an image path is not accepted as an image", () => {
@@ -680,7 +718,7 @@ describe("Mermaid in Markdown", () => {
       "docs/agent-work/items/draft.md": body,
       "docs/agent-work/items/archive.md": body,
     });
-    const ids = siteData([repo]).repos[0]!.items.map(
+    const ids = defined(siteData([repo]).repos[0], "first rendered repository").items.map(
       ({ html }) => html.match(/<svg id="([^"]+)"/)?.[1],
     );
     expect(ids).toEqual([expect.any(String), expect.any(String)]);
@@ -695,7 +733,12 @@ describe("Mermaid in Markdown", () => {
       [path]: "# Guide",
       "docs/agent-work/items/archive.md": `---\nkind: work\nstatus: open\npriority: 1\n---\n# Archive samples\n\n${body}`,
     });
-    const html = withLinks(siteData([repo]).repos[0]!.items[0]!.html);
+    const html = withLinks(
+      defined(
+        defined(siteData([repo]).repos[0], "first rendered repository").items[0],
+        "item at index 0",
+      ).html,
+    );
     const svg = html.match(/<svg\b[\s\S]*?<\/svg>/)?.[0];
     expect(svg).toContain(`>${path}</text>`);
     expect(svg).toContain(`>${url}</text>`);
@@ -1061,7 +1104,9 @@ describe("hub", () => {
       },
       { type: "text" },
     ]);
-    expect(root.children![0]!.properties).toEqual({
+    expect(
+      defined(defined(root.children, "tree children")[0], "first tree child").properties,
+    ).toEqual({
       className: ["hw-table-scroll"],
       tabIndex: 0,
     });
