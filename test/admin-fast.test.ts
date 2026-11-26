@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Window, type Element as DomEl, type Node as DomNode } from "happy-dom";
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { Window, type Element as DomEl } from "happy-dom";
+import { afterAll, assert, beforeAll, describe, expect, test, vi } from "vitest";
 import { tableScroll as brandTableScroll } from "@hackersandwizards/brand/elements/table.ts";
 import { needsGraph, needsGraphItems } from "../src/needs-graph.ts";
 import { siteData } from "../src/site-data.ts";
@@ -193,19 +193,26 @@ describe("needs graph", () => {
       { ...items[2]!, title, status: "decided" as const, needs: [] },
     ];
     const graph = graphDocument(needsGraph(input));
-    expect(graph.querySelectorAll(".node")).toHaveLength(input.length);
-    expect(graph.querySelectorAll(".edge")).toHaveLength(1);
-    expect(graph.querySelector('.edge[data-from="n0"][data-to="n1"]')).toBeTruthy();
-    const nodes = [...graph.querySelectorAll(".node")];
-    expect(nodes.map((node) => node.getAttribute("data-shape"))).toEqual([
-      "stadium",
-      "rectangle",
-      "rounded",
+    const nodes = [...graph.querySelectorAll(".node")].map((node) => {
+      const text = node.querySelector("text");
+      assert(text, "rendered node text");
+      return {
+        shape: node.getAttribute("data-shape"),
+        label: node.getAttribute("data-label"),
+        text: text.textContent,
+      };
+    });
+    expect(nodes).toEqual([
+      { shape: "stadium", label: title, text: title },
+      { shape: "rectangle", label: title, text: title },
+      { shape: "rounded", label: title, text: title },
     ]);
-    expect(nodes.map((node) => node.getAttribute("data-label"))).toEqual(input.map(() => title));
-    expect(nodes.map((node) => node.querySelector("text")?.textContent)).toEqual(
-      input.map(() => title),
-    );
+    expect(
+      [...graph.querySelectorAll(".edge")].map((edge) => [
+        edge.getAttribute("data-from"),
+        edge.getAttribute("data-to"),
+      ]),
+    ).toEqual([["n0", "n1"]]);
   });
 
   test("site data omits the graph when a need names only an unknown item", async () => {
@@ -406,34 +413,74 @@ describe("item files", () => {
     ).toThrow("unknown field page");
   });
 
-  test("a field the pages print as text, a day and an option key are checked as such", () => {
-    const defects = (more: object) => itemDefects({ ...valid, ...more } as Item, exists);
-    expect(defects({ due: "2026-13-45" })).toContain("due 2026-13-45 not ISO");
-    expect(defects({ due: "2028-02-29" })).toEqual([]);
-    expect(defects({ area: { a: 1 } })).toEqual(["area is not text"]);
-    expect(defects({ area: "Field Ops" })).toEqual([]);
-    const options = (a: object) => ({
-      options: [
-        { key: "a", label: "A", ...a },
-        { key: "b", label: "B" },
-      ],
-    });
-    expect(defects(options({ label: { l: 1 } }))).toContain("option a label or detail is not text");
-    expect(defects({ ...options({ key: "a,b" }), recommended: "b" })).toContain(
-      'option 1 key "a,b" is not one word',
-    );
+  test.each([
+    {
+      label: "impossible ISO due date",
+      change: { due: "2026-13-45" },
+      expected: ["due 2026-13-45 not ISO"],
+    },
+    {
+      label: "leap-day ISO due date",
+      change: { due: "2028-02-29" },
+      expected: [],
+    },
+    {
+      label: "non-text area object",
+      change: { area: { a: 1 } },
+      expected: ["area is not text"],
+    },
+    {
+      label: "plain text area",
+      change: { area: "Field Ops" },
+      expected: [],
+    },
+    {
+      label: "non-text option label",
+      change: {
+        options: [
+          { key: "a", label: { l: 1 } },
+          { key: "b", label: "B" },
+        ],
+      },
+      expected: ["option a label or detail is not text"],
+    },
+    {
+      label: "option key containing a comma",
+      change: {
+        options: [
+          { key: "a,b", label: "A" },
+          { key: "b", label: "B" },
+        ],
+        recommended: "b",
+      },
+      expected: ['option 1 key "a,b" is not one word'],
+    },
+    {
+      // A numeric key is the key an images mapping names, 0 included.
+      label: "numeric option keys matched by images mapping",
+      change: {
+        options: [
+          { key: 0, label: "Zero" },
+          { key: 1, label: "One" },
+        ],
+        recommended: 1,
+        images: { 0: "a.png", 1: "b.png" },
+      },
+      expected: [],
+    },
+  ])("checks text fields, calendar dates, and option keys: $label", ({ change, expected }) => {
+    expect(itemDefects({ ...valid, ...change } as unknown as Item, exists)).toEqual(expected);
+  });
+
+  test("usable drops invalid area and due date and stringifies numeric option keys", () => {
     // A numeric key is the key an images mapping names, 0 included.
-    const numbered = {
+    const shown = usable({
+      ...valid,
       options: [
         { key: 0, label: "Zero" },
         { key: 1, label: "One" },
       ],
       recommended: 1,
-    };
-    expect(defects({ ...numbered, images: { 0: "a.png", 1: "b.png" } })).toEqual([]);
-    const shown = usable({
-      ...valid,
-      ...numbered,
       area: { a: 1 },
       due: "2026-13-45",
     } as unknown as Item);
@@ -443,6 +490,9 @@ describe("item files", () => {
       ["0", "1"],
       ["1"],
     ]);
+  });
+
+  test("a folder matching an image path is not accepted as an image", () => {
     // An image names a file: a folder of that name is no image.
     const { defects: found } = readItems({
       paths: ["docs/agent-work/items/shot.md", "docs/agent-work/2026-01-01-r/a.png"],
@@ -859,27 +909,41 @@ describe("admin-check", () => {
     ).toHaveLength(2);
   });
 
-  test("each task box is named by its own line, tight, nested or loose", () => {
-    const box = '<input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly';
-    const tight = renderDocMarkdown("/r", "docs/a.md", "- [x] done **now**\n  - [ ] nested\n");
-    expect(tight).toContain(
-      `<label>${box} disabled checked>done <strong>now</strong></label>\n<ul>`,
-    );
-    expect(tight).toContain(`<label>${box} disabled>nested</label></li>`);
-    const loose = renderDocMarkdown("/r", "docs/a.md", "- [ ] loose\n\n  more\n\n- [x] next\n");
-    expect(loose).toContain(`<p><label>${box} disabled>loose</label></p>\n<p>more</p>`);
-    const quote = renderDocMarkdown("/r", "docs/a.md", "- [ ] see\n  > quoted\n");
-    expect(quote).toContain(`<label>${box} disabled>see</label>\n<blockquote`);
-    const wrapped = renderDocMarkdown("/r", "docs/a.md", "- [ ] a [link\n  **b**](x.md) end\n");
-    expect(wrapped).toContain("</strong></a> end</label>");
-    const fence = renderDocMarkdown("/r", "docs/a.md", "- [ ] run\n  ```\n  x\n  ```\n");
-    expect(fence).toContain(`<label>${box} disabled>run</label>\n<pre`);
-    const mermaid = renderDocMarkdown(
-      "/r",
-      "docs/a.md",
-      "- [ ] check diagram\n  ```mermaid\n  flowchart LR\n    a --> b\n  ```\n",
-    );
-    expect(mermaid).toContain(`<label>${box} disabled>check diagram</label>\n<figure`);
+  const taskBox = '<input type="checkbox" class="task-list-item-checkbox hw-check" data-readonly';
+
+  test.each([
+    {
+      label: "tight and nested task items",
+      markdown: "- [x] done **now**\n  - [ ] nested\n",
+      expected: `<label>${taskBox} disabled checked>done <strong>now</strong></label>\n<ul>\n<li class="task-list-item"><label>${taskBox} disabled>nested</label></li>`,
+    },
+    {
+      label: "loose task item with continuation paragraph",
+      markdown: "- [ ] loose\n\n  more\n\n- [x] next\n",
+      expected: `<p><label>${taskBox} disabled>loose</label></p>\n<p>more</p>`,
+    },
+    {
+      label: "task item followed by blockquote",
+      markdown: "- [ ] see\n  > quoted\n",
+      expected: `<label>${taskBox} disabled>see</label>\n<blockquote`,
+    },
+    {
+      label: "task item with wrapped inline link",
+      markdown: "- [ ] a [link\n  **b**](x.md) end\n",
+      expected: "</strong></a> end</label>",
+    },
+    {
+      label: "task item followed by fenced code block",
+      markdown: "- [ ] run\n  ```\n  x\n  ```\n",
+      expected: `<label>${taskBox} disabled>run</label>\n<pre`,
+    },
+    {
+      label: "task item followed by mermaid diagram",
+      markdown: "- [ ] check diagram\n  ```mermaid\n  flowchart LR\n    a --> b\n  ```\n",
+      expected: `<label>${taskBox} disabled>check diagram</label>\n<figure`,
+    },
+  ])("wraps each task checkbox label cleanly: $label", ({ markdown, expected }) => {
+    expect(renderDocMarkdown("/r", "docs/a.md", markdown)).toContain(expected);
   });
 });
 
@@ -890,35 +954,42 @@ describe("hub", () => {
     expect(html("---\ntitle: x\n---\n\nrest\n")).not.toContain("title");
   });
 
+  type Hast = {
+    type: string;
+    tagName?: string;
+    value?: string;
+    properties?: Record<string, unknown>;
+    children?: Hast[];
+  };
+  const dom = (html: string) => {
+    const body = new Window().document.body;
+    body.innerHTML = html;
+    return body;
+  };
+  const txt = (value: string): Hast => ({ type: "text", value });
+  const el = (tagName: string, children: Hast[]): Hast => ({
+    type: "element",
+    tagName,
+    properties: { className: [] },
+    children,
+  });
+  const hTable = (heads: Hast[][]): Hast =>
+    el("table", [
+      el("thead", [
+        el(
+          "tr",
+          heads.map((cells) => el("th", cells)),
+        ),
+      ]),
+      el("tbody", [
+        el(
+          "tr",
+          heads.map(() => el("td", [txt("1")])),
+        ),
+      ]),
+    ]);
+
   test("a table's wrapper is named as brand's tableScroll names it", () => {
-    type Hast = {
-      type: string;
-      tagName?: string;
-      value?: string;
-      properties?: Record<string, unknown>;
-      children?: Hast[];
-    };
-    const dom = (html: string) => {
-      const body = new Window().document.body;
-      body.innerHTML = html;
-      return body;
-    };
-    const hast = (n: DomNode): Hast => {
-      if (n.nodeType === 3) return { type: "text", value: n.textContent ?? "" };
-      if (n.nodeType !== 1) return { type: "comment" };
-      const el = n as DomEl;
-      const children = [...el.childNodes].map(hast);
-      return {
-        type: "element",
-        tagName: el.localName,
-        properties: { className: [...el.classList] },
-        children,
-      };
-    };
-    const wrappers = (n: Hast): Hast[] => [
-      ...([n.properties?.className].flat().includes("hw-table-scroll") ? [n] : []),
-      ...(n.children ?? []).flatMap(wrappers),
-    ];
     const table = (head: string) => `| ${head} | B |\n| - | - |\n| 1 | 2 |\n\n`;
     const text = `${table("A **b**")}${table("A b")}## Prices\n\n${table("x")}${table("y")}<H3>Raw "q" &amp; <i>it</i></H3>\n\n${table("z")}# Next\n\n| |\n|-|\n|1|\n\n## Prices\n\n${table("w")}`;
     const ours = [
@@ -926,12 +997,25 @@ describe("hub", () => {
     ].map((w) => w.getAttribute("aria-label"));
     const root: Hast = {
       type: "root",
-      children: [...dom(Bun.markdown.html(text)).childNodes].map(hast),
+      children: [
+        hTable([[txt("A "), el("strong", [txt("b")])], [txt("B")]]),
+        hTable([[txt("A b")], [txt("B")]]),
+        el("h2", [txt("Prices")]),
+        hTable([[txt("x")], [txt("B")]]),
+        hTable([[txt("y")], [txt("B")]]),
+        el("h3", [txt('Raw "q" & '), el("i", [txt("it")])]),
+        hTable([[txt("z")], [txt("B")]]),
+        el("h1", [txt("Next")]),
+        hTable([[txt("")]]),
+        el("h2", [txt("Prices")]),
+        hTable([[txt("w")], [txt("B")]]),
+      ],
     };
     brandTableScroll()(root);
-    expect(ours).toEqual(
-      wrappers(root).map((w) => (w.properties!.ariaLabel as string | undefined) ?? null),
-    );
+    const brandLabels = root
+      .children!.filter((n) => n.tagName === "div")
+      .map((w) => w.properties!.ariaLabel);
+    expect(ours).toEqual(brandLabels);
     expect(ours).toEqual([
       "A b B",
       "A b B (2)",
@@ -941,13 +1025,21 @@ describe("hub", () => {
       "Next",
       "Prices (3)",
     ]);
-    expect(
-      [
-        ...dom(renderDocMarkdown("/r", "docs/a.md", "| |\n|-|\n|1|\n")).querySelectorAll(
-          ".hw-table-scroll",
-        ),
-      ].map((w) => w.getAttribute("aria-label")),
-    ).toEqual([null]);
+  });
+
+  test("a table without a heading or column names gets no aria-label", () => {
+    const ours = [
+      ...dom(renderDocMarkdown("/r", "docs/a.md", "| |\n|-|\n|1|\n")).querySelectorAll(
+        ".hw-table-scroll",
+      ),
+    ].map((w) => w.getAttribute("aria-label"));
+    const root: Hast = { type: "root", children: [hTable([[txt("")]])] };
+    brandTableScroll()(root);
+    const brandLabels = root
+      .children!.filter((n) => n.tagName === "div")
+      .map((w) => w.properties!.ariaLabel);
+    expect(ours).toEqual([null]);
+    expect(brandLabels).toEqual([undefined]);
   });
 
   test("a table holding another leaves the wrapper to the inner one", () => {
@@ -989,28 +1081,33 @@ describe("repository data", () => {
     expect((await readRepo(clone)).behind).toBeUndefined();
   });
 
-  test("committed history and the working tree show the files each reader promises", async () => {
-    const generated = join(import.meta.dirname, "../node_modules/.cache");
-    mkdirSync(generated, { recursive: true });
-    const repo = mkdtempSync(join(generated, "admin-repo-"));
-    const git = (...args: string[]) => {
-      const result = Bun.spawnSync(["git", ...args], {
-        cwd: repo,
-        env: {
-          ...gitEnv,
-          GIT_AUTHOR_DATE: "2026-01-14T12:34:00Z",
-          GIT_COMMITTER_DATE: "2026-01-14T12:34:00Z",
-        },
-      });
-      if (result.exitCode) throw new Error(result.stderr.toString());
-      return result.stdout.toString().trim();
-    };
-    try {
+  describe("committed history and working tree readers", () => {
+    const report = "docs/agent-work/2026-01-14-first draft.md";
+    const fetched = new Date("2026-01-15T10:00:00Z");
+    const time = Date.parse("2026-01-14T12:34:00Z") / 1000;
+    let repo: string;
+    let tree: ReturnType<typeof treeSource>;
+    let committed: Awaited<ReturnType<typeof readRepo>>;
+
+    beforeAll(async () => {
+      const generated = join(import.meta.dirname, "../node_modules/.cache");
+      mkdirSync(generated, { recursive: true });
+      repo = mkdtempSync(join(generated, "admin-repo-"));
+      const git = (...args: string[]) => {
+        const result = Bun.spawnSync(["git", ...args], {
+          cwd: repo,
+          env: {
+            ...gitEnv,
+            GIT_AUTHOR_DATE: "2026-01-14T12:34:00Z",
+            GIT_COMMITTER_DATE: "2026-01-14T12:34:00Z",
+          },
+        });
+        assert.strictEqual(result.exitCode, 0, result.stderr.toString());
+        return result.stdout.toString().trim();
+      };
       git("init", "-q");
       const work = "docs/agent-work/items/ship.md";
-      const report = "docs/agent-work/2026-01-14-first draft.md";
-      const reportText = "# First draft\n";
-      await Bun.write(join(repo, report), reportText);
+      await Bun.write(join(repo, report), "# First draft\n");
       await Bun.write(
         join(repo, work),
         "---\nkind: work\nstatus: open\npriority: 1\nowner: Alex\n---\n# Ship the samples",
@@ -1031,14 +1128,20 @@ describe("repository data", () => {
       );
       const fetch = join(repo, ".git/FETCH_HEAD");
       await Bun.write(fetch, "");
-      const fetched = new Date("2026-01-15T10:00:00Z");
       utimesSync(fetch, fetched, fetched);
       await Bun.write(join(repo, "docs/note.md"), "# Edited note\n\nDraft");
       await Bun.write(join(repo, "ignored.txt"), "Generated");
       await Bun.write(join(repo, "docs/draft.md"), "# Draft");
       rmSync(join(repo, "docs/next.md"));
+      tree = treeSource(repo);
+      committed = await readRepo(repo);
+    });
 
-      const tree = treeSource(repo);
+    afterAll(() => {
+      rmSync(repo, { recursive: true, force: true });
+    });
+
+    test("treeSource reads working-tree edits and omits gitignored or deleted files", () => {
       expect(tree.paths.toSorted()).toEqual([
         ".gitignore",
         report,
@@ -1049,16 +1152,26 @@ describe("repository data", () => {
       ]);
       expect(tree.read("docs/note.md")).toBe("# Edited note\n\nDraft");
       expect(tree.read("docs/next.md")).toBeUndefined();
+    });
 
-      const committed = await readRepo(repo);
-      const time = Date.parse("2026-01-14T12:34:00Z") / 1000;
-      expect(committed.fetched).toBe(fetched.getTime());
-      expect(committed.behind).toBeUndefined();
+    test("readRepo reads committed git metadata and commit logs from HEAD", () => {
       expect(committed.head).toMatch(/^[a-f0-9]{7,}$/);
-      expect(committed.log).toEqual([{ hash: committed.head, time, subject: "Write notes" }]);
-      expect(committed.trackingLog).toEqual(committed.log);
+      expect({
+        fetched: committed.fetched,
+        behind: committed.behind,
+        log: committed.log,
+        trackingLog: committed.trackingLog,
+      }).toEqual({
+        fetched: fetched.getTime(),
+        behind: undefined,
+        log: [{ hash: committed.head, time, subject: "Write notes" }],
+        trackingLog: [{ hash: committed.head, time, subject: "Write notes" }],
+      });
+    });
+
+    test("readRepo reads committed reports, items, docs, package metadata, and defects from HEAD", () => {
       expect(committed.reports).toMatchObject([
-        { path: report, changed: time, version: Bun.hash(reportText).toString(36) },
+        { path: report, changed: time, version: "29j6lxvxj0p1b" },
       ]);
       expect(committed.items).toMatchObject([
         { id: "ship", title: "Ship the samples", changed: time },
@@ -1069,9 +1182,7 @@ describe("repository data", () => {
       ]);
       expect(committed.pkg).toMatchObject({ name: "paint", version: "1.0.0" });
       expect(committed.defects).toEqual([]);
-    } finally {
-      rmSync(repo, { recursive: true, force: true });
-    }
+    });
   });
 
   test("a source outside Git still reads its docs and leaves generated folders alone", () => {
@@ -1094,108 +1205,123 @@ describe("repository data", () => {
     }
   });
 
-  test("a repository publishes its configured links, checks, scripts and review material", async () => {
+  describe("repository publication", () => {
     const report = "docs/agent-work/2026-01-14-paint";
-    const repo = await readFiles({
-      "package.json": JSON.stringify({
-        name: "paint",
-        version: "2.0.0",
-        scripts: { "check:all": " format &&  test && ", check: "lint" },
-        dependencies: { tint: "1.0.0" },
-        devDependencies: { sampler: "2.0.0" },
-        bin: "./scripts/paint.ts",
-        admin: {
-          name: "paint.samples",
-          label: "  Paint samples  ",
-          designSystem: "https://paint.example/catalog/",
-          products: [
-            { label: "Tiles", description: "Browse the colors", href: "docs/tiles.html" },
-            null,
-          ],
-          links: [{ label: "Guide", href: "docs/guide.md?print=1#start" }, { label: "Unlinked" }],
+    let repo: Awaited<ReturnType<typeof readFiles>>;
+
+    beforeAll(async () => {
+      repo = await readFiles({
+        "package.json": JSON.stringify({
+          name: "paint",
+          version: "2.0.0",
+          scripts: { "check:all": " format &&  test && ", check: "lint" },
+          dependencies: { tint: "1.0.0" },
+          devDependencies: { sampler: "2.0.0" },
+          bin: "./scripts/paint.ts",
+          admin: {
+            name: "paint.samples",
+            label: "  Paint samples  ",
+            designSystem: "https://paint.example/catalog/",
+            products: [
+              { label: "Tiles", description: "Browse the colors", href: "docs/tiles.html" },
+              null,
+            ],
+            links: [{ label: "Guide", href: "docs/guide.md?print=1#start" }, { label: "Unlinked" }],
+          },
+        }),
+        "docs/agent-work/admin.json": '{"label":"Old label"}',
+        "docs/guide.md": "# Tool &amp; *guide*\n\nInstructions",
+        "README.md": "# Read me\n\nStart",
+        [`${report}.md`]: "# Sample review\n\nComparison",
+        [`${report}/z.PNG`]: "",
+        [`${report}/a.webp`]: "",
+        [`${report}/notes.txt`]: "",
+        "docs/agent-work/2026-01-15-next.md": "Planning",
+        "docs/agent-work/2026-01-15-next/first.jpg": "",
+        "scripts/paint.ts": "// Render color samples\n",
+        "scripts/other.sh": "#!/bin/sh\n# Export samples\n",
+        ".claude/agents/help.md": "---\ndescription: Mira, who samples paint\n---\n",
+        ".claude/agents/tool.md": "---\ndescription: Tool instructions\n---\n",
+      });
+    });
+
+    test("publishes configured package metadata, products, links, checks, and agents", () => {
+      expect(repo).toMatchObject({
+        key: "paint.samples",
+        label: "Paint samples",
+        pkg: {
+          name: "paint",
+          version: "2.0.0",
+          dependencies: { tint: "1.0.0", sampler: "2.0.0" },
+          bin: { paint: "./scripts/paint.ts" },
         },
-      }),
-      "docs/agent-work/admin.json": '{"label":"Old label"}',
-      "docs/guide.md": "# Tool &amp; *guide*\n\nInstructions",
-      "README.md": "# Read me\n\nStart",
-      [`${report}.md`]: "# Sample review\n\nComparison",
-      [`${report}/z.PNG`]: "",
-      [`${report}/a.webp`]: "",
-      [`${report}/notes.txt`]: "",
-      "docs/agent-work/2026-01-15-next.md": "Planning",
-      "docs/agent-work/2026-01-15-next/first.jpg": "",
-      "scripts/paint.ts": "// Render color samples\n",
-      "scripts/other.sh": "#!/bin/sh\n# Export samples\n",
-      ".claude/agents/help.md": "---\ndescription: Mira, who samples paint\n---\n",
-      ".claude/agents/tool.md": "---\ndescription: Tool instructions\n---\n",
+        designSystem: "https://paint.example/catalog/",
+        designSystemDev: undefined,
+        checkSteps: ["format", "test"],
+        agents: ["Mira"],
+      });
+      expect(repo.defects).toEqual([
+        "docs/agent-work/admin.json: ignored, package.json holds admin",
+      ]);
+      expect(repo.products).toEqual([
+        {
+          label: "Tiles",
+          description: "Browse the colors",
+          href: "file:///nonexistent/paint%20samples/docs/tiles.html",
+        },
+      ]);
+      expect(repo.links).toEqual([
+        {
+          label: "Guide",
+          href: "file:///nonexistent/paint%20samples/docs/guide.md?print=1#start",
+        },
+      ]);
     });
-    expect(repo).toMatchObject({
-      key: "paint.samples",
-      label: "Paint samples",
-      pkg: {
-        name: "paint",
-        version: "2.0.0",
-        dependencies: { tint: "1.0.0", sampler: "2.0.0" },
-        bin: { paint: "./scripts/paint.ts" },
-      },
-      designSystem: "https://paint.example/catalog/",
-      designSystemDev: undefined,
-      checkSteps: ["format", "test"],
-      agents: ["Mira"],
+
+    test("publishes scripts, docs, dated reports, and review folders", () => {
+      expect(repo.scripts).toEqual([
+        { path: "scripts/paint.ts", comment: "Render color samples" },
+        { path: "scripts/other.sh", comment: "Export samples" },
+      ]);
+      expect(repo.docs).toEqual([
+        {
+          path: "docs/guide.md",
+          title: "Tool & guide",
+          titleId: "tool-guide",
+          html: "<p>Instructions</p>\n",
+        },
+        { path: "README.md", title: "Read me", titleId: "read-me", html: "<p>Start</p>\n" },
+      ]);
+      expect(repo.reports).toEqual([
+        {
+          path: "docs/agent-work/2026-01-15-next.md",
+          stem: "2026-01-15-next",
+          date: "2026-01-15",
+          title: "2026-01-15-next",
+          changed: undefined,
+          version: "1wtv1saywapf5",
+          html: "<p>Planning</p>\n",
+        },
+        {
+          path: `${report}.md`,
+          date: "2026-01-14",
+          title: "Sample review",
+          titleId: "sample-review",
+          stem: "2026-01-14-paint",
+          changed: undefined,
+          version: "1n50oecivccm7",
+          html: "<p>Comparison</p>\n",
+        },
+      ]);
+      expect(repo.reviews).toEqual([
+        {
+          dir: "docs/agent-work/2026-01-15-next",
+          images: ["first.jpg"],
+          report: "docs/agent-work/2026-01-15-next.md",
+        },
+        { dir: report, images: ["a.webp", "z.PNG"], report: `${report}.md` },
+      ]);
     });
-    expect(repo.defects).toEqual(["docs/agent-work/admin.json: ignored, package.json holds admin"]);
-    expect(repo.products).toEqual([
-      {
-        label: "Tiles",
-        description: "Browse the colors",
-        href: "file:///nonexistent/paint%20samples/docs/tiles.html",
-      },
-    ]);
-    expect(repo.links).toEqual([
-      { label: "Guide", href: "file:///nonexistent/paint%20samples/docs/guide.md?print=1#start" },
-    ]);
-    expect(repo.scripts).toEqual([
-      { path: "scripts/paint.ts", comment: "Render color samples" },
-      { path: "scripts/other.sh", comment: "Export samples" },
-    ]);
-    expect(repo.docs).toEqual([
-      {
-        path: "docs/guide.md",
-        title: "Tool & guide",
-        titleId: "tool-guide",
-        html: "<p>Instructions</p>\n",
-      },
-      { path: "README.md", title: "Read me", titleId: "read-me", html: "<p>Start</p>\n" },
-    ]);
-    expect(repo.reports).toEqual([
-      {
-        path: "docs/agent-work/2026-01-15-next.md",
-        stem: "2026-01-15-next",
-        date: "2026-01-15",
-        title: "2026-01-15-next",
-        changed: undefined,
-        version: Bun.hash("Planning").toString(36),
-        html: "<p>Planning</p>\n",
-      },
-      {
-        path: `${report}.md`,
-        date: "2026-01-14",
-        title: "Sample review",
-        titleId: "sample-review",
-        stem: "2026-01-14-paint",
-        changed: undefined,
-        version: Bun.hash("# Sample review\n\nComparison").toString(36),
-        html: "<p>Comparison</p>\n",
-      },
-    ]);
-    expect(repo.reviews).toEqual([
-      {
-        dir: "docs/agent-work/2026-01-15-next",
-        images: ["first.jpg"],
-        report: "docs/agent-work/2026-01-15-next.md",
-      },
-      { dir: report, images: ["a.webp", "z.PNG"], report: `${report}.md` },
-    ]);
   });
 
   test("bad package fields report defects while a usable catalog can still be inferred", async () => {
@@ -1307,10 +1433,16 @@ describe("pages", () => {
         `<img alt='src="y?&#39; onerror=alert(1) x=&#39;"' src=z.png>`,
     );
     expect(html).not.toMatch(/<a |' onerror/);
+  });
+
+  test("a named entity in a relative link's fragment stays encoded", () => {
     // A named entity in the fragment keeps the character it names.
     expect(renderDocMarkdown("/r", "docs/x.md", `<a href="x.md#a&quot;b">r</a>`)).toContain(
       'href="file:///r/docs/x.md#a&quot;b"',
     );
+  });
+
+  test("a leading whitespace entity before an address or fragment stays as written", () => {
     // An address or a fragment behind a leading space stays as written, as a browser reads it.
     const lead = renderDocMarkdown(
       "/r",
@@ -1319,6 +1451,9 @@ describe("pages", () => {
     );
     expect(lead).toContain('href="&#32;https://a.test/"');
     expect(lead).toContain('href="&#9;#t"');
+  });
+
+  test("upper-case standard entities decode in relative links while mixed-case or non-standard names do not", () => {
     // A browser reads &AMP;, &LT;, &GT; and &QUOT; as their lower-case names, and &Amp; or &APOS;
     // as text.
     const upper = renderDocMarkdown(
@@ -1332,28 +1467,47 @@ describe("pages", () => {
     expect(upper).not.toContain("APOS");
   });
 
-  test("a due date says today or overdue, and a one-line field renders its code and links", () => {
-    const now = new Date(2026, 10, 10, 12).getTime();
-    expect(dueOf("2026-11-10", now)).toEqual({ text: "due today", tone: "today" });
-    expect(dueOf("2026-11-03", now).tone).toBe("overdue");
-    expect(dueOf("2026-11-03", now).text.startsWith("was due 3 Nov")).toBe(true);
-    expect(dueOf("2026-11-13", now).tone).toBe("soon");
-    expect(dueOf("2026-12-13", now).tone).toBe("later");
+  const dueNow = new Date(2026, 10, 10, 12).getTime();
+
+  test.each([
+    ["2026-11-10", { text: "due today", tone: "today" }],
+    ["2026-11-03", { text: "was due 3 Nov", tone: "overdue" }],
+    ["2026-11-13", { text: "due 13 Nov", tone: "soon" }],
+    ["2026-12-13", { text: "due 13 Dec", tone: "later" }],
     // A day more than 300 days away names its year, ahead as behind.
-    expect(dueOf("2027-12-01", now).text).toBe("due 1 Dec 2027");
+    ["2027-12-01", { text: "due 1 Dec 2027", tone: "later" }],
+  ])("dueOf formats text and tone for %s", (due, expected) => {
+    expect(dueOf(due, dueNow)).toEqual(expected);
+  });
+
+  test("dueOf names the written calendar day west of UTC", () => {
     // West of UTC too, the pill names the day written.
     inZone("America/New_York", () =>
       expect(dueOf("2026-11-20", new Date(2026, 10, 10, 12).getTime()).text).toBe("due 20 Nov"),
     );
-    expect(inline("use `a-b` & <i>, see http://127.0.0.1:4329/x.")).toBe(
-      'use <code class="hw-inline-code">a-b</code> &amp; &lt;i&gt;, see <a class="hw-link" href="http://127.0.0.1:4329/x">http://127.0.0.1:4329/x</a>.',
-    );
+  });
+
+  test.each([
+    {
+      label: "code spans, escaped HTML, and bare URLs",
+      input: "use `a-b` & <i>, see http://127.0.0.1:4329/x.",
+      expected:
+        'use <code class="hw-inline-code">a-b</code> &amp; &lt;i&gt;, see <a class="hw-link" href="http://127.0.0.1:4329/x">http://127.0.0.1:4329/x</a>.',
+    },
+    {
+      label: "quoted URLs stop before closing quotes",
+      input: `see "https://d.example/a" or 'https://d.example/b'`,
+      expected:
+        'see &quot;<a class="hw-link" href="https://d.example/a">https://d.example/a</a>&quot; or &#x27;<a class="hw-link" href="https://d.example/b">https://d.example/b</a>&#x27;',
+    },
+  ])("inline formats $label", ({ input, expected }) => {
+    expect(inline(input)).toBe(expected);
+  });
+
+  test("withLinks leaves URLs already linked, inside tags, or inside code untouched", () => {
     // An address already linked, inside a tag or inside code stays as it is; quotes end one.
     const html =
       '<p><a href="http://a.example/">http://a.example/</a> <img src="http://b.example/i.png"> <code>curl http://c.example/y</code></p>';
     expect(withLinks(html)).toBe(html);
-    expect(inline(`see "https://d.example/a" or 'https://d.example/b'`)).toBe(
-      'see &quot;<a class="hw-link" href="https://d.example/a">https://d.example/a</a>&quot; or &#x27;<a class="hw-link" href="https://d.example/b">https://d.example/b</a>&#x27;',
-    );
   });
 });
