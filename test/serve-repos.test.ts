@@ -1,6 +1,6 @@
 import { rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { beforeAll, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { rejection } from "@hackersandwizards/scaffolding/rejection";
 import type { RepoData } from "../src/repo.ts";
 import {
@@ -293,12 +293,8 @@ describe("createRepoCache", () => {
 
   describe("mixed load and pruning", () => {
     const dataA = sampleRepo("a", "/r/a");
-    let reads = 0;
-    let cache: ReturnType<typeof createRepoCache>;
-    let readFetched: (repo: string) => number | undefined;
-    let firstLoad: Awaited<ReturnType<ReturnType<typeof createRepoCache>["load"]>>;
 
-    beforeAll(async () => {
+    async function mixedLoad() {
       const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       const readers = new Map<string, () => Promise<RepoData>>([
         ["/r/a", async () => dataA],
@@ -313,38 +309,35 @@ describe("createRepoCache", () => {
         ["/r/a", { state: "a1", fetched: 500 }],
         ["/r/b", { state: "b1", fetched: undefined }],
       ]);
-      cache = createRepoCache(
-        (p) => {
-          reads++;
-          return readers.get(p)!();
-        },
-        async (p) => states.get(p)!,
-      );
+      const read = vi.fn((p: string) => readers.get(p)!());
+      const cache = createRepoCache(read, async (p) => states.get(p)!);
       try {
-        firstLoad = await cache.load((await cache.probe(["/r/a", "/r/b"])).states);
-        readFetched = cache.fetchedTime;
+        const firstLoad = await cache.load((await cache.probe(["/r/a", "/r/b"])).states);
+        return { cache, read, firstLoad };
       } finally {
         errSpy.mockRestore();
       }
-    });
+    }
 
-    test("loads healthy repos alongside failures and records unread notice for never-read repo", () => {
+    test("loads healthy repos alongside failures and records unread notice for never-read repo", async () => {
+      const { cache, firstLoad } = await mixedLoad();
       expect(firstLoad).toEqual({ repos: [dataA], fresh: true });
-      expect(readFetched("/r/a")).toBe(500);
+      expect(cache.fetchedTime("/r/a")).toBe(500);
       expect(cache.unreadNotices()).toEqual([
         { name: "b", message: "b broken", hasLastRead: false },
       ]);
     });
 
     test("prunes vanished repositories from read, unread, and fetched caches on probe", async () => {
+      const { cache, read } = await mixedLoad();
       await cache.probe(["/r/a"]);
       expect(cache.unreadNotices()).toEqual([]);
 
       await cache.probe([]);
-      expect(readFetched("/r/a")).toBeUndefined();
+      expect(cache.fetchedTime("/r/a")).toBeUndefined();
 
       await cache.load((await cache.probe(["/r/a"])).states);
-      expect(reads).toBe(3);
+      expect(read).toHaveBeenCalledTimes(3);
     });
   });
 });

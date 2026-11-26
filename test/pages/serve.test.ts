@@ -293,10 +293,11 @@ describe("serve hub failure, concurrency, and rescan pinning", () => {
         await hub.pages();
         breakGoalObject(second);
         sh(second, "git", "tag", "v-broken");
+        errSpy.mockClear();
         afterFail = await hub.pages();
+        initialErrors = errSpy.mock.calls.length;
         dashboard = await hub.fetch(new Request("http://admin.localhost/second/dashboard"));
         body = await dashboard.text();
-        initialErrors = errSpy.mock.calls.length;
       } finally {
         errSpy.mockRestore();
         clock.mockRestore();

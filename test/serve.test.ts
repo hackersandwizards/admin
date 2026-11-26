@@ -150,19 +150,22 @@ describe("createSiteStore", () => {
     });
     try {
       const store = createSiteStore(async () => ["/r/a"], repoCache, build);
-      await rejection(store.refresh());
+      const [initial] = await Promise.allSettled([store.refresh()]);
+      assert(initial.status === "rejected", "the failing build should reject");
 
       const [first] = await Promise.allSettled([store.refresh()]);
       assert(first.status === "rejected", "first deferred call should reject");
-      const err1: unknown = first.reason;
-      expect(err1).toMatchObject({ constructor: expectedConstructor, message: expectedMessage });
-      (err1 as Error).message = "mutated by caller";
+      const err1 = first.reason as Error;
+      const message1 = err1.message;
+      err1.message = "mutated by caller";
 
       const [second] = await Promise.allSettled([store.refresh()]);
       assert(second.status === "rejected", "second deferred call should reject");
-      const err2: unknown = second.reason;
-      expect(err2).toMatchObject({ constructor: expectedConstructor, message: expectedMessage });
-      expect(err2).not.toBe(err1);
+      const err2 = second.reason as Error;
+      expect(Object.getPrototypeOf(err1)).toBe(expectedConstructor.prototype);
+      expect(Object.getPrototypeOf(err2)).toBe(expectedConstructor.prototype);
+      expect([message1, err2.message]).toEqual([expectedMessage, expectedMessage]);
+      expect(new Set([initial.reason, err1, err2]).size).toBe(3);
       expect(build).toHaveBeenCalledTimes(1);
     } finally {
       errSpy.mockRestore();
