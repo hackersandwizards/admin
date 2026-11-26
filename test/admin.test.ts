@@ -298,13 +298,12 @@ describe("admin-check", () => {
 
   // A label names the repository to a person and leaves its key; one that is not text is a defect.
   test.each([
-    ["Sample label", ["x", "Sample label", []]],
-    [undefined, ["x", undefined, []]],
-    [" ", ["x", undefined, []]],
-    [3, ["x", undefined, ["package.json: admin.label is not text"]]],
+    ["Sample label", { key: "x", label: "Sample label", defects: [] }],
+    [undefined, { key: "x", label: undefined, defects: [] }],
+    [" ", { key: "x", label: undefined, defects: [] }],
+    [3, { key: "x", label: undefined, defects: ["package.json: admin.label is not text"] }],
   ])("admin.label %o resolves without changing the key", async (label, expected) => {
-    const read = await configured("/nonexistent/x", { label });
-    expect([read.key, read.label, read.defects]).toEqual(expected);
+    expect(await configured("/nonexistent/x", { label })).toMatchObject(expected);
   });
 
   describe("docs/agent-work/admin.json at HEAD", () => {
@@ -525,12 +524,17 @@ describe("hub", () => {
     test.each([
       ["docs/fenced.md", "Setup & run"],
       ["docs/setext.md", "Setext title"],
-      ["docs/none.md", "docs/none.md"],
-      ["docs/image.md", "docs/image.md"],
       ["docs/two.md", "First heading"],
     ])("uses the first rendered text h1 as the title for %s", (path, title) => {
       expect(byPath[path]!.title).toBe(title);
     });
+
+    test.each(["docs/none.md", "docs/image.md"])(
+      "titles %s by its path where no h1 holds text",
+      (path) => {
+        expect(byPath[path]!.title).toBe(path);
+      },
+    );
 
     test.each(["docs/fenced.md", "docs/setext.md"])(
       "removes the extracted h1 from the rendered article for %s",

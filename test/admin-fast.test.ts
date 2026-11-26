@@ -1039,6 +1039,7 @@ describe("hub", () => {
       scrollWrapper("Prices (3)"),
       { type: "text" },
     ]);
+    expect(JSON.stringify(root).split('"hw-table-scroll"')).toHaveLength(8);
     expect(ours).toEqual(expectedLabels);
   });
 
@@ -1064,6 +1065,7 @@ describe("hub", () => {
       className: ["hw-table-scroll"],
       tabIndex: 0,
     });
+    expect(JSON.stringify(root).split('"hw-table-scroll"')).toHaveLength(2);
     expect(ours).toEqual([null]);
   });
 
@@ -1323,8 +1325,10 @@ describe("repository data", () => {
     });
 
     test("publishes an explicit designSystem URL without a dev server", () => {
-      expect(repo.designSystem).toBe("https://paint.example/catalog/");
-      expect(repo.designSystemDev).toBeUndefined();
+      expect(repo).toMatchObject({
+        designSystem: "https://paint.example/catalog/",
+        designSystemDev: undefined,
+      });
     });
 
     test("publishes check steps from check:all", () => {
