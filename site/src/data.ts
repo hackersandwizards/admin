@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { relative, dirname } from "node:path/posix";
+import { basename, relative, dirname } from "node:path/posix";
 import type { Page, SiteData, ViewItem } from "../../src/site-data.ts";
 
 export type { Page, SiteData, ViewItem };
@@ -11,7 +11,11 @@ export { docSlug, fileHref } from "../../src/repo-paths.ts";
 
 let cached: SiteData | undefined;
 export function data(): SiteData {
-  cached ??= JSON.parse(readFileSync(process.env.ADMIN_DATA!, "utf8")) as SiteData;
+  if (cached == null) {
+    const path = process.env.ADMIN_DATA;
+    if (path === undefined) throw new Error("environment variable missing: ADMIN_DATA");
+    cached = JSON.parse(readFileSync(path, "utf8")) as SiteData;
+  }
   return cached;
 }
 
@@ -19,7 +23,8 @@ const fileOf = (path: string) => `${path}.html`;
 
 // Relative, so the output opens from disk.
 export function href(from: string, to: string) {
-  return encodePath(relative(dirname(fileOf(from)), fileOf(to)) || fileOf(to).split("/").pop()!);
+  const target = fileOf(to);
+  return encodePath(relative(dirname(fileOf(from)), target) || basename(target));
 }
 
 export const repoOf = (key?: string) => data().repos.find((r) => r.key === key);

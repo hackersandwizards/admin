@@ -105,7 +105,7 @@ export function renderDocShell(shell: string, target: DocTarget, links: Linker):
     [`/${SHELL.path}"`]: `/${escapeHtml(encodeFile(doc.path))}"`,
     [SHELL.path]: escapeHtml(doc.path),
     [SHELL.title]: escapeHtml(doc.title),
-    [`"${SHELL.name}.html"`]: `"${encodeURIComponent(name.split("/").pop()!)}.html"`,
+    [`"${SHELL.name}.html"`]: `"${encodeURIComponent(name.slice(name.lastIndexOf("/") + 1))}.html"`,
     [SHELL.html]: links.files(links.pages(report ? reportBody(repoKey, report) : doc.html)),
   };
   return shell
@@ -114,10 +114,11 @@ export function renderDocShell(shell: string, target: DocTarget, links: Linker):
       (bar) =>
         isPlainReportName(report?.stem) ? bar.replace(/ data-shell-action(?:="[^"]*")?/, "") : "",
     )
-    .replace(
-      new RegExp(Object.keys(marks).map(RegExp.escape).join("|"), "g"),
-      (mark) => marks[mark]!,
-    );
+    .replace(new RegExp(Object.keys(marks).map(RegExp.escape).join("|"), "g"), (mark) => {
+      const value = marks[mark];
+      if (value === undefined) throw new Error(`Shell mark missing: ${mark} in ${name}`);
+      return value;
+    });
 }
 
 // A doc page, its doc filled into the shell for its depth, once per build.
@@ -133,7 +134,9 @@ export function createDocFiller(
     const done = filled.get(name);
     if (done) return done;
     const { repo, doc } = hit;
-    const shell = shells.get(shellPath(`${repo.key}/`, name.split("/").length))!;
+    const path = shellPath(`${repo.key}/`, name.split("/").length);
+    const shell = shells.get(path);
+    if (shell === undefined) throw new Error(`Document shell missing: ${path} for ${name}`);
     const page = Buffer.from(renderDocShell(shell, { name, repoKey: repo.key, doc }, links));
     filled.set(name, page);
     return page;

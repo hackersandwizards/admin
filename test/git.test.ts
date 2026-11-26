@@ -56,6 +56,13 @@ describe("parseTreeBlobs", () => {
   ])("parses %s", (_label, input, expected) => {
     expect(parseTreeBlobs(input)).toEqual(expected);
   });
+
+  test("reports the blob row missing its object ID after skipping non-blobs", () => {
+    const input = Buffer.from("160000 commit\tdocs/sub.md\0" + "100644 blob\tdocs/missing.md\0");
+    expect(() => parseTreeBlobs(input)).toThrow(
+      'Git blob object ID missing: "100644 blob\\tdocs/missing.md"',
+    );
+  });
 });
 
 describe("parseBatchBlobs", () => {

@@ -2,7 +2,7 @@
 // docs/agent-work/items or whose package.json names a @hackersandwizards package, its own name
 // included, without a list of repos. Such a repo shows with zero items.
 import { statSync } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { ITEMS_DIR } from "./items.ts";
 import { gitAsync } from "./git.ts";
@@ -20,11 +20,29 @@ const SKIP = new Set([
   "_archive",
 ]);
 
+async function readCheckoutDirectory(dir: string, isRoot: boolean) {
+  try {
+    if (isRoot) {
+      const info = await stat(dir, { throwIfNoEntry: false });
+      if (!info?.isDirectory()) return [];
+    }
+    return await readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    )
+      return [];
+    throw error;
+  }
+}
+
 export async function findRepos(root: string, depth = 6): Promise<string[]> {
   const checkouts: string[] = [];
   // Without blocking: the hub answers requests while a later search runs.
   const visit = async (dir: string, level: number): Promise<void> => {
-    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    const entries = await readCheckoutDirectory(dir, level === 0);
     if (entries.some((e) => e.name === ".git")) checkouts.push(dir);
     if (level < depth)
       await Promise.all(

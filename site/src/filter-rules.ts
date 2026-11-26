@@ -1,3 +1,4 @@
+import { decodePercentEncoding } from "../../src/parse-text.ts";
 import { shortDateTime } from "./time.ts";
 
 export interface HiddenReposView {
@@ -160,11 +161,7 @@ export function noMatchSentence(
 }
 
 export function decodeHash(hash: string): string {
-  try {
-    return decodeURIComponent(hash.slice(1));
-  } catch {
-    return ""; // a malformed hash names no item
-  }
+  return decodePercentEncoding(hash.slice(1)) ?? ""; // a malformed hash names no item
 }
 
 export function goneItemNotice(fragment: string, found: boolean): string {

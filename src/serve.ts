@@ -157,9 +157,10 @@ export function createSiteStore(
     const { repos, fresh } = await repoCache.load(states);
     if (!fresh) {
       if (site?.key === key) return site;
-      if (isBuildDeferred(failed, key, Date.now())) {
+      const now = Date.now();
+      if (failed && isBuildDeferred(failed, key, now)) {
         if (site) return site;
-        throw freshFailureError(failed!);
+        throw freshFailureError(failed);
       }
     }
     return runBuild(key, repos);
@@ -211,6 +212,10 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
 
 if (import.meta.main) {
   const [json, out] = Bun.argv.slice(2);
-  if (json === "--catalog") await buildCatalog(out!);
-  else await buildSite({ file: resolve(json!) }, out!);
+  if (json === undefined)
+    throw new Error("Build input missing: pass a site data file or --catalog");
+  const file = json === "--catalog" ? undefined : resolve(json);
+  if (out === undefined) throw new Error(`Build output directory missing: ${json}`);
+  if (file === undefined) await buildCatalog(out);
+  else await buildSite({ file }, out);
 }

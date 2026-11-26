@@ -70,7 +70,10 @@ export function parseFrontmatter(yaml: string): Partial<Item> {
   const unknown = Object.keys(front).filter((k) => !FIELDS.includes(k));
   if (unknown.length) throw new ItemError(`unknown field ${unknown.join(", ")}`);
   // The parser keeps a repeated key's last value without a word; a top-level key starts a line.
-  const keys = [...yaml.matchAll(/^(["']?)([\w-]+)\1[ \t]*:/gm)].map((k) => k[2]!);
+  const keys = [...yaml.matchAll(/^(["']?)([\w-]+)\1[ \t]*:/gm)].map(([line, , key]) => {
+    if (key === undefined) throw new ItemError(`frontmatter key missing: ${line}`);
+    return key;
+  });
   const repeated = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
   if (repeated.length) throw new ItemError(`repeated field ${repeated.join(", ")}`);
   return front as Partial<Item>;
@@ -87,8 +90,11 @@ export function splitItemBody(markdown: string): { title: string; body: string }
 export function parseItem(id: string, text: string): Item {
   const m = text.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!m) throw new ItemError("no frontmatter between --- lines");
-  const front = parseFrontmatter(m[1]!);
-  const { title, body } = splitItemBody(m[2]!);
+  const [, yaml, markdown] = m;
+  if (yaml === undefined) throw new ItemError(`${id}: frontmatter capture missing`);
+  const front = parseFrontmatter(yaml);
+  if (markdown === undefined) throw new ItemError(`${id}: body capture missing`);
+  const { title, body } = splitItemBody(markdown);
   return { ...front, id, title, body } as Item;
 }
 
@@ -108,7 +114,8 @@ export type RankKey = readonly [number, string, number, number, string, number, 
 const AFTER_LAST_DAY = "9999-12-32";
 
 export function itemRankKey(item: RankedItem): RankKey {
-  const soon = dueSoon(item.due) ? item.due! : AFTER_LAST_DAY;
+  const due = item.due;
+  const soon = dueSoon(due) && due !== undefined ? due : AFTER_LAST_DAY;
   return [
     item.priority ?? 9,
     soon,
@@ -123,9 +130,9 @@ export function itemRankKey(item: RankedItem): RankKey {
 export function compareItems(a: RankedItem, b: RankedItem): number {
   const left = itemRankKey(a);
   const right = itemRankKey(b);
-  for (let i = 0; i < left.length; i++) {
-    const l = left[i]!;
-    const r = right[i]!;
+  for (const [i, l] of left.entries()) {
+    const r = right[i];
+    if (r === undefined) throw new Error(`Rank field ${i} missing: ${b.id}`);
     const diff = typeof l === "number" ? l - (r as number) : l.localeCompare(r as string);
     if (diff) return diff;
   }

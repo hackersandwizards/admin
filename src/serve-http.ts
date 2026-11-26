@@ -1,6 +1,7 @@
 import elements from "../brand-elements.json";
 import { policy } from "../site/src/data.ts";
 import { THUMB_BOXES } from "./display.ts";
+import { decodePercentEncoding } from "./parse-text.ts";
 import { fileEtag, readRepoFile, resizeThumbnail } from "./serve-files.ts";
 import { rewriteMissingPage, type PageDecorator, type Site } from "./serve-pages.ts";
 
@@ -51,21 +52,13 @@ export function parseRequest(req: Request): RequestCheck {
   if (!LOCAL.test(url.hostname)) return { response: new Response("local only", { status: 403 }) };
   if (!isAllowedFetchSite(req.headers.get("sec-fetch-site"), req.headers.get("sec-fetch-mode")))
     return { response: new Response("not from another site", { status: 403 }) };
-  let path: string;
-  try {
-    path = decodeURIComponent(url.pathname);
-  } catch {
-    return { response: new Response("malformed path", { status: 400 }) };
-  }
+  const path = decodePercentEncoding(url.pathname);
+  if (path === undefined) return { response: new Response("malformed path", { status: 400 }) };
   const gzip = /\bgzip\b/.test(req.headers.get("accept-encoding") ?? "");
   return { request: { url, path, gzip, ifNoneMatch: req.headers.get("if-none-match") } };
 }
 
-export function responseHeaders(
-  contentType: string,
-  cacheControl: string,
-  policyHeader: string,
-): Record<string, string> {
+export function responseHeaders(contentType: string, cacheControl: string, policyHeader: string) {
   return {
     "content-type": contentType,
     "cache-control": cacheControl,
@@ -86,10 +79,10 @@ export function createResponder(): Responder {
 
   function compressedResponse(
     body: Buffer,
-    headers: Record<string, string>,
+    headers: ReturnType<typeof responseHeaders>,
     acceptsGzip: boolean,
   ): Response {
-    const zip = acceptsGzip && isCompressible(body, headers["content-type"]!);
+    const zip = acceptsGzip && isCompressible(body, headers["content-type"]);
     let bytes = zip ? gzipped.get(body) : new Uint8Array(body);
     if (!bytes) gzipped.set(body, (bytes = Bun.gzipSync(new Uint8Array(body))));
     return new Response(bytes, {
@@ -126,9 +119,12 @@ export function astroAssetRoute(
   site: Site | undefined,
   responder: Responder,
 ): Response | undefined {
-  if (parsed.path.startsWith("/_astro/") && site?.files.has(parsed.path.slice(1)))
-    return responder.immutable(parsed, site.files.get(parsed.path.slice(1))!, parsed.path);
-  return undefined;
+  if (!parsed.path.startsWith("/_astro/") || site === undefined) return undefined;
+  const name = parsed.path.slice(1);
+  if (!site.files.has(name)) return undefined;
+  const body = site.files.get(name);
+  if (body === undefined) throw new Error(`Astro asset missing: ${name}`);
+  return responder.immutable(parsed, body, parsed.path);
 }
 
 export async function serveRepoFile(
@@ -182,9 +178,10 @@ export function createCatalogRoute(
       );
     const name = parsed.path.slice("/catalog/".length).replace(/\/$/, "");
     const at = [name, name ? `${name}/index.html` : "index.html"].find((n) => built.has(n));
-    return at
-      ? responder.catalog(parsed, built.get(at)!, at)
-      : new Response("no such page", { status: 404 });
+    if (!at) return new Response("no such page", { status: 404 });
+    const body = built.get(at);
+    if (body === undefined) throw new Error(`Catalog file missing: ${at}`);
+    return responder.catalog(parsed, body, at);
   }
 
   return function handleCatalog(parsed: ParsedRequest): Response | Promise<Response> | undefined {
@@ -222,10 +219,9 @@ export function createPageRoute(
   responder: Responder,
 ) {
   function missingResponse(parsed: ParsedRequest, built: Site): Response {
-    const html = rewriteMissingPage(
-      built.files.get("404.html")!.toString("utf8"),
-      parsed.url.pathname,
-    );
+    const template = built.files.get("404.html");
+    if (template === undefined) throw new Error(`404 page missing: ${parsed.url.pathname}`);
+    const html = rewriteMissingPage(template.toString("utf8"), parsed.url.pathname);
     const response = responder.page(parsed, decorator.withNotice(Buffer.from(html)), "404.html");
     return new Response(response.body, { status: 404, headers: response.headers });
   }
@@ -235,14 +231,18 @@ export function createPageRoute(
     if (match.kind === "strip-slash")
       return Response.redirect(url.origin + url.pathname.slice(0, -1) + url.search, 302);
     if (match.kind === "file") {
-      const hit = built.files.get(match.at)!;
+      const hit = built.files.get(match.at);
+      if (hit === undefined) throw new Error(`Site file missing: ${match.at}`);
       const body = match.at.endsWith(".html")
         ? decorator.withNotice(decorator.stamp(hit, match.at, built.repos))
         : hit;
       return responder.page(parsed, body, match.at);
     }
-    if (match.kind === "doc")
-      return responder.page(parsed, decorator.withNotice(built.docPage(match.name)!), "doc.html");
+    if (match.kind === "doc") {
+      const doc = built.docPage(match.name);
+      if (doc === undefined) throw new Error(`Document page missing: ${match.name}`);
+      return responder.page(parsed, decorator.withNotice(doc), "doc.html");
+    }
     if (match.kind === "dashboard")
       return Response.redirect(
         `${url.origin}${url.pathname.replace(/\/$/, "")}/dashboard${url.search}`,

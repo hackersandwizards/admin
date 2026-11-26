@@ -51,23 +51,25 @@ export interface VisitOutcome {
   readonly changes: RowChangeResult[];
 }
 
+function repoFromVisitKey(key: string): string {
+  const colon = key.indexOf(":");
+  return colon < 0 ? key : key.slice(0, colon);
+}
+
 export function isGoneItem(
   id: string,
   live: ReadonlySet<string>,
   liveRepos: ReadonlySet<string>,
 ): boolean {
-  return !id.includes("#") && liveRepos.has(id.split(":")[0]!) && !live.has(id);
+  return !id.includes("#") && liveRepos.has(repoFromVisitKey(id)) && !live.has(id);
 }
 
 export function isStaleComment(
   answer: StoredAnswer | null,
   reportVersions: ReadonlyMap<string, string>,
 ): boolean {
-  return (
-    Boolean(answer?.report) &&
-    reportVersions.has(answer!.report!) &&
-    reportVersions.get(answer!.report!) !== answer!.version
-  );
+  if (!answer?.report) return false;
+  return reportVersions.has(answer.report) && reportVersions.get(answer.report) !== answer.version;
 }
 
 export function wasCopied(answer: StoredAnswer | null, copiedAt: string): boolean {
@@ -81,7 +83,7 @@ export function pruneVersions(
 ): Record<string, unknown> {
   const kept: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(versions)) {
-    const gone = !key.startsWith("#") && liveRepos.has(key.split(":")[0]!) && !live.has(key);
+    const gone = !key.startsWith("#") && liveRepos.has(repoFromVisitKey(key)) && !live.has(key);
     if (!gone) kept[key] = value;
   }
   return kept;
@@ -169,7 +171,7 @@ export function recordVisit(
 function liveInventory(doc: Document): PageInventory {
   // A page that names every item of its repositories knows which answers lost their item.
   const live = new Set(doc.body.dataset.answers?.split(" ").filter(Boolean));
-  const liveRepos = new Set([...live].map((k) => k.split(":")[0]!));
+  const liveRepos = new Set([...live].map(repoFromVisitKey));
   const reportVersions = new Map(
     [...doc.querySelectorAll<HTMLElement>("[data-report][data-version]")].map((el) => [
       el.dataset.k ?? "",
@@ -213,6 +215,10 @@ export function trackVisit(store: AdminStore, doc: Document, now = Date.now()): 
   const elements = [...doc.querySelectorAll<HTMLElement>("[data-k][data-version]")];
   const rows = elements.map((el) => rowVersionOf(el, report));
   const outcome = recordVisit(store, { live, liveRepos, rows }, now);
-  outcome.changes.forEach((result, index) => applyRowChange(elements[index]!, result));
+  outcome.changes.forEach((result, index) => {
+    const element = elements[index];
+    if (element === undefined) throw new Error(`visit row missing: index ${index}`);
+    applyRowChange(element, result);
+  });
   return outcome.updatedSince;
 }

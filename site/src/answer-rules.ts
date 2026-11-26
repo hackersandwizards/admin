@@ -132,7 +132,8 @@ export function isAnswerCopied(
   stale: boolean,
   copiedAt: string,
 ): boolean {
-  return Boolean(answer) && !stale && !answer!.later && answer!.at <= copiedAt;
+  if (!answer) return false;
+  return !stale && !answer.later && answer.at <= copiedAt;
 }
 
 export function rowMarkText(
@@ -192,7 +193,7 @@ export function orderedAnsweredKeys(
   const order = [...new Set(pageKeys)];
   const indexOf = (key: string) => (order.includes(key) ? order.indexOf(key) : order.length);
   return [...stored.entries()]
-    .filter(([, answer]) => Boolean(answer) && !answer!.later)
+    .filter(([, answer]) => (answer ? !answer.later : false))
     .map(([key]) => key)
     .sort((a, b) => indexOf(a) - indexOf(b));
 }

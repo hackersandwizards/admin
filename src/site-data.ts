@@ -83,11 +83,17 @@ type ItemHtmlRenderer = (repo: RepoData, item: Item) => string;
 export function createItemHtmlRenderer(repos: readonly RepoData[]): ItemHtmlRenderer {
   const byKey = new Map(repos.map((r) => [r.key, r]));
   const files = new Map(repos.map((r) => [r, new Set(r.workFiles)]));
-  const named = (before: string, after: string) =>
-    [
+  const named = (before: string, after: string) => {
+    const keys = [
       before.match(/([\w.-]+)\s+(?:<code[^>]*>)?$/)?.[1],
       after.match(/^(?:<\/code>)?\s+in\s+([\w.-]+)/)?.[1],
-    ].find((k) => k && byKey.has(k));
+    ];
+    for (const key of keys) {
+      if (key === undefined) continue;
+      const target = byKey.get(key);
+      if (target !== undefined) return target;
+    }
+  };
   return (repo: RepoData, item: Item) => {
     const html = renderItemMarkdown(repo.path, `${ITEMS_DIR}/${item.id}.md`, item.body);
     // A link or a tag goes through whole, so no path inside an attribute becomes a link.
@@ -95,9 +101,11 @@ export function createItemHtmlRenderer(repos: readonly RepoData[]): ItemHtmlRend
       /<svg\b[\s\S]*?<\/svg>|<a\b[\s\S]*?<\/a>|<[^>]*>|(?<![\w/"=])docs\/agent-work\/[\w./äöüÄÖÜß-]*\w/g,
       (whole, at: number) => {
         if (whole.startsWith("<")) return whole;
-        const key = named(html.slice(Math.max(0, at - 80), at), html.slice(at + whole.length));
-        const target = key ? byKey.get(key)! : repo;
-        return files.get(target)!.has(whole)
+        const target =
+          named(html.slice(Math.max(0, at - 80), at), html.slice(at + whole.length)) ?? repo;
+        const workFiles = files.get(target);
+        if (workFiles === undefined) throw new Error(`Work files missing: ${target.key}`);
+        return workFiles.has(whole)
           ? `<a class="hw-link" href="${Bun.escapeHTML(fileHref(join(target.path, whole)))}">${whole}</a>`
           : whole;
       },
@@ -133,7 +141,9 @@ export function createOwnerClassifier(repos: readonly RepoData[], you?: string):
       .filter((x) => x.at >= 0)
       .sort((a, b) => a.at - b.at)[0]?.p;
     if (person) return { who: person, as: "person" };
-    const party = owner.split(/[,;(]/)[0]!.trim();
+    const [firstPart] = owner.split(/[,;(]/);
+    if (firstPart === undefined) throw new Error(`Owner name part missing: ${owner}`);
+    const party = firstPart.trim();
     return !party || (!joined(owner) && isAgent(firstWord(owner)))
       ? { who: firstWord(owner), as: "agent" }
       : { who: party, as: "party" };

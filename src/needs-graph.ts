@@ -7,8 +7,7 @@ export function openPrerequisites(item: Item, byId: ReadonlyMap<string, Item>): 
   const seen = new Set([item.id]);
   const pending = [...item.needs];
   const open: string[] = [];
-  while (pending.length) {
-    const id = pending.pop()!;
+  for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
     if (seen.has(id)) continue;
     seen.add(id);
     const target = byId.get(id);

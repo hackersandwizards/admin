@@ -3,6 +3,7 @@ import { headSource, readGitMetadata, type Commit } from "./git.ts";
 import { ITEMS_DIR, WORK_DIR, type Item } from "./items.ts";
 import { readItems, type Source } from "./item-source.ts";
 import { extractTitle, renderDocMarkdown } from "./markdown.ts";
+import { parseYamlFrontmatter } from "./parse-text.ts";
 import {
   ADMIN_FILE,
   ASTRO_CONFIG,
@@ -70,14 +71,11 @@ export const wantsRepoFile = (p: string) =>
   AGENT.test(p);
 
 export function agentDescription(text: string): string {
-  try {
-    const front = Bun.YAML.parse(text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "") as {
-      description?: unknown;
-    } | null;
-    return typeof front?.description === "string" ? front.description : "";
-  } catch {
-    return "";
-  }
+  const yaml = text.match(/^---\n([\s\S]*?)\n---/)?.[1];
+  if (yaml === undefined) return "";
+  const front = parseYamlFrontmatter(yaml);
+  if (typeof front !== "object" || front === null || !("description" in front)) return "";
+  return typeof front.description === "string" ? front.description : "";
 }
 
 export function firstComment(text: string): string {
@@ -145,9 +143,10 @@ export function readReviews(paths: readonly string[], reportPaths: ReadonlySet<s
   for (const p of paths) {
     const m = p.match(/^(docs\/agent-work\/\d{4}-\d{2}-\d{2}-[^/]+)\/(.+)$/);
     if (!m) continue;
-    const list = reviewDirs.get(m[1]!) ?? [];
-    list.push(m[2]!);
-    reviewDirs.set(m[1]!, list);
+    const [, dir, file] = m;
+    const list = reviewDirs.get(dir) ?? [];
+    list.push(file);
+    reviewDirs.set(dir, list);
   }
   return [...reviewDirs]
     .map(([dir, files]) => ({

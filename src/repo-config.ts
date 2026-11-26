@@ -1,7 +1,8 @@
 import { basename, join } from "node:path";
 import { WORK_DIR } from "./items.ts";
 import type { Source } from "./item-source.ts";
-import { asKey, fileHref, REPO_KEY, SCHEME } from "./repo-paths.ts";
+import { parseJsonText } from "./parse-text.ts";
+import { asKey, fileHref, REPO_KEY, SCHEME, splitLinkPath } from "./repo-paths.ts";
 
 // No href: the configured one had a scheme other than http(s), so the label shows as text.
 export type Link = { label: string; href?: string };
@@ -31,14 +32,11 @@ export function parsePackageJson(text: string | undefined): {
   defects: string[];
 } {
   if (text === undefined) return { pkg: {}, defects: [] };
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return isPlainObject(parsed)
-      ? { pkg: parsed, defects: [] }
-      : { pkg: {}, defects: ["package.json: not an object"] };
-  } catch {
-    return { pkg: {}, defects: ["package.json: not JSON"] };
-  }
+  const parsed = parseJsonText(text);
+  if (parsed === undefined) return { pkg: {}, defects: ["package.json: not JSON"] };
+  return isPlainObject(parsed)
+    ? { pkg: parsed, defects: [] }
+    : { pkg: {}, defects: ["package.json: not an object"] };
 }
 
 // A field of the wrong type is a defect, never a failed build of every repository's pages.
@@ -66,14 +64,11 @@ export function readPackageBin(pkg: Record<string, unknown>): {
 
 export function parseAdminFile(text: string | undefined): { value: unknown; defects: string[] } {
   if (text === undefined) return { value: undefined, defects: [] };
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return isPlainObject(parsed)
-      ? { value: parsed, defects: [] }
-      : { value: parsed, defects: [`${ADMIN_FILE}: not a JSON object`] };
-  } catch {
-    return { value: undefined, defects: [`${ADMIN_FILE}: not JSON`] };
-  }
+  const parsed = parseJsonText(text);
+  if (parsed === undefined) return { value: undefined, defects: [`${ADMIN_FILE}: not JSON`] };
+  return isPlainObject(parsed)
+    ? { value: parsed, defects: [] }
+    : { value: parsed, defects: [`${ADMIN_FILE}: not a JSON object`] };
 }
 
 // package.json's admin, where it holds one, else docs/agent-work/admin.json's; `from` names the
@@ -129,8 +124,8 @@ export function resolveAdminHref(
 ): { href?: string; defect?: string } {
   if (/^https?:/i.test(rawHref)) return { href: rawHref };
   if (SCHEME.test(rawHref)) return { defect: `${fieldLabel}: scheme not allowed, not linked` };
-  const [, path, rest] = rawHref.match(/^([^?#]*)(.*)$/s)!;
-  return { href: fileHref(join(repo, path!)) + rest };
+  const [path, rest] = splitLinkPath(rawHref);
+  return { href: fileHref(join(repo, path)) + rest };
 }
 
 export function resolveDesignSystemHref(
@@ -189,7 +184,8 @@ export function pickCatalogStartScript(
   configDir: string,
 ): string | undefined {
   const runs = Object.keys(scripts).filter((k) => {
-    const v = scripts[k]!;
+    const v = scripts[k];
+    if (v === undefined) throw new Error(`Package script missing: ${k}`);
     return v.includes("astro dev") && (configDir ? v.includes(configDir) : !/--root|\bcd /.test(v));
   });
   return runs.find((k) => k.includes("design")) ?? runs.find((k) => k === "dev") ?? runs[0];

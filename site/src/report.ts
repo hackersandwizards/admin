@@ -49,7 +49,9 @@ export function reportBody(repo: string, report: Report) {
   const body = new HTMLRewriter()
     .on("h2[id], h3[id]", {
       element(el) {
-        const id = entities(el.getAttribute("id")!);
+        const rawId = el.getAttribute("id");
+        if (rawId === null) throw new Error(`report heading id missing: ${key}`);
+        const id = entities(rawId);
         const h2 = el.tagName === "h2";
         const heading = { text: "" };
         active.push(heading);

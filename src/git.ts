@@ -40,13 +40,16 @@ export function parseTreeBlobs(listed: Buffer): { path: string; oid: string }[] 
     .toString()
     .split("\0")
     .filter(Boolean)
-    .map((e) => {
-      const tab = e.indexOf("\t");
-      const [, type, oid] = e.slice(0, tab).split(" ");
-      return { path: e.slice(tab + 1), type, oid: oid! };
+    .map((row) => {
+      const tab = row.indexOf("\t");
+      const [, type, oid] = row.slice(0, tab).split(" ");
+      return { path: row.slice(tab + 1), type, oid, row };
     })
     .filter((e) => e.type === "blob")
-    .map(({ path, oid }) => ({ path, oid }));
+    .map(({ path, oid, row }) => {
+      if (!oid) throw new Error(`Git blob object ID missing: ${JSON.stringify(row)}`);
+      return { path, oid };
+    });
 }
 
 export function parseBatchBlobs(batch: Buffer, paths: readonly string[]): Map<string, string> {
@@ -107,7 +110,8 @@ export function parseCommitLog(output: string): Commit[] {
     .filter(Boolean)
     .map((l) => {
       const [hash, time, ...s] = l.split("\t");
-      return { hash: hash!, time: Number(time), subject: s.join("\t") };
+      if (hash === undefined) throw new Error(`Commit hash missing: ${l}`);
+      return { hash, time: Number(time), subject: s.join("\t") };
     });
 }
 

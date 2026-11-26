@@ -161,7 +161,8 @@ export class AnswersController {
   }
 
   #copyLineFor(key: string): string {
-    const answer = this.#readAnswer(key)!;
+    const answer = this.#readAnswer(key);
+    if (answer === null) throw new Error(`answer missing while formatting copy: ${key}`);
     const choice = formatAnswerChoice(answer, (optKey) => optionLabelOf(this.#rowOf(key), optKey));
     const line = formatCopyLine(key, answer, choice);
     return this.#staleFor(key, answer) ? line + staleCopyNote(answer) : line;
@@ -225,7 +226,8 @@ export class AnswersController {
     const keys = this.#answeredKeys();
     const since = this.#store.copiedAt();
     const entries = keys.map((key) => {
-      const answer = this.#readAnswer(key)!;
+      const answer = this.#readAnswer(key);
+      if (answer === null) throw new Error(`answer missing while selecting copy: ${key}`);
       return { key, at: answer.at, stale: this.#staleFor(key, answer) };
     });
     const selection = selectAnswersToCopy(entries, since);

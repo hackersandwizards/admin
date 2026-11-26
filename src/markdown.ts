@@ -1,7 +1,8 @@
 import { join } from "node:path";
 import { diagram } from "./diagrams.ts";
 import { entities } from "./entities.ts";
-import { fileHref, SCHEME } from "./repo-paths.ts";
+import { decodePercentEncoding, parseYamlFrontmatter } from "./parse-text.ts";
+import { fileHref, SCHEME, splitLinkPath } from "./repo-paths.ts";
 
 const plainText = (html: string) =>
   html
@@ -10,12 +11,9 @@ const plainText = (html: string) =>
     .trim();
 
 export function tableHeaderLabel(tableBody: string): string {
-  return [
-    ...tableBody
-      .split(/<\/tr>/i, 1)[0]!
-      .matchAll(/<t[hd]\b[^<>]*>((?:(?!<t[hd]\b)[\s\S])*?)<\/t[hd]>/gi),
-  ]
-    .map(([, cell]) => plainText(cell!))
+  const [firstRow] = tableBody.split(/<\/tr>/i, 1);
+  return [...firstRow.matchAll(/<t[hd]\b[^<>]*>((?:(?!<t[hd]\b)[\s\S])*?)<\/t[hd]>/gi)]
+    .map(([, cell]) => plainText(cell))
     .filter(Boolean)
     .join(" ");
 }
@@ -42,17 +40,22 @@ export function tableScroll(html: string): string {
     const index = match.index;
     out += html.slice(cursor, index);
     cursor = index + match[0].length;
-    const { tag, heading, attrs, table } = match.groups!;
+    const groups = match.groups;
+    if (groups === undefined) throw new Error(`Heading or table groups missing: offset ${index}`);
+    const { tag, heading, attrs, table } = groups;
     if (tag) {
-      title = plainText(heading!);
+      if (heading === undefined) throw new Error(`Heading content missing: offset ${index}`);
+      title = plainText(heading);
       out += match[0];
       continue;
     }
-    const base = title || tableHeaderLabel(table!);
+    if (table === undefined || attrs === undefined)
+      throw new Error(`Table content or attributes missing: offset ${index}`);
+    const base = title || tableHeaderLabel(table);
     let name = base;
     for (let n = 2; name && used.has(name); n++) name = `${base} (${n})`;
     used.add(name);
-    out += wrapScrollableTable(table!, attrs!, name);
+    out += wrapScrollableTable(table, attrs, name);
   }
   return out + html.slice(cursor);
 }
@@ -86,7 +89,9 @@ export const withElements = (html: string) =>
 export function isUnsafeLink(href: string): boolean {
   const h = entities(href).replace(/[^!-\uffff]/g, "");
   // Before decoding, since a decoded "&#38;" or "&amp;" is no entity.
-  const named = /&(?!amp;|AMP;|#)/.test(href.match(/^(?:&#|[^/?#])*/)![0]);
+  const prefix = href.match(/^(?:&#|[^/?#])*/);
+  if (prefix === null) throw new Error(`Link prefix missing: ${href}`);
+  const named = /&(?!amp;|AMP;|#)/.test(prefix[0]);
   return !/^(?:https?|mailto):/i.test(h) && (SCHEME.test(h) || named);
 }
 
@@ -111,12 +116,8 @@ const ADMIN_ID = /^(?:admin-|copy$|state$|theme-toggle$|(?:sun|moon)-icon$)/;
 // above a paragraph is no mapping.
 export function stripFrontmatter(text: string): string {
   return text.replace(/^---\n([\s\S]*?)\n---\n/, (all, yaml: string) => {
-    try {
-      const parsed: unknown = Bun.YAML.parse(yaml);
-      return !!parsed && typeof parsed === "object" && !Array.isArray(parsed) ? "" : all;
-    } catch {
-      return all;
-    }
+    const parsed = parseYamlFrontmatter(yaml);
+    return !!parsed && typeof parsed === "object" && !Array.isArray(parsed) ? "" : all;
   });
 }
 
@@ -134,8 +135,9 @@ export function sanitizeMarkup(html: string): string {
     })
     .on("h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]", {
       element(el) {
-        const slug =
-          entities(el.getAttribute("id")!).replace(/[^\p{L}\p{M}\p{N}_-]/gu, "-") || "section";
+        const originalId = el.getAttribute("id");
+        if (originalId === null) throw new Error(`Heading ID missing: ${el.tagName}`);
+        const slug = entities(originalId).replace(/[^\p{L}\p{M}\p{N}_-]/gu, "-") || "section";
         const base = ADMIN_ID.test(slug) ? `section-${slug}` : slug;
         let id = base;
         for (let n = 1; used.has(id); n++) id = `${base}-${n}`;
@@ -160,11 +162,7 @@ export function renderMermaidBlocks(html: string, documentId: string): string {
 
 // A stray % in a hand-written link stays as written.
 export function decodeLinkPath(path: string): string {
-  try {
-    return decodeURIComponent(path);
-  } catch {
-    return path;
-  }
+  return decodePercentEncoding(path) ?? path;
 }
 
 export function rewriteRelativeUrls(html: string, dir: string): string {
@@ -175,10 +173,10 @@ export function rewriteRelativeUrls(html: string, dir: string): string {
       const text = entities(value);
       // Read as a browser does, without the spaces and controls around it and tabs or newlines.
       if (/^(?:[a-z][\w+.-]*:|#|\/)/i.test(text.replace(/^[\0- ]+|[\t\n\r]/g, ""))) return all;
-      const [, rawPath, rawRest] = text.match(/^([^?#]*)(.*)$/s)!;
-      const decodedPath = decodeLinkPath(rawPath!);
+      const [rawPath, rawRest] = splitLinkPath(text);
+      const decodedPath = decodeLinkPath(rawPath);
       // Every markup character stays an entity, since this replace also reaches text.
-      const rest = Bun.escapeHTML(rawRest!);
+      const rest = Bun.escapeHTML(rawRest);
       return `${attr}="${fileHref(join(dir, decodedPath))}${rest}"`;
     },
   );

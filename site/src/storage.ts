@@ -2,6 +2,8 @@
 // for this visit only, and every control still works.
 // Only QuotaExceededError and SecurityError fall back; any other error propagates.
 
+import { parseJsonText } from "../../src/parse-text.ts";
+
 export interface StorageLike {
   readonly length: number;
   getItem(key: string): string | null;
@@ -94,24 +96,16 @@ export function removeRaw(storage: StorageLike, key: string): boolean {
 
 export function parseJson(raw: string | null): unknown {
   if (!raw) return null;
-  try {
-    return (JSON.parse(raw) as unknown) || null;
-  } catch {
-    return null;
-  }
+  return parseJsonText(raw) || null;
 }
 
 // Absent or empty storage holds an empty map; invalid or non-object JSON returns null so callers
 // can stop without overwriting corrupt history. Valid objects keep all of their entries as stored.
 export function parseRecord(raw: string | null): Record<string, unknown> | null {
   if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
-    return parsed as Record<string, unknown>;
-  } catch {
-    return null;
-  }
+  const parsed = parseJsonText(raw);
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  return parsed as Record<string, unknown>;
 }
 
 // Keys of this browser's own state beside the answers.
@@ -135,7 +129,7 @@ export interface AdminStore {
 export function createStore(storage: StorageLike, prefix: string): AdminStore {
   const own = new Set(OWN_KEYS.map((key) => prefix + key));
   const isAnswerKey = (fullKey: string | null): boolean =>
-    Boolean(fullKey) && fullKey!.startsWith(prefix) && !own.has(fullKey!);
+    !!fullKey && fullKey.startsWith(prefix) && !own.has(fullKey);
 
   const answerIds = (): string[] =>
     storageKeys(storage)

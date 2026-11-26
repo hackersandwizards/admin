@@ -17,6 +17,11 @@ export const fileHref = (abs: string) => "file://" + encodeFile(abs);
 // A path whose every segment is encoded, so a "#", "%" or "?" in a name stays in its path.
 export const encodePath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
 
+export function splitLinkPath(link: string): [path: string, suffix: string] {
+  const start = link.search(/[?#]/);
+  return start === -1 ? [link, ""] : [link.slice(0, start), link.slice(start)];
+}
+
 export const IMAGE = /\.(jpe?g|png|gif|webp|svg|avif)$/i;
 
 // A URL's scheme, as a browser reads one: a letter, then letters, digits, "+", "." or "-".

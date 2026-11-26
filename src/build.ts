@@ -71,7 +71,9 @@ export async function script() {
     format: "iife",
     minify: true,
   });
-  return outputs[0]!.text();
+  const [output] = outputs;
+  if (output === undefined) throw new Error("Build output missing: site/src/admin.js");
+  return output.text();
 }
 
 export function writeSiteData(file: string, data: SiteData) {

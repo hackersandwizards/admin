@@ -18,7 +18,8 @@ export function classifyItemPath(path: string): ItemPathKind {
   if (!path.startsWith(`${ITEMS_DIR}/`)) return { kind: "outside" };
   const name = path.slice(ITEMS_DIR.length + 1);
   const [folder, file, deeper] = name.split("/");
-  if (file && !deeper && IMAGE.test(file)) return { kind: "image", ownerId: folder! };
+  if (folder !== undefined && file && !deeper && IMAGE.test(file))
+    return { kind: "image", ownerId: folder };
   if (name.includes("/") || !name.endsWith(".md")) return { kind: "stray" };
   return { kind: "item", id: name.slice(0, -3) };
 }

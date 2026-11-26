@@ -3,7 +3,8 @@ import { item } from "../../story";
 
 export default { component: Shot };
 
-const image = item("pick-a-variant").optionImages.b![0]!;
+const image = item("pick-a-variant").optionImages.b?.[0];
+if (image === undefined) throw new Error("catalog image missing: pick-a-variant option b");
 export const Captioned = { args: { ...image, alt: "Variant B" } };
 export const Small = { args: { ...image, alt: "Variant B", small: true } };
 export const Bare = { args: { src: image.src, alt: "Variant B" } };

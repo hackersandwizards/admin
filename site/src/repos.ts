@@ -36,14 +36,30 @@ export class HiddenRepos {
       .map((box) => box.dataset.label ?? "");
     const view = describeHiddenRepos(names, this.#allRepos.length);
     for (const box of this.#boxes) box.checked = !this.#off.has(box.value);
-    for (const row of this.#doc.querySelectorAll<HTMLElement>("[data-repo-row]"))
-      row.querySelector<HTMLElement>("[data-repo-off]")!.hidden = !this.#off.has(
-        row.dataset.repoRow ?? "",
-      );
-    this.#doc.querySelector("[data-repo-said]")!.textContent = view.summary;
-    this.#doc.querySelector<HTMLElement>("[data-repo-all]")!.hidden = view.hideShowAll;
-    this.#doc.querySelector<HTMLElement>("[data-repo-none]")!.hidden = view.hideHideAll;
-    this.#doc.querySelector("[data-repo-count]")!.textContent = view.countText;
+    this.#renderRows();
+    const summary = this.#doc.querySelector("[data-repo-said]");
+    if (summary === null) throw new Error("repository choice summary missing: data-repo-said");
+    summary.textContent = view.summary;
+    const showAll = this.#doc.querySelector<HTMLElement>("[data-repo-all]");
+    if (showAll === null)
+      throw new Error("repository choice Show all button missing: data-repo-all");
+    showAll.hidden = view.hideShowAll;
+    const hideAll = this.#doc.querySelector<HTMLElement>("[data-repo-none]");
+    if (hideAll === null)
+      throw new Error("repository choice Hide all button missing: data-repo-none");
+    hideAll.hidden = view.hideHideAll;
+    const count = this.#doc.querySelector("[data-repo-count]");
+    if (count === null) throw new Error("repository choice count missing: data-repo-count");
+    count.textContent = view.countText;
+  }
+
+  #renderRows(): void {
+    for (const row of this.#doc.querySelectorAll<HTMLElement>("[data-repo-row]")) {
+      const mark = row.querySelector<HTMLElement>("[data-repo-off]");
+      const key = row.dataset.repoRow ?? "";
+      if (mark === null) throw new Error(`hidden repository mark missing: ${key}`);
+      mark.hidden = !this.#off.has(key);
+    }
   }
 
   // Storage tells the hub's other tabs; blocked, the choice holds for this page.

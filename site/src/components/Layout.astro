@@ -74,9 +74,9 @@ const menu = repo
       { to: "/catalog/", label: "Catalog" },
     ];
 // A product page is its repo's own, so the switcher opens another repo's dashboard from it.
-const samePage = (r: Repo) => {
-  if (r.key === repo?.key) return page.path;
-  const to = r.prefix + (page.type === "doc" ? "docs" : page.path.slice(repo!.prefix.length));
+const samePage = (r: Repo, from: Repo) => {
+  if (r.key === from.key) return page.path;
+  const to = r.prefix + (page.type === "doc" ? "docs" : page.path.slice(from.prefix.length));
   return page.type !== "product" && hasPage(to) ? to : r.dashboard;
 };
 const current = (to: string) =>
@@ -166,7 +166,7 @@ const entries = [
             class="hw-menu-item"
             role="menuitemradio"
             aria-checked={String(r.key === repo?.key)}
-            href={at(repo ? samePage(r) : r.dashboard)}
+            href={at(repo ? samePage(r, repo) : r.dashboard)}
           >
             <span class="min-w-0 flex-1 truncate">{r.label}</span>
             <span class="hw-nav-count">{waiting(r) || ""}</span>

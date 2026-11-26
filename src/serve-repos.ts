@@ -65,12 +65,20 @@ export function createRepoScanner(
     if (!paths || Date.now() - scanned > rescanMs) {
       scanned = Date.now();
       const next = (scanning = find(root));
-      if (paths)
+      if (paths) {
         next.then(() => {
           // Only the latest search replaces the list, should an earlier one finish after it.
           if (scanning === next) paths = next;
         }, console.error);
-      else (paths = next).catch(() => (paths = undefined));
+      } else {
+        paths = next;
+        try {
+          return await next;
+        } catch (error) {
+          paths = undefined;
+          throw error;
+        }
+      }
     }
     return await paths;
   };

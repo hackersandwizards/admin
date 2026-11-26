@@ -105,11 +105,12 @@ export function openDecisionDefects(
 
 export function optionEntryDefect(option: unknown, index: number): string | undefined {
   const o = option as Partial<Option> | null | undefined;
-  if (!optionKey(o?.key) || !optionKey(o?.label)) return `option ${index + 1} lacks key or label`;
-  if (!isText(o!.key) || /[\s,]/.test(String(o!.key)))
-    return `option ${index + 1} key ${JSON.stringify(o!.key)} is not one word`;
-  if (!isText(o!.label) || (o!.detail !== undefined && !isText(o!.detail)))
-    return `option ${o!.key} label or detail is not text`;
+  if (o == null || !optionKey(o.key) || !optionKey(o.label))
+    return `option ${index + 1} lacks key or label`;
+  if (!isText(o.key) || /[\s,]/.test(String(o.key)))
+    return `option ${index + 1} key ${JSON.stringify(o.key)} is not one word`;
+  if (!isText(o.label) || (o.detail !== undefined && !isText(o.detail)))
+    return `option ${o.key} label or detail is not text`;
   return undefined;
 }
 

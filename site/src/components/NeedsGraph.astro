@@ -14,8 +14,11 @@ const {
 };
 const linked = svg?.replace(
   /<g class="node" data-id="n(\d+)"[\s\S]*?<\/g>/g,
-  (node, index: string) =>
-    `<a class="hw-link" href="${Bun.escapeHTML(itemHref(from, items[Number(index)]!))}">${node}</a>`,
+  (node, index: string) => {
+    const item = items[Number(index)];
+    if (item === undefined) throw new Error(`graph item missing: node n${index} on ${from}`);
+    return `<a class="hw-link" href="${Bun.escapeHTML(itemHref(from, item))}">${node}</a>`;
+  },
 );
 ---
 

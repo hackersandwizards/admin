@@ -32,12 +32,13 @@ function createRowTextCache(): (row: HTMLElement) => string {
   // What a row says, without the marks this script writes or shows on it.
   const said = new Map<HTMLElement, string>();
   return (row) => {
-    if (!said.has(row)) {
-      const copy = row.cloneNode(true) as HTMLElement;
-      for (const mark of copy.querySelectorAll(STRIP_MARKS)) mark.remove();
-      said.set(row, (copy.textContent ?? "").toLowerCase());
-    }
-    return said.get(row)!;
+    const cached = said.get(row);
+    if (cached !== undefined) return cached;
+    const copy = row.cloneNode(true) as HTMLElement;
+    for (const mark of copy.querySelectorAll(STRIP_MARKS)) mark.remove();
+    const text = (copy.textContent ?? "").toLowerCase();
+    said.set(row, text);
+    return text;
   };
 }
 
@@ -102,7 +103,8 @@ function openDefaultFold(scope: Element): void {
     group.querySelector("[data-row][data-status=open]:not([hidden]):not([data-kind=work])"),
   );
   if (ask) ask.open = true;
-  if (groups.length && !groups.some((group) => group.open)) groups[0]!.open = true;
+  const [first] = groups;
+  if (first && !groups.some((group) => group.open)) first.open = true;
 }
 
 function updatePersonButtons(
@@ -113,9 +115,9 @@ function updatePersonButtons(
   for (const button of buttons) {
     const who = button.dataset.whoButton ?? "all";
     const person = who === "all" ? null : who;
-    button.querySelector("[data-who-count]")!.textContent = String(
-      countOpenForPerson(rows, person, hiddenRepos),
-    );
+    const count = button.querySelector("[data-who-count]");
+    if (count === null) throw new Error(`person filter count missing: ${who}`);
+    count.textContent = String(countOpenForPerson(rows, person, hiddenRepos));
   }
 }
 
@@ -128,7 +130,9 @@ function updateKindButtons(
     const kindKey = button.dataset.kindButton ?? "all";
     const count = countOpenOfKind(openMineRows, kindKey);
     button.setAttribute("aria-pressed", String(kindKey === activeKind));
-    button.querySelector("[data-kind-count]")!.textContent = String(count);
+    const countLabel = button.querySelector("[data-kind-count]");
+    if (countLabel === null) throw new Error(`kind filter count missing: ${kindKey}`);
+    countLabel.textContent = String(count);
     button.hidden = !count && kindKey !== "all" && kindKey !== activeKind;
   }
 }
@@ -137,12 +141,15 @@ function updateAssumedCount(doc: Document, count: number): void {
   const veto = doc.querySelector<HTMLElement>("[data-assumed]");
   if (!veto) return;
   veto.hidden = !count;
-  veto.querySelector("[data-assumed-count]")!.textContent = assumptionsText(count);
+  const countLabel = veto.querySelector("[data-assumed-count]");
+  if (countLabel === null) throw new Error("assumed count missing: data-assumed-count");
+  countLabel.textContent = assumptionsText(count);
 }
 
 function readChangedRows(doc: Document, target: HTMLElement | null): ChangedRowInfo[] {
   return [...doc.querySelectorAll("[data-updated]:not([hidden])")].map((el) => {
-    const row = el.closest<HTMLElement>("[data-k]")!;
+    const row = el.closest<HTMLElement>("[data-k]");
+    if (row === null) throw new Error("updated row missing: data-updated outside data-k");
     return {
       key: row.dataset.k ?? "",
       repo: row.dataset.repo ?? "",
