@@ -1,4 +1,5 @@
 import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 import { docSlug } from "./repo-paths.ts";
 import type { SiteData } from "./site-data.ts";
@@ -46,10 +47,11 @@ export function shelled(data: SiteData): SiteData {
 // Every path is resolved, since the package may sit hoisted or nested.
 export function stylesheet() {
   const at = (spec: string) => Bun.resolveSync(spec, PKG);
+  const require = createRequire(import.meta.url);
   const brandRoot = dirname(at("@hackersandwizards/brand/package.json"));
   return [
-    `@import "${at("tailwindcss/index.css")}";`,
-    `@plugin "${at("@tailwindcss/typography")}";`,
+    `@import "${require.resolve("tailwindcss/index.css")}";`,
+    `@plugin "${require.resolve("@tailwindcss/typography")}";`,
     `@import "${at("@hackersandwizards/brand/tokens.css")}";`,
     `@import "${at("@hackersandwizards/brand/expert.css")}";`,
     `@import "${at("@hackersandwizards/brand/header.css")}";`,

@@ -230,22 +230,33 @@ export function finishRenderedHtml(html: string, dir: string, documentId: string
   return rewriteRelativeUrls(stripUnsafeLinks(styled), dir);
 }
 
-export function renderDocMarkdown(repo: string, path: string, text: string): string {
-  const cleaned = sanitizeMarkup(Bun.markdown.html(stripFrontmatter(text)), true);
+function finishMarkdown({
+  repo,
+  path,
+  text,
+  cleaned,
+}: {
+  repo: string;
+  path: string;
+  text: string;
+  cleaned: string;
+}): string {
   const documentId = hasMermaidBlock(cleaned)
     ? Bun.hash(JSON.stringify([repo, path, text])).toString(36)
     : "";
   return finishRenderedHtml(cleaned, join(repo, path, ".."), documentId);
 }
 
+export function renderDocMarkdown(repo: string, path: string, text: string): string {
+  const cleaned = sanitizeMarkup(Bun.markdown.html(stripFrontmatter(text)), true);
+  return finishMarkdown({ repo, path, text, cleaned });
+}
+
 export function renderItemMarkdown(repo: string, path: string, text: string): string {
   const cleaned = sanitizeMarkup(
     Bun.markdown.html(text, { noHtmlSpans: true, noHtmlBlocks: true }),
   );
-  const documentId = hasMermaidBlock(cleaned)
-    ? Bun.hash(JSON.stringify([repo, path, text])).toString(36)
-    : "";
-  return finishRenderedHtml(cleaned, join(repo, path, ".."), documentId);
+  return finishMarkdown({ repo, path, text, cleaned });
 }
 
 // A page's title is its first rendered h1, which leaves the article since the title shows above it.
