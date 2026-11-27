@@ -9,7 +9,6 @@ import { siteData } from "../src/site-data.ts";
 import { treeSource } from "../src/git.ts";
 import { readRepo } from "../src/repo.ts";
 import { fileHref } from "../src/repo-paths.ts";
-import { rewriteCatalogGraphLinks } from "./fixture-links.ts";
 
 const root = join(import.meta.dirname, "..");
 const cache = join(root, "node_modules/.cache/admin-catalog");
@@ -31,27 +30,28 @@ process.env.ADMIN_DATA = join(cache, "data.json");
 export default defineConfig({
   devToolbar: { enabled: false },
   server: { host: "127.0.0.1", port: 4332 },
-  // admin-serve serves the build at /catalog/, under the hub's own home.
   base,
   outDir: join(root, "dist/catalog"),
   integrations: [
     // The pages link the fixture's files by file URL, which no http page opens: the build links
     // the copies the preset's `copy` puts beside the pages.
     {
-      name: "admin-fixture-links",
+      name: "admin-catalog-links",
       hooks: {
+        "astro:config:setup": ({ command, updateConfig }) => {
+          updateConfig({
+            // The catalog preset serves dev at the root. Bun can pick up an inherited BASE_URL.
+            vite: { define: { ADMIN_CATALOG_BASE: JSON.stringify(command === "dev" ? "" : base) } },
+          });
+        },
         "astro:build:done": ({ dir }) => {
           const output = fileURLToPath(dir);
           for (const f of filesUnder(output).filter((f) => f.endsWith(".html")))
             writeFileSync(
               f,
-              rewriteCatalogGraphLinks(
-                readFileSync(f, "utf8").replaceAll(
-                  `${fileHref(fixture)}/`,
-                  `${base}/test/fixtures/spoke/`,
-                ),
-                f,
-                output,
+              readFileSync(f, "utf8").replaceAll(
+                `${fileHref(fixture)}/`,
+                `${base}/test/fixtures/spoke/`,
               ),
             );
         },

@@ -1,5 +1,6 @@
 export const WORK_DIR = "docs/agent-work";
 export const ITEMS_DIR = `${WORK_DIR}/items`;
+export const ITEM_ID = /^[a-z0-9][a-z0-9-]*$/;
 export const KINDS = ["decision", "review", "work", "goal"] as const;
 export const STATUSES = ["open", "assumed", "decided"] as const;
 

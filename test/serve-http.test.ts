@@ -39,7 +39,10 @@ const makeSite = (): Site => {
     items: [],
     reports: [],
     reviews: [],
-    docs: [{ path: "README.md", title: "Readme", html: "<p>Doc body</p>" }],
+    docs: [
+      { path: "README.md", title: "Readme", html: "<p>Doc body</p>" },
+      { path: "docs/spec.html.md", title: "Spec", html: "<p>Spec body</p>" },
+    ],
     workFiles: [],
     scripts: [],
     agents: [],
@@ -467,6 +470,7 @@ describe("matchSitePage", () => {
     ["bare repository key", "/demo", { kind: "dashboard" }],
     ["repository key with slash", "/demo/", { kind: "dashboard" }],
     ["direct /404 path", "/404", { kind: "missing" }],
+    ["direct /404 with slash", "/404/", { kind: "missing" }],
     ["direct /404.html path", "/404.html", { kind: "missing" }],
     ["unknown path", "/nowhere", { kind: "missing" }],
   ])("matches %s", (_label, path, expected) => {
@@ -476,6 +480,12 @@ describe("matchSitePage", () => {
 
 describe("createPageRoute", () => {
   test.each([
+    {
+      label: "strip-slash redirect for a doc whose slug ends in .html",
+      url: "http://admin.localhost/demo/doc/docs/spec.html.html/?view=1",
+      path: "/demo/doc/docs/spec.html.html/",
+      location: "http://admin.localhost/demo/doc/docs/spec.html.html?view=1",
+    },
     {
       label: "strip-slash redirect",
       url: "http://admin.localhost/demo/dashboard/?who=A",

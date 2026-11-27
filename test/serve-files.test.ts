@@ -44,6 +44,19 @@ describe("lfsPointerOid", () => {
 });
 
 describe("readInstalledFile", () => {
+  test("follows installed symlinks only to other installed files", async () => {
+    const repo = scratch();
+    mkdirSync(join(repo, "node_modules/pkg"), { recursive: true });
+    mkdirSync(join(repo, "node_modules/other"));
+    writeFileSync(join(repo, "untracked.txt"), "local notes");
+    writeFileSync(join(repo, "node_modules/other/asset.txt"), "asset");
+    symlinkSync("../../untracked.txt", join(repo, "node_modules/pkg/local.txt"));
+    symlinkSync("../other/asset.txt", join(repo, "node_modules/pkg/asset.txt"));
+
+    expect((await readRepoFile(repo, "node_modules/pkg/asset.txt"))?.toString()).toBe("asset");
+    expect(await readRepoFile(repo, "node_modules/pkg/local.txt")).toBeUndefined();
+  });
+
   test("reads a regular file inside node_modules and rejects directories, missing files, and escaping symlinks", () => {
     const repo = scratch();
     const outside = scratch();

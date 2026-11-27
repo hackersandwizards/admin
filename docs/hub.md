@@ -46,15 +46,17 @@ retired checkout kept there stays out.
 ## The admin area
 
 A report page shows when the report last changed and lists its level-two headings when there are more than five.
-A report named as an item's topic also shows the open questions, the work graph when there is work
-or a goal, and the assumed and decided items above the report.
+A report named as an item's topic also shows the open questions and the assumed and decided items
+above the report. When there is work or a goal, it shows the work graph if the optional Mermaid
+renderer can render it.
 
 Dashboard, Decisions, Work, Reviews (open review requests and open decisions between images, then
 each `docs/agent-work/<date>-<topic>/` folder with its images and report), Docs (reports, the rest of `docs/` and the Markdown files at the root, a fold per folder, open where it holds ten docs or fewer), Catalog, the repository's products,
 Architecture (package, pins, scripts with their first comment line), Checks (the steps of
 `check:all` or `check`) and Log.
 
-On Work, “What waits on what” draws the prerequisites between items and links each item to its row.
+On Work, “What waits on what” draws the prerequisites between items and links each item to its row
+if the optional Mermaid renderer can render the graph.
 
 Items sort by `priority`. Within a priority, items due within seven days or already overdue come
 first, earliest due date first. Decisions and reviews come before work at the same due rank,

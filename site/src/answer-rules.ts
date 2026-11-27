@@ -169,8 +169,6 @@ export function buildAnswer(draft: AnswerDraft, nowIso: string): StoredAnswer | 
   const hasContent =
     draft.options.length > 0 || draft.done || draft.later || Boolean(draft.stance) || Boolean(note);
   if (!hasContent) return null;
-  // The labels and the question go with the answer, so a page without its row still copies it as
-  // given, and a changed question shows.
   return {
     later: draft.later,
     stance: draft.stance,

@@ -43,6 +43,13 @@ describe("theme.js", () => {
     expect(window.document.documentElement.dataset.theme).toBe(expected);
   });
 
+  test("applies the system theme when localStorage is null", () => {
+    const window = makeWindow("dark");
+    Object.defineProperty(window, "localStorage", { value: null });
+    evaluate(window, themeScript);
+    expect(window.document.documentElement.dataset.theme).toBe("dark");
+  });
+
   test("propagates unexpected storage errors without mutating the document theme", () => {
     const window = makeWindow("dark");
     Object.defineProperty(window, "localStorage", {

@@ -38,6 +38,7 @@ export interface PageInventory {
   readonly live: ReadonlySet<string>;
   readonly liveRepos: ReadonlySet<string>;
   readonly reportVersions: ReadonlyMap<string, string>;
+  readonly reportRepo?: string;
 }
 
 export interface VisitPageSnapshot {
@@ -102,7 +103,6 @@ export function rowChangeNotice(row: RowVersion, previous: string, since: number
 }
 
 export function rolloverDeferredAnswers(store: AdminStore, now: number): boolean {
-  // A question put off is asked again: its row keeps only a note written beside it.
   for (const id of store.answerIds()) {
     const answer = store.readJson(id) as StoredAnswer | null;
     if (!answer?.later) continue;
@@ -115,34 +115,36 @@ export function rolloverDeferredAnswers(store: AdminStore, now: number): boolean
 }
 
 export function pruneStoredAnswers(store: AdminStore, inventory: PageInventory): void {
+  const { live, liveRepos, reportVersions, reportRepo } = inventory;
   const copied = store.copiedAt();
   for (const id of store.answerIds()) {
     const answer = store.readJson(id) as StoredAnswer | null;
-    const gone = isGoneItem(id, inventory.live, inventory.liveRepos);
-    const edited = isStaleComment(answer, inventory.reportVersions);
-    if ((gone || edited) && wasCopied(answer, copied)) store.remove(id);
+    const heading = id.indexOf("#");
+    const goneReport =
+      heading >= 0 &&
+      reportRepo === repoFromVisitKey(id) &&
+      !reportVersions.has(`#${id.slice(0, heading)}`);
+    const gone = isGoneItem(id, live, liveRepos);
+    const edited = isStaleComment(answer, reportVersions);
+    if ((gone || goneReport || edited) && wasCopied(answer, copied)) store.remove(id);
   }
 }
 
-function advanceVisit(
+function startVisit(
   store: AdminStore,
-  versions: Record<string, unknown>,
-  now: number,
-): number | null {
-  const seen = Number(store.getText("seen")) || 0;
-  if (now - seen > VISIT_GAP_MS) {
-    if (!store.setText("visit", String(seen))) return null;
-    if (!store.writeJson("before", versions)) return null;
-    if (!store.remove("who")) return null;
-    if (!rolloverDeferredAnswers(store, now)) return null;
-  }
-  if (!store.setText("seen", String(now))) return null;
-  return Number(store.getText("visit")) || 0;
+  before: Record<string, unknown>,
+  { seen, now }: { seen: number; now: number },
+): boolean {
+  return (
+    store.setText("visit", String(seen)) &&
+    store.writeJson("before", before) &&
+    store.remove("who") &&
+    rolloverDeferredAnswers(store, now)
+  );
 }
 
-// storage blocked: no row says what changed
-// Corrupt visit history or a failed storage write stops visit bookkeeping before overwriting
-// stored history or marking rows against a stale snapshot.
+// If visit history is unreadable or the visit cannot advance, skip change markers to avoid
+// comparing against a stale snapshot.
 export function recordVisit(
   store: AdminStore,
   page: VisitPageSnapshot,
@@ -151,10 +153,13 @@ export function recordVisit(
   const empty: VisitOutcome = { updatedSince: 0, changes: [] };
   const versions = store.readRecord("versions");
   if (!versions) return empty;
-  const since = advanceVisit(store, versions, now);
-  if (since === null) return empty;
-  const before = store.readRecord("before");
+  const seen = Number(store.getText("seen")) || 0;
+  const rollover = now - seen > VISIT_GAP_MS;
+  const before = rollover ? { ...versions } : store.readRecord("before");
   if (!before) return empty;
+  if (rollover && !startVisit(store, before, { seen, now })) return empty;
+  if (!store.setText("seen", String(now))) return empty;
+  const since = Number(store.getText("visit")) || 0;
   let updatedSince = 0;
   const changes = page.rows.map((row) => {
     const raw = before[row.key];
@@ -169,7 +174,6 @@ export function recordVisit(
 }
 
 function liveInventory(doc: Document): PageInventory {
-  // A page that names every item of its repositories knows which answers lost their item.
   const live = new Set(doc.body.dataset.answers?.split(" ").filter(Boolean));
   const liveRepos = new Set([...live].map(repoFromVisitKey));
   const reportVersions = new Map(
@@ -178,7 +182,8 @@ function liveInventory(doc: Document): PageInventory {
       el.dataset.version ?? "",
     ]),
   );
-  return { live, liveRepos, reportVersions };
+  const reportRepo = doc.querySelector<HTMLElement>("[data-report-repo]")?.dataset.reportRepo;
+  return { live, liveRepos, reportVersions, reportRepo };
 }
 
 export function pruneAnswers(store: AdminStore, doc: Document): void {

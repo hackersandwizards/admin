@@ -19,7 +19,6 @@ export const git = (cwd: string, ...args: string[]) => {
   return r.exitCode === 0 ? r.stdout.toString() : "";
 };
 
-// The same without blocking, so that many repositories are asked at once, as bytes or as text.
 export async function gitBytes(cwd: string, args: string[], stdin = "") {
   const r = Bun.spawn(["git", "-C", cwd, ...args], {
     stdin: stdin ? Buffer.from(stdin) : "ignore",
@@ -150,7 +149,6 @@ export async function fetchedAt(repo: string) {
     fetchHeads.set(repo, path);
   }
   const file = await path;
-  // A failed call is asked again next time, rather than kept.
   if (!file) fetchHeads.delete(repo);
   return file && existsSync(file) ? statSync(file).mtimeMs : undefined;
 }

@@ -425,7 +425,6 @@ describe("siteData", () => {
       makeRepo({ key: "beta", label: undefined, workFiles: ["docs/agent-work/x.md"] }),
       makeRepo({ key: "zeta", label: "Alpha" }),
     ]);
-    // The hub names a repository without one by its key.
     expect(data.repos.map((r) => [r.key, r.label, r.prefix, r.dashboard])).toEqual([
       ["zeta", "Alpha", "zeta/", "zeta/dashboard"],
       ["beta", "beta", "beta/", "beta/dashboard"],

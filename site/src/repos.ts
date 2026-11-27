@@ -1,8 +1,6 @@
 import { describeHiddenRepos, loadHiddenRepos } from "./filter-rules.ts";
 import type { AdminStore } from "./storage.ts";
 
-// The hub's choice of repositories: the keys hidden, kept in this browser across visits until
-// shown again. Elsewhere no row hides by its repository.
 export class HiddenRepos {
   readonly #store: AdminStore;
   readonly #doc: Document;
@@ -21,8 +19,6 @@ export class HiddenRepos {
     return this.#off;
   }
 
-  // `stored` reads the choice from storage first, as on load and when another tab changed it.
-  // Split here into reload() and render().
   reload(): void {
     if (!this.#boxes.length) return;
     this.#off = loadHiddenRepos(this.#store.readJson("repos"), this.#allRepos);

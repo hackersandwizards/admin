@@ -264,6 +264,22 @@ describe("finishRenderedHtml", () => {
 describe("renderDocMarkdown and renderItemMarkdown", () => {
   test.each([
     [
+      "uses Unicode in generated heading anchors",
+      "## Über uns\n\n[Read more](#über-uns)\n",
+      '<h2 id="über-uns">Über uns</h2>\n<p><a class="hw-link" href="#%C3%BCber-uns">Read more</a></p>\n',
+    ],
+    [
+      "keeps the heading anchor for a spaced hyphen",
+      "## Phase 1 - Setup\n",
+      '<h2 id="phase-1-setup">Phase 1 - Setup</h2>\n',
+    ],
+    [
+      "keeps the heading anchor for repeated hyphens",
+      "## Foo -- bar\n",
+      '<h2 id="foo-bar">Foo -- bar</h2>\n',
+    ],
+    ["keeps the heading anchor for an underscore", "## a_b c\n", '<h2 id="ab-c">a_b c</h2>\n'],
+    [
       "strips frontmatter, adds heading ids, and preserves raw HTML",
       "---\ntitle: T\n---\n# Hello\n\n<em>raw</em>\n",
       '<h1 id="hello">Hello</h1>\n<p><em>raw</em></p>\n',

@@ -3,13 +3,14 @@ import { join, resolve, sep } from "node:path";
 import { gitAsync, gitBytes } from "./git.ts";
 
 // Specimen pages link brand's stylesheets under node_modules, which no commit holds, so the
-// installed file answers, only from inside the repository, since a symlink there may point
-// anywhere on disk.
+// installed file answers only when its real path stays in the checkout's node_modules.
 export function readInstalledFile(repo: string, path: string): Buffer | undefined {
   const installed = join(repo, path);
-  if (!existsSync(installed) || !statSync(installed).isFile()) return undefined;
-  return realpathSync(installed).startsWith(realpathSync(repo) + sep)
-    ? readFileSync(installed)
+  if (!existsSync(installed)) return undefined;
+  const checkout = realpathSync(repo);
+  const file = realpathSync(installed);
+  return file.startsWith(join(checkout, "node_modules") + sep) && statSync(file).isFile()
+    ? readFileSync(file)
     : undefined;
 }
 

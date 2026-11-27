@@ -1,6 +1,3 @@
-// Finds the repositories the hub shows: every git checkout under a root whose HEAD has
-// docs/agent-work/items or whose package.json names a @hackersandwizards package, its own name
-// included, without a list of repos. Such a repo shows with zero items.
 import { statSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
@@ -8,7 +5,6 @@ import { ITEMS_DIR } from "./items.ts";
 import { gitAsync } from "./git.ts";
 export { uniqueKeys } from "./repo-keys.ts";
 
-// `_archive` holds retired checkouts, at any depth.
 const SKIP = new Set([
   "node_modules",
   "dist",
@@ -19,6 +15,8 @@ const SKIP = new Set([
   "coverage",
   "_archive",
 ]);
+const MISSING_DIRECTORY = new Set<unknown>(["ENOENT", "ENOTDIR"]);
+const UNREADABLE_DIRECTORY = new Set<unknown>(["EACCES", "EPERM", "ELOOP"]);
 
 async function readCheckoutDirectory(dir: string, isRoot: boolean) {
   try {
@@ -31,7 +29,7 @@ async function readCheckoutDirectory(dir: string, isRoot: boolean) {
     if (
       error instanceof Error &&
       "code" in error &&
-      (error.code === "ENOENT" || error.code === "ENOTDIR")
+      (MISSING_DIRECTORY.has(error.code) || (!isRoot && UNREADABLE_DIRECTORY.has(error.code)))
     )
       return [];
     throw error;

@@ -96,7 +96,6 @@
     font-size: var(--text-subheading);
     line-height: 1.5;
   }
-  /* A due date in the state hues brand's pill names: past red, today amber. */
   .admin-due-overdue {
     --hw-pill-hue: var(--color-red);
     --hw-pill-hue-night: var(--color-red-night);

@@ -508,7 +508,6 @@ describe("item files", () => {
   });
 
   test("usable drops invalid area and due date and stringifies numeric option keys", () => {
-    // A numeric key is the key an images mapping names, 0 included.
     const shown = usable({
       ...valid,
       options: [
@@ -528,7 +527,6 @@ describe("item files", () => {
   });
 
   test("a folder matching an image path is not accepted as an image", () => {
-    // An image names a file: a folder of that name is no image.
     const { defects: found } = readItems({
       paths: ["docs/agent-work/items/shot.md", "docs/agent-work/2026-01-01-r/a.png"],
       read: () =>
@@ -1122,7 +1120,6 @@ describe("hub", () => {
     );
     expect(html).toContain('<td><div class="hw-table-scroll"');
     expect(html).toContain("</table></div></td>");
-    // A raw table keeps its own attributes.
     expect(
       renderDocMarkdown("/r", "docs/a.md", '<table class="x"><tr><td>a</td></tr></table>\n'),
     ).toContain(
@@ -1578,7 +1575,6 @@ describe("pages", () => {
   });
 
   test("a named entity in a relative link's fragment stays encoded", () => {
-    // A named entity in the fragment keeps the character it names.
     expect(renderDocMarkdown("/r", "docs/x.md", `<a href="x.md#a&quot;b">r</a>`)).toContain(
       'href="file:///r/docs/x.md#a&quot;b"',
     );
@@ -1623,7 +1619,6 @@ describe("pages", () => {
   });
 
   test("dueOf names the written calendar day west of UTC", () => {
-    // West of UTC too, the pill names the day written.
     inZone("America/New_York", () =>
       expect(dueOf("2026-11-20", new Date(2026, 10, 10, 12).getTime()).text).toBe("due 20 Nov"),
     );
@@ -1647,7 +1642,6 @@ describe("pages", () => {
   });
 
   test("withLinks leaves URLs already linked, inside tags, or inside code untouched", () => {
-    // An address already linked, inside a tag or inside code stays as it is; quotes end one.
     const html =
       '<p><a href="http://a.example/">http://a.example/</a> <img src="http://b.example/i.png"> <code>curl http://c.example/y</code></p>';
     expect(withLinks(html)).toBe(html);

@@ -124,12 +124,10 @@ describe("admin-check", () => {
           `href="file://${spoke.path}/docs/agent-work/2026-01-15-sample-topic.md">docs/agent-work/2026-01-15-sample-topic.md<`,
       },
       {
-        // A folder has no file to serve; an item file has.
         label: "links an item file in the item's own repository",
         expected: () => `href="file://${spoke.path}/docs/agent-work/items/goal.md"`,
       },
       {
-        // A path inside an attribute stays text, so the tag holds.
         label: "leaves a path inside an image alt attribute as text",
         expected: () => 'alt="shot of docs/agent-work/2026-01-15-sample-topic.md"',
       },
@@ -140,7 +138,6 @@ describe("admin-check", () => {
     test.each([
       ["leaves a missing git-show path in another repository unlinked", 'gone.md"'],
       ["leaves a missing work file in the item's own repository unlinked", 'missing.md"'],
-      // A folder has no file to serve; an item file has.
       ["leaves a folder path unlinked", 'sample-topic"'],
     ])("%s", (_label, forbidden) => {
       expect(html).not.toContain(forbidden);
@@ -290,7 +287,6 @@ describe("admin-check", () => {
     );
   });
 
-  // A dot segment percent-encoded, a route, a colon or a query take the folder name too.
   test.each([
     ["%2e%2e", "x"],
     ["_astro/x", "x"],
@@ -307,7 +303,6 @@ describe("admin-check", () => {
     expect(read.key).toBe(expectedKey);
   });
 
-  // A folder's name keeps its other characters as "-", and its letters, composed or not.
   test.each([
     ["a#b c:d", "a-b-c-d"],
     ["Größe", "Größe"],
@@ -317,7 +312,6 @@ describe("admin-check", () => {
     expect(read.key).toBe(expectedKey);
   });
 
-  // A label names the repository to a person and leaves its key; one that is not text is a defect.
   test.each([
     ["Sample label", { key: "x", label: "Sample label", defects: [] }],
     [undefined, { key: "x", label: undefined, defects: [] }],
@@ -364,7 +358,6 @@ describe("admin-check", () => {
     test("reads standalone docs/agent-work/admin.json at HEAD and passes admin-check", async () => {
       const { dir, read } = await commitAdmin('{ "label": "Sample notes" }');
       expect([read.key, read.label, read.defects]).toEqual(["spoke", "Sample notes", []]);
-      // admin-check passes it beside the items.
       expect(readItems(treeSource(dir)).defects).toEqual([]);
     });
 
@@ -401,7 +394,6 @@ describe("admin-check", () => {
 
     test.each([
       {
-        // package.json's own admin wins, and the file says it is ignored.
         label: "package.json admin object wins and reports admin.json ignored",
         pkg: { admin: { label: "Own" } },
         expected: {
@@ -410,7 +402,6 @@ describe("admin-check", () => {
         },
       },
       {
-        // An admin there that is no object wins too, and says so.
         label: "non-object package.json admin wins and reports both defects",
         pkg: { admin: null },
         expected: {
@@ -669,7 +660,6 @@ describe("pages", () => {
         others: ["Kim", "Sam"],
       },
       {
-        // The person filter starts on the hub's user, who comes first.
         label: "named owner Sam",
         hubUser: "Sam",
         firstPerson: "Sam",
@@ -697,8 +687,6 @@ describe("pages", () => {
     });
 
     test("assigns an item drafted by an agent to the person named in its owner", () => {
-      // The person is whoever the owner names, wherever: an agent drafting first leaves the item
-      // the person's.
       const sends = siteData([{ ...repo, items: [...repo.items, owned("Ivo drafts, Kim sends")] }]);
       const row = defined(
         defined(sends.repos[0], "first rendered repository").items.find(
@@ -710,7 +698,6 @@ describe("pages", () => {
     });
 
     test("matches whole person names so Kim does not stand for Kim-Lee", () => {
-      // A name is whole: Kim never stands for Kim-Lee.
       const pair = siteData([{ ...repo, items: [owned("Kim"), owned("Kim-Lee")] }]);
       expect(defined(pair.repos[0], "first rendered repository").items.map((i) => i.who)).toEqual([
         "Kim",
@@ -719,7 +706,6 @@ describe("pages", () => {
     });
 
     test("recognizes the hub user when only a later word of an owner names them", () => {
-      // The hub's user counts as a person where only a later word of an owner names them.
       expect(
         defined(
           defined(

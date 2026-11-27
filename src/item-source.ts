@@ -87,7 +87,6 @@ export function readItems(src: Source): ReadItems {
   const items: Item[] = [];
   const defects: string[] = [];
   const has = new Set(src.paths);
-  // An image is a file: a folder of that name has no picture to show.
   const exists = (p: string) => has.has(p);
   for (const p of src.paths) {
     const entry = classifyItemPath(p);

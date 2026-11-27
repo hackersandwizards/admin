@@ -71,8 +71,6 @@ export function parseAdminFile(text: string | undefined): { value: unknown; defe
     : { value: parsed, defects: [`${ADMIN_FILE}: not a JSON object`] };
 }
 
-// package.json's admin, where it holds one, else docs/agent-work/admin.json's; `from` names the
-// source in a defect.
 export function parseAdminSource(
   pkgAdmin: unknown,
   ownText: string | undefined,

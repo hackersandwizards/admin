@@ -76,10 +76,6 @@ type OwnerClass = { who: string; as: "person" | "agent" | "party" };
 type OwnerClassifier = (owner?: string) => OwnerClass;
 type ItemHtmlRenderer = (repo: RepoData, item: Item) => string;
 
-// A file path under docs/agent-work links into the repository named right before it ("website
-// `docs/...`") or after it ("`...` in trainer-hub"), else into the item's own, and stays text where
-// that repository holds no such file. A Markdown link relative to the item file is rewritten like a
-// report's. An existing link keeps its text, so no link nests in another.
 export function createItemHtmlRenderer(repos: readonly RepoData[]): ItemHtmlRenderer {
   const byKey = new Map(repos.map((r) => [r.key, r]));
   const files = new Map(repos.map((r) => [r, new Set(r.workFiles)]));
@@ -115,13 +111,6 @@ export function createItemHtmlRenderer(repos: readonly RepoData[]): ItemHtmlRend
 
 export const firstWord = (owner = "") => owner.match(/^[\p{L}\p{N}-]+/u)?.[0] ?? owner;
 
-// An owner's first word is an agent's where it is lower-case ("an agent", "claude-code"), an
-// article, "Agent", an agent runtime's own name (Claude, Codex) or a name an agent definition
-// gives. A person is the hub's user or an upper-case first word of some open item's owner that is
-// no agent's, and an item is the first person its owner names anywhere, so "Ivo drafts, Kim
-// sends" is Kim's. A first word joined to the next by "+" or "&" is part of a company's name. An
-// owner naming no person and starting no agent's way is a company's or a team's ("B+L", "eBike
-// Works"), named by the owner up to its first comma, semicolon or "(".
 export function createOwnerClassifier(repos: readonly RepoData[], you?: string): OwnerClassifier {
   const agents = new Set(repos.flatMap((r) => r.agents));
   const isAgent = (w: string) =>
@@ -155,8 +144,6 @@ export function summarizeOwners(
   classify: OwnerClassifier,
   you?: string,
 ): { people: string[]; others: string[] } {
-  // The filter offers every person who owns an open item: the hub's user first, then whoever owns
-  // the most open questions, then the most items; it starts on the first.
   const asked = new Map<string, number>();
   const owned = new Map<string, number>();
   const parties = new Set<string>();
@@ -176,7 +163,6 @@ export function summarizeOwners(
       n(owned, b) - n(owned, a) ||
       a.localeCompare(b),
   );
-  // Who else moves next: the other people, and the companies and teams, which have no button.
   const others = [...people.slice(1), ...parties].sort();
   return { people, others };
 }
@@ -257,7 +243,6 @@ export function repoPages(repo: RepoData, items: readonly ViewItem[]): Page[] {
   return pages;
 }
 
-// `you` is the hub's user where an item owner names them, else the first person.
 export function siteData(repos: RepoData[], you?: string): SiteData {
   const classify = createOwnerClassifier(repos, you);
   const { people, others } = summarizeOwners(
@@ -268,10 +253,8 @@ export function siteData(repos: RepoData[], you?: string): SiteData {
   const pages: Page[] = [
     { path: "index", type: "hub", title: "Admin hub" },
     { path: "architecture", type: "hub-architecture", title: "Packages" },
-    // What admin-serve answers where no page is.
     { path: "404", type: "missing", title: "No such page" },
   ];
-  // A repository without admin.label goes by its key; the hub lists them by that name.
   const named = repos
     .map((r) => ({ ...r, label: r.label ?? r.key }))
     .sort((a, b) => a.label.localeCompare(b.label, "en"));

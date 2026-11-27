@@ -56,6 +56,22 @@ describe("loadItemFile", () => {
       },
     },
     {
+      label: "blank YAML recommendation",
+      id: "unpicked",
+      read: () => "---\nkind: goal\nstatus: open\nrecommended:\n---\n# Unpicked",
+      expected: {
+        item: {
+          ...emptyFields,
+          id: "unpicked",
+          kind: "goal",
+          status: "open",
+          title: "Unpicked",
+          body: "",
+        },
+        defects: [],
+      },
+    },
+    {
       label: "malformed field returning normalized item and defect",
       id: "odd",
       read: () => "---\nkind: goal\nstatus: open\norder: soon\n---\n# Odd",
@@ -169,6 +185,22 @@ describe("needsGraphDefects", () => {
 });
 
 describe("readItems defect ordering", () => {
+  test("reports a malformed recommendation and continues checking prerequisites", () => {
+    const files: Record<string, string> = {
+      "docs/agent-work/items/alpha.md":
+        "---\nkind: goal\nstatus: open\nrecommended: {toString: sample}\n---\n# Alpha",
+      "docs/agent-work/items/beta.md":
+        "---\nkind: goal\nstatus: open\nneeds: [missing]\n---\n# Beta",
+    };
+
+    const { defects } = readItems({ paths: Object.keys(files), read: (path) => files[path] });
+
+    expect(defects).toEqual([
+      "docs/agent-work/items/alpha.md: recommended entry 1 must be a string or number. Use an option key",
+      'docs/agent-work/items/beta.md: needs unknown item "missing". Use an id for an item in this repository, or remove this entry once the needed item is done',
+    ]);
+  });
+
   test("reports path, item, legacy, tracking, and needs-graph defects in order", () => {
     const files: Record<string, string> = {
       "docs/agent-work/items/gone/shot.png": "",

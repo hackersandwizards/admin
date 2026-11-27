@@ -16,8 +16,6 @@ export type Site = {
   built: number;
   files: ReadonlyMap<string, Buffer>;
   repos: readonly RepoData[];
-  // A doc page's path to its doc, each repository's shells by their paths, and the doc pages
-  // filled so far.
   docs: ReadonlyMap<string, { repo: RepoData; doc: Doc | Report }>;
   docPage(name: string): Buffer | undefined;
 };
@@ -83,7 +81,6 @@ export function extractShells(
   return shells;
 }
 
-// A doc's page is its repository's key and its slug, as siteData names it.
 export function indexDocs(repos: readonly RepoData[]) {
   return new Map(
     repos.flatMap((repo) =>
@@ -143,8 +140,6 @@ export function createDocFiller(
   };
 }
 
-// An address no page answers: the hub's own 404 page, its relative addresses made absolute so
-// they hold at any depth.
 export function rewriteMissingPage(template: string, missingPath: string): string {
   return template
     .replace(/((?:href|src)=")(?:\.\/)?(?![a-z][\w+.-]*:|#|\/)/gi, "$1/")
@@ -185,9 +180,6 @@ export function createPageDecorator(
 ): PageDecorator {
   let notice = "";
   let noticed = new WeakMap<Buffer, Buffer>();
-  // Every request checks each repository first, so a page is current when it is served: a hub
-  // page's provenance line ends on the request's time, and a repository page's on the fetch time this
-  // request found, once a fetch that moved no ref left the page unbuilt.
   const stamped = new WeakMap<Buffer, { key: string; page: Buffer }>();
 
   function setNotice(next: string) {

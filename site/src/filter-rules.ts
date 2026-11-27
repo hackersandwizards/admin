@@ -1,4 +1,6 @@
 import { decodePercentEncoding } from "../../src/parse-text.ts";
+import { ITEM_ID, ITEMS_DIR } from "../../src/items.ts";
+import { REPO_KEY } from "../../src/repo-paths.ts";
 import { shortDateTime } from "./time.ts";
 
 export interface HiddenReposView {
@@ -68,7 +70,6 @@ export function describeHiddenRepos(
   };
 }
 
-// A row the address names shows whatever repository it is in.
 export function isRowAway(
   row: Pick<RowFilterInfo, "repo" | "isTarget">,
   hiddenRepos: ReadonlySet<string>,
@@ -119,7 +120,7 @@ export function countAssumedRows(rows: readonly PageRow[], filters: ActiveFilter
   ).length;
 }
 
-// The page's changed items, but those a hidden repository holds.
+// Count each changed item once, including a directly linked item in a hidden repository.
 export function countChangedItems(
   rows: readonly ChangedRowInfo[],
   hiddenRepos: ReadonlySet<string>,
@@ -161,12 +162,12 @@ export function noMatchSentence(
 }
 
 export function decodeHash(hash: string): string {
-  return decodePercentEncoding(hash.slice(1)) ?? ""; // a malformed hash names no item
+  return decodePercentEncoding(hash.slice(1)) ?? "";
 }
 
 export function goneItemNotice(fragment: string, found: boolean): string {
   if (found) return "";
-  const [repo, id] = fragment.split(":");
-  if (!id) return "";
-  return `${repo}:${id} is no longer open: it was settled or finished, and its file is gone. Its history: git log --all -- docs/agent-work/items/${id}.md in ${repo}.`;
+  const [repo, id, extra] = fragment.split(":");
+  if (!repo || !id || extra !== undefined || !REPO_KEY.test(repo) || !ITEM_ID.test(id)) return "";
+  return `${repo}:${id} is no longer open: it was settled or finished, and its file is gone. Its history: git log --all -- ${ITEMS_DIR}/${id}.md in ${repo}.`;
 }

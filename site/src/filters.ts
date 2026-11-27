@@ -29,7 +29,6 @@ function isElementShown(el: Element): boolean {
 }
 
 function createRowTextCache(): (row: HTMLElement) => string {
-  // What a row says, without the marks this script writes or shows on it.
   const said = new Map<HTMLElement, string>();
   return (row) => {
     const cached = said.get(row);
@@ -87,7 +86,6 @@ function updateGroups(doc: Document, filters: ActiveFilters): void {
 }
 
 function updateSections(doc: Document, filterAnchor: Element | null): void {
-  // A section left without a row to show steps aside, but the one holding the filters.
   for (const section of doc.querySelectorAll<HTMLElement>("main section"))
     if (section.querySelector("[data-row]") && !section.contains(filterAnchor))
       section.hidden = ![...section.querySelectorAll<HTMLElement>("[data-row]")].some(
@@ -201,7 +199,6 @@ export class FiltersController {
     this.#textOf = createRowTextCache();
     this.#scope = this.#buttons[0]?.closest("section, main") ?? null;
     this.#who = this.#initialWho();
-    // A link to an item opens it and shows it whatever person the filter is on.
     this.#target = doc.getElementById(decodeHash(location.hash));
     if (this.#target?.dataset.who && this.#buttons.length) this.#who = this.#whoFor(this.#target);
     this.#bindEvents();

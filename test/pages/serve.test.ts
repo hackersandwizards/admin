@@ -346,13 +346,13 @@ describe("serve hub failure, concurrency, and rescan pinning", () => {
             expect(after).toContain("The hub could not read a repository.");
             expect(after).not.toContain("two could not be read");
           },
-          { timeout: 5_000, interval: 25 },
+          { timeout: TIMEOUT, interval: 25 },
         );
       } finally {
         clock.mockRestore();
         errSpy.mockRestore();
       }
     },
-    TIMEOUT,
+    2 * TIMEOUT,
   );
 });

@@ -27,7 +27,6 @@ export interface RepoCache {
   fetchedTime(repoPath: string): number | undefined;
 }
 
-// After the first fetch, stamp() updates the time without a rebuild if the refs and push tip stay put.
 export async function stateOfRepo(repo: string) {
   const [refs, pushTip, fetched] = await Promise.all([
     gitAsync(repo, ["show-ref", "--head"]),
@@ -143,7 +142,6 @@ class RepoStore implements RepoCache {
       }),
     );
     const key = siteStateKey(states, Date.now());
-    // Back at the state of its last read, a failed read since then no longer applies.
     for (const [p, s] of states) if (this.#read.get(p)?.state === s) this.#unread.delete(p);
     const due = [...this.#unread.values()].some((u) => Date.now() - u.at >= RETRY_MS);
     return { states, key, due };

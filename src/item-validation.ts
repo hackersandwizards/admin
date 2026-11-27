@@ -1,5 +1,6 @@
 import {
   KINDS,
+  ITEM_ID,
   STATUSES,
   WORK_DIR,
   imagePath,
@@ -9,8 +10,6 @@ import {
   type Option,
 } from "./items.ts";
 
-const ID = /^[a-z0-9][a-z0-9-]*$/;
-// A day the calendar has, not only a string in ISO shape.
 const isDay = (v: unknown) => {
   const t = Date.parse(`${v}T00:00Z`);
   return (
@@ -36,7 +35,7 @@ export function coreFieldDefects(
   item: Pick<Item, "id" | "kind" | "status" | "priority" | "order" | "owner">,
 ): string[] {
   const defects: string[] = [];
-  if (!ID.test(item.id)) defects.push(`id ${item.id} is not lower-case kebab`);
+  if (!ITEM_ID.test(item.id)) defects.push(`id ${item.id} is not lower-case kebab`);
   if (!KINDS.includes(item.kind)) defects.push(`kind ${item.kind}`);
   if (!STATUSES.includes(item.status)) defects.push(`status ${item.status}`);
   defects.push(...priorityDefects(item.kind, item.priority));
@@ -143,8 +142,17 @@ export function parseOptions(raw: unknown): {
   return { value, keys, defects };
 }
 
-export const parseRecommended = (raw: unknown): string[] | undefined =>
-  raw == null ? undefined : [raw].flat().map(String);
+export function parseRecommended(raw: unknown, defects: string[] = []): string[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const entries: unknown[] = Array.isArray(raw) ? raw : [raw];
+  const keys: string[] = [];
+  entries.forEach((entry, index) => {
+    if (isText(entry)) keys.push(String(entry));
+    else
+      defects.push(`recommended entry ${index + 1} must be a string or number. Use an option key`);
+  });
+  return keys;
+}
 
 export function recommendationDefects(
   rawRecommended: unknown,
@@ -154,7 +162,7 @@ export function recommendationDefects(
   const defects: string[] = [];
   if (multiple !== undefined && typeof multiple !== "boolean")
     defects.push(`multiple ${multiple} is not true or false`);
-  const recommended = parseRecommended(rawRecommended) ?? [];
+  const recommended = parseRecommended(rawRecommended, defects) ?? [];
   if (recommended.length > 1 && !multiple) defects.push("several recommended without multiple");
   for (const r of recommended) {
     if (!keys.includes(r)) defects.push(`recommended ${r} is not an option`);
@@ -260,8 +268,6 @@ export function usableImages(images: unknown): Item["images"] {
   return undefined;
 }
 
-// The item with each field its pages read in the shape its type states, so a malformed field shows
-// as its defect rather than failing the build of every page or printing "[object Object]".
 export function usable(item: Item): Item {
   return {
     ...item,

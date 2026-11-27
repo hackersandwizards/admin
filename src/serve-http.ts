@@ -7,10 +7,8 @@ import { rewriteMissingPage, type PageDecorator, type Site } from "./serve-pages
 
 const LOCAL = /^(127\.0\.0\.1|localhost|[\w.-]+\.localhost)$/;
 
-// The catalog is the package's own pages, with the inline scripts Astrobook and the catalog shell
-// write and no committed markup from a repository, so it gets brand-elements.json "csp" alone,
-// which brand-elements and brand-markers render the catalog under; every other page policy() in
-// site/src/data.ts, which only the site's own build under /_astro/ may run.
+// The catalog contains only package-built pages, so it uses the brand checks' policy to allow
+// inline scripts from Astrobook and the catalog shell.
 const catalogCsp = elements.csp;
 export const csp = (origin: string) => `${policy(`${origin}/_astro/`)}; frame-ancestors 'self'`;
 
@@ -74,7 +72,6 @@ export function isCompressible(body: Buffer, contentType: string): boolean {
 }
 
 export function createResponder(): Responder {
-  // A built file is compressed once, on its first request that accepts gzip.
   const gzipped = new WeakMap<Buffer, Uint8Array<ArrayBuffer>>();
 
   function compressedResponse(
@@ -141,13 +138,27 @@ export async function serveRepoFile(
   return response;
 }
 
+function siteUnavailable(error: Error): Response {
+  return new Response(
+    `The hub could not build its pages: ${error.message}. It tries again a minute later, or once a repository changes.`,
+    { status: 503 },
+  );
+}
+
 export function createFileRoute(
   ensureSite: () => Promise<Site | undefined>,
   responder: Responder,
   readFile: (repo: string | undefined, path: string) => Promise<Buffer | undefined> = readRepoFile,
 ) {
   async function serve(parsed: ParsedRequest): Promise<Response> {
-    const site = await ensureSite();
+    let site: Site | undefined;
+    try {
+      site = await ensureSite();
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      console.error(error);
+      return siteUnavailable(error);
+    }
     const [repoKey, ...rest] = parsed.path.slice("/_file/".length).split("/");
     const repo = site?.repos.find((r) => r.key === repoKey)?.path;
     const body = await readFile(repo, rest.join("/"));
@@ -192,23 +203,29 @@ export function createCatalogRoute(
   };
 }
 
+function findSitePage(
+  name: string,
+  files: ReadonlyMap<string, Buffer>,
+  docs: ReadonlyMap<string, unknown>,
+): PageMatch | undefined {
+  const at = [name, `${name}.html`].find((n) => n !== "404.html" && files.has(n));
+  if (at) return { kind: "file", at };
+  const doc = [name.replace(/\.html$/, ""), name].find((n) => docs.has(n));
+  if (doc) return { kind: "doc", name: doc };
+  return undefined;
+}
+
 export function matchSitePage(
   path: string,
   files: ReadonlyMap<string, Buffer>,
   docs: ReadonlyMap<string, unknown>,
 ): PageMatch {
   // A page's asset URLs are relative, so they only resolve from the page's own address.
-  const bare = path.slice(1, -1);
-  if (path.length > 1 && path.endsWith("/") && (files.has(`${bare}.html`) || docs.has(bare)))
+  const name = path.slice(1);
+  if (name.endsWith("/") && findSitePage(name.slice(0, -1), files, docs))
     return { kind: "strip-slash" };
-  const name = path.slice(1) || "index.html";
-  // The 404 page answers only where no page does.
-  const at = [name, `${name}.html`].find((n) => n !== "404.html" && files.has(n));
-  if (at) return { kind: "file", at };
-  // A doc's slug may end in .html itself, as for x.html.md.
-  const doc = [name.replace(/\.html$/, ""), name].find((n) => docs.has(n));
-  if (doc) return { kind: "doc", name: doc };
-  // A repository's own address, with or without the slash, opens its dashboard.
+  const page = findSitePage(name || "index.html", files, docs);
+  if (page) return page;
   if (files.has(`${path.slice(1).replace(/\/$/, "")}/dashboard.html`)) return { kind: "dashboard" };
   return { kind: "missing" };
 }
@@ -253,11 +270,7 @@ export function createPageRoute(
 
   return async function handlePage(parsed: ParsedRequest): Promise<Response> {
     const built = await loadSite().catch((e: unknown) => e);
-    if (built instanceof Error)
-      return new Response(
-        `The hub could not build its pages: ${built.message}. It tries again a minute later, or once a repository changes.`,
-        { status: 503 },
-      );
+    if (built instanceof Error) return siteUnavailable(built);
     const site = built as Site;
     return respondForMatch(parsed, site, matchSitePage(parsed.path, site.files, site.docs));
   };

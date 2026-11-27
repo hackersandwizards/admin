@@ -111,6 +111,35 @@ const links = new HTMLRewriter()
 export const stripUnsafeLinks = (html: string) => links.transform(html);
 
 const ADMIN_ID = /^(?:admin-|copy$|state$|theme-toggle$|(?:sun|moon)-icon$)/;
+const HEADINGS = "h1, h2, h3, h4, h5, h6";
+
+function headingText(html: string): string[] {
+  const headings: { text: string }[] = [];
+  const active: { text: string }[] = [];
+  new HTMLRewriter()
+    .on(HEADINGS, {
+      element(el) {
+        const heading = { text: "" };
+        headings.push(heading);
+        active.push(heading);
+        el.onEndTag(() => {
+          active.pop();
+        });
+      },
+      text(chunk) {
+        const heading = active.at(-1);
+        if (heading) heading.text += chunk.text;
+      },
+    })
+    .on("img[alt]", {
+      element(el) {
+        const heading = active.at(-1);
+        if (heading) heading.text += el.getAttribute("alt") ?? "";
+      },
+    })
+    .transform(html);
+  return headings.map(({ text }) => text);
+}
 
 // Front matter is a leading YAML mapping between --- lines; a leading rule renders, since "---"
 // above a paragraph is no mapping.
@@ -121,8 +150,11 @@ export function stripFrontmatter(text: string): string {
   });
 }
 
-export function sanitizeMarkup(html: string): string {
+export function sanitizeMarkup(html: string, addHeadingIds = false): string {
+  const headings = addHeadingIds ? headingText(html) : [];
+  let index = 0;
   const used = new Set<string>();
+  const nextSuffix = new Map<string, number>();
   return new HTMLRewriter()
     .on("*", {
       element(el) {
@@ -133,14 +165,25 @@ export function sanitizeMarkup(html: string): string {
           el.removeAttribute("id");
       },
     })
-    .on("h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]", {
+    .on(HEADINGS, {
       element(el) {
         const originalId = el.getAttribute("id");
-        if (originalId === null) throw new Error(`Heading ID missing: ${el.tagName}`);
-        const slug = entities(originalId).replace(/[^\p{L}\p{M}\p{N}_-]/gu, "-") || "section";
-        const base = ADMIN_ID.test(slug) ? `section-${slug}` : slug;
-        let id = base;
-        for (let n = 1; used.has(id); n++) id = `${base}-${n}`;
+        const text = headings[index++];
+        if (originalId === null && text === undefined) return;
+        const slug =
+          originalId === null
+            ? entities(text ?? "")
+                .toLowerCase()
+                .replace(/[^\p{L}\p{M}\p{N}\s-]/gu, "")
+                .trim()
+                .replace(/[\s-]+/g, "-")
+                .replace(/^-+|-+$/g, "")
+            : entities(originalId).replace(/[^\p{L}\p{M}\p{N}_-]/gu, "-");
+        const base = ADMIN_ID.test(slug) ? `section-${slug}` : slug || "section";
+        let suffix = nextSuffix.get(base) ?? 0;
+        let id = suffix === 0 ? base : `${base}-${suffix}`;
+        while (used.has(id)) id = `${base}-${++suffix}`;
+        nextSuffix.set(base, suffix + 1);
         used.add(id);
         el.setAttribute("id", id);
       },
@@ -160,7 +203,6 @@ export function renderMermaidBlocks(html: string, documentId: string): string {
   );
 }
 
-// A stray % in a hand-written link stays as written.
 export function decodeLinkPath(path: string): string {
   return decodePercentEncoding(path) ?? path;
 }
@@ -189,17 +231,13 @@ export function finishRenderedHtml(html: string, dir: string, documentId: string
 }
 
 export function renderDocMarkdown(repo: string, path: string, text: string): string {
-  const cleaned = sanitizeMarkup(
-    Bun.markdown.html(stripFrontmatter(text), { headings: { ids: true } }),
-  );
+  const cleaned = sanitizeMarkup(Bun.markdown.html(stripFrontmatter(text)), true);
   const documentId = hasMermaidBlock(cleaned)
     ? Bun.hash(JSON.stringify([repo, path, text])).toString(36)
     : "";
   return finishRenderedHtml(cleaned, join(repo, path, ".."), documentId);
 }
 
-// An item's body has no front matter and no HTML: a placeholder such as <id> shows as written,
-// and an address in angle brackets is linked by the pages.
 export function renderItemMarkdown(repo: string, path: string, text: string): string {
   const cleaned = sanitizeMarkup(
     Bun.markdown.html(text, { noHtmlSpans: true, noHtmlBlocks: true }),

@@ -103,20 +103,23 @@ export class AnswersController {
     return this.#items.find((item) => item.dataset.k === key);
   }
 
-  #snapshotOf(key: string, answer: StoredAnswer | null): QuestionSnapshot | null {
+  #snapshotOf(key: string, answer: StoredAnswer): QuestionSnapshot | null {
     const shown = this.#doc.querySelector<HTMLElement>(`[data-k="${CSS.escape(key)}"][data-asked]`);
     if (!shown) return null;
     const row = this.#rowOf(key);
-    const currentOptionLabel = answer?.option ? optionLabelOf(row, answer.option) : undefined;
+    const currentOptionLabel = answer.option ? optionLabelOf(row, answer.option) : undefined;
     return { asked: shown.dataset.asked ?? "", hasRow: Boolean(row), currentOptionLabel };
   }
 
   #staleFor(key: string, answer: StoredAnswer | null): boolean {
-    return isStaleAnswer(answer, this.#snapshotOf(key, answer));
+    return answer !== null && isStaleAnswer(answer, this.#snapshotOf(key, answer));
   }
 
-  #markRow(row: HTMLElement, answer: StoredAnswer | null): void {
-    const stale = this.#staleFor(row.dataset.k ?? "", answer);
+  #markRow(
+    row: HTMLElement,
+    answer: StoredAnswer | null,
+    stale = this.#staleFor(row.dataset.k ?? "", answer),
+  ): void {
     const copiedAt = this.#store.copiedAt();
     const sent = isAnswerCopied(answer, stale, copiedAt);
     const currentLabel = answer?.option ? optionLabelOf(row, answer.option) : undefined;
@@ -143,7 +146,7 @@ export class AnswersController {
       input.checked = isControlChecked(controlOf(input), answer, stale);
     const textarea = row.querySelector<HTMLTextAreaElement>("textarea");
     if (textarea) textarea.value = String(answer?.note || "");
-    this.#markRow(row, answer);
+    this.#markRow(row, answer, stale);
   }
 
   #saveRow(row: HTMLElement): void {

@@ -28,7 +28,7 @@ export type RepoData = {
   label?: string;
   path: string;
   head: string;
-  // Commits the upstream has that HEAD lacks, unknown without an upstream.
+  // Commits on the configured push branch that HEAD lacks, if the comparison succeeds.
   behind?: number;
   fetched?: number;
   // When an item file last changed in a commit, and its text as a version a browser compares.
@@ -60,7 +60,6 @@ export type RepoData = {
 
 const AGENT = /^\.claude\/agents\/[^/]+\.md$/;
 const SCRIPT = /^(scripts|bin)\/.+\.(ts|js|mjs|sh|py)$/;
-// A Markdown file at the root or under docs/: a report or a doc, unless an item file.
 const isDoc = (p: string) => /\.md$/i.test(p) && (p.startsWith("docs/") || !p.includes("/"));
 export const wantsRepoFile = (p: string) =>
   p === "package.json" ||
@@ -183,7 +182,6 @@ export function readAgentNames(src: Source): string[] {
     );
 }
 
-// Every git call of a repository runs at once, and the hub reads its repositories at once.
 export async function readRepo(repo: string, source?: Source): Promise<RepoData> {
   const [src, gitMeta] = await Promise.all([
     source ?? headSource(repo, wantsRepoFile),

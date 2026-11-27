@@ -108,7 +108,6 @@ export function parseRecord(raw: string | null): Record<string, unknown> | null 
   return parsed as Record<string, unknown>;
 }
 
-// Keys of this browser's own state beside the answers.
 const OWN_KEYS = ["copied", "who", "seen", "visit", "versions", "before", "repos"];
 
 export interface AdminStore {

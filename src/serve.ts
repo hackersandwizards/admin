@@ -135,8 +135,6 @@ export function createSiteStore(
   build: (key: string, repos: RepoData[]) => Promise<Site>,
 ) {
   let site: Site | undefined;
-  // A repository that failed to read at a state, and a build that failed for a key, say on every
-  // page what went wrong.
   let failed: BuildFailure | undefined;
 
   async function runBuild(key: string, repos: RepoData[]): Promise<Site> {
@@ -177,13 +175,11 @@ export function createHub({ root, rescanMs = 300_000 }: ServeOptions) {
   const listRepos = createRepoScanner(root, rescanMs);
   const repoCache = createRepoCache();
   const decorator = createPageDecorator(repoCache.fetchedTime);
-  // The hub's user is the machine's git identity, by first name as item owners write it.
   const you = firstWord(git(root, "config", "user.name").trim()) || undefined;
   const siteStore = createSiteStore(listRepos, repoCache, (key, repos) =>
     rebuildSite(key, repos, you),
   );
   let refreshing: Promise<Site> | undefined;
-  // Requests that arrive while one checks, reads or builds share its answer.
   const pages = () =>
     (refreshing ??= siteStore.refresh().finally(() => {
       refreshing = undefined;

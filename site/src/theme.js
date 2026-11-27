@@ -4,7 +4,7 @@
 // draws it without the night ground.
 let chosen = null;
 try {
-  chosen = localStorage.getItem("theme");
+  chosen = globalThis.localStorage?.getItem("theme") ?? null;
 } catch (error) {
   if (error?.name !== "SecurityError") throw error;
 }

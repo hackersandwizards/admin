@@ -64,7 +64,6 @@ export function stylesheet() {
   ].join("\n");
 }
 
-// admin.js with brand's element script, as one classic script.
 export async function script() {
   const { outputs } = await Bun.build({
     entrypoints: [join(PKG, "site/src/admin.js")],

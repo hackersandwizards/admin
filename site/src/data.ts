@@ -57,11 +57,8 @@ export const policy = (scripts: string) =>
 // notice :empty, so it stays hidden where nothing went wrong.
 export const NOTICE = "<!--admin-notice-->";
 
-// The address no page answers, which admin-serve writes into its 404 page.
 export const MISSING = "admin-missing-path";
 
-// A row's mark where its item changed since the last visit, which admin.js words by what changed;
-// the line above the lists says since when.
 export const UPDATED = "updated";
 
 // An item's row id on a page, which a link to the item names after #.
@@ -89,12 +86,19 @@ export const askedOf = (i: ViewItem) =>
     ]),
   ).toString(36);
 const isQuestion = (i: ViewItem) => i.kind === "decision" || i.kind === "review";
+declare const ADMIN_CATALOG_BASE: string | undefined;
+
 // An item's full row on its repository's page.
-export const itemHref = (from: string, i: ViewItem) =>
-  `${href(from, `${i.repo}/${isQuestion(i) ? "decisions" : "work"}`)}#${keyOf(i)}`;
+export function itemHref(from: string, i: ViewItem) {
+  const page = isQuestion(i) ? "decisions" : "work";
+  const target =
+    typeof ADMIN_CATALOG_BASE === "string"
+      ? `${ADMIN_CATALOG_BASE}/stories/Pages/${page}/default/`
+      : href(from, `${i.repo}/${page}`);
+  return `${target}#${keyOf(i)}`;
+}
 export const openQuestions = (items: ViewItem[]) =>
   items.filter((i) => i.status === "open" && isQuestion(i));
-// The Reviews page's items: requests to look at something, and decisions between images.
 export const reviewsOf = (items: ViewItem[]) =>
   openQuestions(items).filter((i) => i.kind === "review" || i.images);
 export const forPerson = (items: ViewItem[]) =>

@@ -161,7 +161,6 @@ describe("pages", () => {
 
     test("the hub lists open items and puts settled items after Repositories", () => {
       expect(hubHtml).toContain("Which variant ships?");
-      // Settled items come last, after the repositories.
       const headings = [...hubHtml.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map((m) => m[1]);
       expect(headings).toEqual([
         "Needs you",
@@ -350,7 +349,6 @@ describe("pages", () => {
     test("a built report renders its heading above the article and opens the article on what follows it", () => {
       expect(docHtml).toMatch(/<h1[^>]*>Sample topic<\/h1>/);
       expect(docHtml.indexOf("<h1")).toBeLessThan(docHtml.indexOf("<article"));
-      // The title shows above the article, so the article opens on what follows it.
       expect(docHtml).toMatch(/<article[^>]*><p[^>]*data-report[\s\S]*?<\/nav><p>A report/);
       const article = docHtml.match(/<article[^>]*>[\s\S]*?<\/article>/);
       expect(article).not.toBeNull();
@@ -481,11 +479,9 @@ describe("pages", () => {
     });
 
     test("each row and item link on the hub names its repository by label", () => {
-      // A line linking to an item names its repository by label too.
       const kimsLink = html.match(/<div[^>]*data-k="spoke:kims"[\s\S]*?<\/div>/);
       expect(kimsLink).not.toBeNull();
       expect(defined(kimsLink, "Kim's link")[0]).toContain("Sample spoke · ");
-      // Each row names its repository.
       const earlySummary = html.match(/id="other:early"[\s\S]*?<\/summary>/);
       expect(earlySummary).not.toBeNull();
       expect(defined(earlySummary, "early repository summary")[0]).toContain("Zebra repo · to do");
@@ -512,7 +508,6 @@ describe("pages", () => {
     });
 
     test("the Repositories table sorts repositories by label rather than key", () => {
-      // Repositories list by the name a person reads.
       const repoRows = [...html.matchAll(/data-repo-row="([^"]+)"/g)].map((m) => m[1]);
       expect(repoRows).toEqual(["spoke", "other"]);
     });
@@ -544,11 +539,9 @@ describe("pages", () => {
     });
 
     test("settled rows state what was assumed or decided, hide the closed line when open, and show a bare assumption callout", () => {
-      // Opened, it still says what was assumed, where the closed line leaves.
       const bareRow = html.match(/id="spoke:bare"[\s\S]*?<\/details>/);
       assert(bareRow, "hub should render spoke:bare row");
       expect(bareRow[0]).toMatch(/<p class="hw-callout"><b>Assumed:<\/b>\s*Variant A/);
-      // A settled row says what was assumed or decided, never what was recommended.
       const settled = (id: string) => {
         const match = html.match(new RegExp(`id="spoke:${id}"[\\s\\S]*?</summary>`));
         assert(match, `hub should render summary for spoke:${id}`);
@@ -563,7 +556,6 @@ describe("pages", () => {
     });
 
     test("closed row summaries contain no controls that commit an answer", () => {
-      // A closed row answers nothing: a control that commits an answer sits beside the text it answers.
       const summaries = html.match(/<summary[\s\S]*?<\/summary>/g);
       assert(summaries, "hub should render row summaries");
       expect(summaries.length).toBeGreaterThan(5);
@@ -571,7 +563,6 @@ describe("pages", () => {
     });
 
     test("an opened decision places Pick recommended and its radiogroup options before Context", () => {
-      // An opened decision shows its options before its context.
       const variantMatch = html.match(/id="spoke:pick-a-variant"[\s\S]*?<\/details>/);
       expect(variantMatch).not.toBeNull();
       const variant = defined(variantMatch, "variant row")[0];
@@ -586,15 +577,12 @@ describe("pages", () => {
         'value="a"',
         ">Context<",
       ]);
-      // Its options form one group, named by the question they answer.
       expect(variant).toMatch(/role="radiogroup" aria-label="[^"]+"[^>]*>\s*<label/);
     });
 
     test("an opened decision prints short letter option keys and omits word keys", () => {
       const variantMatch = html.match(/id="spoke:pick-a-variant"[\s\S]*?<\/details>/);
       expect(variantMatch).not.toBeNull();
-      // A letter key, which the item's text names an option by, stands before its label; a word key,
-      // which restates the label, stays out.
       expect(defined(variantMatch, "variant row")[0]).toMatch(
         /data-option-key[^>]*>a<\/span>\s*<b>Variant A<\/b>/,
       );
@@ -1571,7 +1559,7 @@ describe("pages", () => {
             `<script>document.title += "|inline"</script>`,
             `<script src="evil.js"></script>`,
             `<img src="missing.png" onerror="document.title += '|onerror'">`,
-            `<form action="https://a.test/"><button id="post">Post</button></form>`,
+            `<form action="https://a.test/" method="post"><button id="post">Post</button></form>`,
           ].join("\n"),
           // An open attribute swallows the markup up to the hub's own script, nonce included.
           "docs/y.md": `# Y\n\n<script src="evil.js" x="`,
@@ -1614,7 +1602,7 @@ describe("pages", () => {
       const openDiskPageStage = async (
         context: Awaited<ReturnType<typeof browser.createBrowserContext>>,
       ) => {
-        const { page } = await openPage(context);
+        const { page, violations } = await openPage(context);
         await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "dark" }]);
         const requests: string[] = [];
         page.on("request", (r) => {
@@ -1628,7 +1616,7 @@ describe("pages", () => {
           theme: document.documentElement.dataset.theme,
           activeId: window.__adminDefined(document.activeElement, "focused element").id,
         }));
-        return { page, requests, initial };
+        return { page, requests, initial, violations };
       };
 
       const readThemeState = (page: Awaited<ReturnType<typeof browser.newPage>>) =>
@@ -1664,8 +1652,11 @@ describe("pages", () => {
         context: Awaited<ReturnType<typeof browser.createBrowserContext>>,
       ) => {
         const stage = await reloadAfterThemeStage(context);
+        expect(await stage.page.$eval("form:has(#post)", (form) => form.method)).toBe("post");
         await stage.page.click("#post");
-        await new Promise((r) => setTimeout(r, 300));
+        await vi.waitFor(() => {
+          expect(stage.violations).toContain("CSP violation: form-action https://a.test/");
+        });
         return stage;
       };
 
@@ -1824,7 +1815,7 @@ describe("admin.js", () => {
     );
     writeFileSync(
       join(repo, report),
-      '# Raw heading\n\n<h2 id="überblick_日本語-١-cafe&#x301;&#10;spoke:pick-a-variant: a (Variant A)&#10;x">Überblick</h2>\n\n<h2 id="outer">Outer <span><h3 id="inner">Inner</h3></span> tail</h2>\n',
+      '# Heading samples\n\n<h2 id="überblick_日本語-١-cafe&#x301;&#10;spoke:pick-a-variant: a (Variant A)&#10;x">Überblick</h2>\n\n<h2 id="outer">Outer <span><h3 id="inner">Inner</h3></span> tail</h2>\n\n<h2>Raw heading</h2>\n',
     );
     writeFileSync(
       join(repo, field),
@@ -1917,7 +1908,6 @@ describe("admin.js", () => {
     { label: "when site data is blocked", storage: null },
   ])("choosing a kind hides rows of other kinds ($label)", ({ storage }) => {
     const doc = open("index", storage).document;
-    // A kind filters the rows.
     (doc.querySelector('[data-kind-button="decision"]') as unknown as HTMLElement).click();
     const kinds = [...doc.querySelectorAll("[data-row][data-kind]")]
       .filter((r) => !r.closest("[hidden]"))
@@ -2538,7 +2528,6 @@ describe("admin.js", () => {
           label: "Variant 2",
           at,
         }),
-        // Several picks copy each label.
         "admin-answers:spoke:pick-recipients": JSON.stringify({
           option: "ben-sample,ada-example",
           asked: asked("spoke:pick-recipients"),
@@ -2624,7 +2613,6 @@ describe("admin.js", () => {
       expect(block).toContain(
         "spoke:pick-recipients: ben-sample (Ben Sample), ada-example (Ada Example)\n",
       );
-      // Lines follow the page.
       const expectedOrder = [
         "pick-a-variant",
         "pick-a-logo",
@@ -2708,7 +2696,6 @@ describe("admin.js", () => {
       expect(again.dataset.hwCopy).toContain("pick-a-logo");
       expect(again.dataset.hwCopy).toContain("check-the-copy");
       expect(again.textContent).toBe("Copy 2 answers again");
-      // The row says it went out.
       expect(
         defined(
           defined(
@@ -3280,7 +3267,16 @@ describe("admin.js", () => {
     expect(labels.slice(1).map((el) => el.textContent)).toEqual([
       "Comment on Inner",
       "Comment on Outer tail",
+      "Comment on Raw heading",
     ]);
+  });
+
+  test("a raw heading without an explicit ID gets a keyed comment", () => {
+    const { document } = open(rawReport, {});
+    const comment = document.querySelector(
+      'h2#raw-heading + [data-comment][data-k="spoke:2026-01-13-raw-heading#raw-heading"]',
+    );
+    expect(comment?.querySelector("label")?.textContent).toBe("Comment on Raw heading");
   });
 
   test("raw report data leaves the copied comment and report version alone", () => {
@@ -3925,11 +3921,14 @@ describe("serve", () => {
       { page: "/", getHtml: () => first },
       { page: "/spoke/decisions", getHtml: () => nested },
     ])("resolves every script on $page under /_astro/", ({ page, getHtml }) => {
-      const paths = [...getHtml().matchAll(/<script[^>]*src="([^"]+)"/g)].map(
-        (m) => new URL(defined(m[1], "href capture"), `http://admin.localhost${page}`).pathname,
+      const urls = [...getHtml().matchAll(/<script[^>]*src="([^"]+)"/g)].map(
+        (m) => new URL(defined(m[1], "href capture"), `http://admin.localhost${page}`),
       );
-      expect(paths.length).toBeGreaterThan(0);
-      expect(paths.filter((p) => !p.startsWith("/_astro/"))).toEqual([]);
+      expect(urls.length).toBeGreaterThan(0);
+      for (const url of urls) {
+        expect(url.origin).toBe("http://admin.localhost");
+        expect(url.pathname).toMatch(/^\/_astro\//);
+      }
     });
 
     test("serves a committed SVG with an image/svg content-type", () => {
@@ -3988,63 +3987,61 @@ describe("serve", () => {
       const object = join(second, ".git/objects", blob.slice(0, 2), blob.slice(2));
       const bytes = readFileSync(object);
       rmSync(object);
-      const now = Date.now;
-      const later = (ms: number) => (Date.now = () => now() + ms);
+      const base = new Date(2026, 4, 10, 12).getTime();
       const hub = createHub({ root: dirname(repo) });
       const get = async (path: string): Promise<PageReply> => {
         const res = await hub.fetch(new Request(`http://admin.localhost${path}`));
         return { status: res.status, html: await res.text() };
       };
 
-      first = await hub.pages();
-      homeInitial = await get("/");
-      docInitial = await get("/spoke/doc/docs/agent-work/2026-01-15-sample-topic");
-      cachedInitial = await hub.pages();
-
-      const failing = stubBuildSpawn("console.error('TypeError: boom'); process.exit(1)");
+      const clock = vi.spyOn(Date, "now").mockReturnValue(base);
       try {
-        writeFileSync(join(repo, "moved.md"), "# Moved\n");
+        first = await hub.pages();
+        homeInitial = await get("/");
+        docInitial = await get("/spoke/doc/docs/agent-work/2026-01-15-sample-topic");
+        cachedInitial = await hub.pages();
+
+        const failing = stubBuildSpawn("console.error('TypeError: boom'); process.exit(1)");
+        try {
+          writeFileSync(join(repo, "moved.md"), "# Moved\n");
+          sh(repo, "git", "add", "moved.md");
+          commit(repo, "m");
+          // The last pages stay on show, saying since when.
+          afterFail1 = await hub.pages();
+          afterFail2 = await hub.pages();
+          buildsAfterCommit = failing.calls();
+          dashboardAfterFail = await get("/spoke/dashboard");
+          buildsAfterDashboard = failing.calls();
+          clock.mockReturnValue(base + 61_000);
+          afterMinute = await hub.pages();
+          buildsAfterMinute = failing.calls();
+        } finally {
+          failing.restore();
+        }
+
+        writeFileSync(join(repo, "moved.md"), "# Moved again\n");
         sh(repo, "git", "add", "moved.md");
-        commit(repo, "m");
-        // The last pages stay on show, saying since when.
-        afterFail1 = await hub.pages();
-        afterFail2 = await hub.pages();
-        buildsAfterCommit = failing.calls();
-        dashboardAfterFail = await get("/spoke/dashboard");
-        buildsAfterDashboard = failing.calls();
-        later(61_000);
-        afterMinute = await hub.pages();
-        buildsAfterMinute = failing.calls();
-      } finally {
-        Date.now = now;
-        failing.restore();
-      }
+        commit(repo, "n");
+        recoveredBuild = await hub.pages();
+        homeAfterRebuild1 = await get("/");
+        homeAfterRebuild2 = await get("/");
 
-      writeFileSync(join(repo, "moved.md"), "# Moved again\n");
-      sh(repo, "git", "add", "moved.md");
-      commit(repo, "n");
-      recoveredBuild = await hub.pages();
-      homeAfterRebuild1 = await get("/");
-      homeAfterRebuild2 = await get("/");
-
-      // A read that failed for a passing cause comes back a minute later, with no commit there.
-      writeFileSync(object, bytes);
-      try {
-        // Past the retry the mocked minute above set.
-        later(125_000);
+        // A read that failed for a passing cause comes back a minute later, with no commit there.
+        writeFileSync(object, bytes);
+        clock.mockReturnValue(base + 125_000);
         homeAfterReadRecovery = await get("/");
-      } finally {
-        Date.now = now;
-      }
 
-      // A read failing at a new state, then the state its last read was taken at again: the notice
-      // goes, since the pages show that state.
-      rmSync(object);
-      sh(second, "git", "tag", "t");
-      homeAfterTaggedFail = await get("/");
-      writeFileSync(object, bytes);
-      sh(second, "git", "tag", "-d", "t");
-      homeAfterRevert = await get("/");
+        // A read failing at a new state, then the state its last read was taken at again: the notice
+        // goes, since the pages show that state.
+        rmSync(object);
+        sh(second, "git", "tag", "t");
+        homeAfterTaggedFail = await get("/");
+        writeFileSync(object, bytes);
+        sh(second, "git", "tag", "-d", "t");
+        homeAfterRevert = await get("/");
+      } finally {
+        clock.mockRestore();
+      }
     }, testTimeout(120_000));
 
     test("shows an unreadable repository notice on every page and caches the initial build", () => {
@@ -4306,7 +4303,6 @@ describe("serve", () => {
     );
 
     test("rewrites markdown doc links in README with fragments and percent-encoding", () => {
-      // A link to another doc opens its page, the fragment kept.
       expect(readme).toContain('href="/spoke/doc/docs/guide/index.md#setup"');
       expect(readme).toContain('href="/spoke/doc/docs/c%23-notes"');
     });
@@ -4324,7 +4320,6 @@ describe("serve", () => {
     });
 
     test("redirects a doc address with a trailing slash while keeping its query string", () => {
-      // A doc's address with a slash leads to it.
       expect([slash.status, slash.headers.get("location")]).toEqual([
         302,
         "http://admin.localhost/spoke/doc/README?x=1",
@@ -4457,7 +4452,6 @@ describe("serve", () => {
         const built = readFileSync(join(out, `spoke/doc/${page}.html`), "utf8");
         const got = defined(servedPages.get(page), `page at ${page}`);
         expect(builtSiteFiles.has(`spoke/doc/${page}.html`)).toBe(false);
-        // A shell's scripts carry the nonce its policy names.
         const nonceMatch = got.match(/'nonce-([\w-]+)'/);
         expect(nonceMatch).not.toBeNull();
         const nonce = defined(defined(nonceMatch, "script nonce match")[1], "script nonce capture");
@@ -4835,15 +4829,39 @@ describe("catalog", () => {
   describe("needs-graph story links", () => {
     const graphPath = "/catalog/stories/Items/needs-graph/graph/";
     const graphHrefsExpected = [
-      "../../../Pages/decisions/default/#spoke:cache-folder",
-      "../../../Pages/decisions/default/#spoke:check-the-copy",
-      "../../../Pages/decisions/default/#spoke:name-the-command",
-      "../../../Pages/decisions/default/#spoke:pick-a-variant",
-      "../../../Pages/work/default/#spoke:goal",
-      "../../../Pages/work/default/#spoke:work-wire-the-gate",
+      "/catalog/stories/Pages/decisions/default/#spoke:cache-folder",
+      "/catalog/stories/Pages/decisions/default/#spoke:check-the-copy",
+      "/catalog/stories/Pages/decisions/default/#spoke:name-the-command",
+      "/catalog/stories/Pages/decisions/default/#spoke:pick-a-variant",
+      "/catalog/stories/Pages/work/default/#spoke:goal",
+      "/catalog/stories/Pages/work/default/#spoke:work-wire-the-gate",
     ];
     let graphStatus = 0;
     let graphHrefs: string[] = [];
+
+    test(
+      "every graph link in the Doc, Work, and standalone graph stories reaches an item row",
+      async () => {
+        for (const story of [
+          "Pages/doc/default",
+          "Pages/work/default",
+          "Items/needs-graph/graph",
+        ]) {
+          const path = `/catalog/stories/${story}/`;
+          const response = await get(path);
+          expect(response.status, path).toBe(200);
+          const links = [...(await response.text()).matchAll(/href="([^"]+)"><g class="node"/g)];
+          expect(links.length, path).toBeGreaterThan(0);
+          for (const [, href] of links) {
+            const target = new URL(defined(href, "graph href"), `http://admin.localhost${path}`);
+            const row = await get(target.pathname);
+            expect(row.status, target.href).toBe(200);
+            expect(await row.text()).toContain(`id="${target.hash.slice(1)}"`);
+          }
+        }
+      },
+      testTimeout(60_000),
+    );
 
     beforeAll(async () => {
       const graph = await get(graphPath);

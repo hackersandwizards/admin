@@ -29,9 +29,7 @@ const carded = options.some((o) => shots(o.key).length);
 // A card's label names its input by id, since the image's button stands before the input and a
 // label without `for` names its first button or input. "/" keeps it apart from a row's id.
 const cardId = (key: string) => `${k}/${key}`;
-// The options answer the item's question, which names their group for a screen reader.
 const group = i.multiple ? "group" : "radiogroup";
-// The item's own images, above the answer: what a review asks about is in view where it is answered.
 const loose = shots("");
 const score = (o: (typeof options)[number]) =>
   o.score === undefined ? "" : `${o.score}${o.noise === undefined ? "" : ` ± ${o.noise}`}`;
@@ -50,10 +48,8 @@ const due = i.due ? dueOf(i.due) : undefined;
 const html = withLinks(i.html);
 const lead = html.match(/^\s*<p>[\s\S]*?<\/p>/)?.[0] ?? "";
 const context = html.slice(lead.length).trim();
-// A decision written as an option's key reads as that option's label.
 const named = options.find((o) => o.key === i.decision?.trim());
 const decided = named ? `${named.label} (${named.key})` : i.decision;
-// What was assumed: the assumption, else on an assumed item its recommended options, every label.
 const assumed =
   i.assumption ??
   (i.status === "assumed"
@@ -62,7 +58,6 @@ const assumed =
         .map((o) => o.label)
         .join(", ") || undefined
     : undefined);
-// What a settled row's closed line says: what was assumed or decided, never the recommendation.
 const settledAs =
   i.status === "assumed"
     ? { label: "Assumed", text: assumed }

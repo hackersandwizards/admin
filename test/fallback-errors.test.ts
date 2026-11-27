@@ -1,5 +1,6 @@
 import { rejection } from "@hackersandwizards/scaffolding/rejection";
-import { readdir } from "node:fs/promises";
+import { chmod, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import { decodeHash } from "../site/src/filter-rules.ts";
 import { parseJson, parseRecord } from "../site/src/storage.ts";
@@ -64,6 +65,20 @@ test("findRepos propagates an unexpected directory read error", async () => {
   const read = vi.mocked(readdir).mockRejectedValue(failure);
   try {
     expect(await rejection(findRepos(import.meta.dirname))).toBe("Error: directory read denied");
+  } finally {
+    read.mockRestore();
+  }
+});
+
+test("findRepos skips an unreadable subfolder", async () => {
+  const root = join(import.meta.dirname, "fixtures");
+  const failure = Object.assign(new Error("directory read denied"), { code: "EACCES" });
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  const read = vi.mocked(readdir).mockImplementationOnce(actual.readdir).mockRejectedValue(failure);
+  try {
+    expect(await findRepos(root)).toEqual([]);
+    expect(read).toHaveBeenCalledWith(join(root, "spoke"), { withFileTypes: true });
+    expect(chmod).not.toHaveBeenCalled();
   } finally {
     read.mockRestore();
   }

@@ -432,6 +432,9 @@ describe("filter sentences and fragment navigation", () => {
       expected:
         "alpha:gone is no longer open: it was settled or finished, and its file is gone. Its history: git log --all -- docs/agent-work/items/gone.md in alpha.",
     },
+    { fragment: "alpha:docs/gone", found: false, expected: "" },
+    { fragment: "../alpha:gone", found: false, expected: "" },
+    { fragment: "alpha:gone:extra", found: false, expected: "" },
   ])("goneItemNotice($fragment, $found)", ({ fragment, found, expected }) => {
     expect(goneItemNotice(fragment, found)).toBe(expected);
   });

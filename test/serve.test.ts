@@ -363,15 +363,18 @@ describe("loadSiteForFile", () => {
 });
 
 describe("cold-start /_file/ error handling", () => {
-  test("propagates unexpected errors from pages() instead of swallowing them into 404", async () => {
+  test("answers 503 and logs an unexpected build error", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const restore = throwOnBuildSpawn(new TypeError("spawn denied"));
+    const failure = new TypeError("spawn denied");
+    const restore = throwOnBuildSpawn(failure);
     try {
       const hub = createHub({ root: scratch() });
-      const err = await rejection(
-        hub.fetch(new Request("http://admin.localhost/_file/spoke/README.md")),
+      const response = await hub.fetch(new Request("http://admin.localhost/_file/spoke/README.md"));
+      expect(response.status).toBe(503);
+      expect(await response.text()).toBe(
+        "The hub could not build its pages: spawn denied. It tries again a minute later, or once a repository changes.",
       );
-      expect(err).toContain("spawn denied");
+      expect(errSpy).toHaveBeenCalledWith(failure);
     } finally {
       restore();
       errSpy.mockRestore();

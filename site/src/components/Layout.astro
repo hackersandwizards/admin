@@ -70,10 +70,8 @@ const menu = repo
   : [
       { to: "index", label: "Needs a person", count: d.repos.reduce((n, r) => n + waiting(r), 0) },
       { to: "architecture", label: "Packages" },
-      // admin-serve serves the engine's own catalog there.
       { to: "/catalog/", label: "Catalog" },
     ];
-// A product page is its repo's own, so the switcher opens another repo's dashboard from it.
 const samePage = (r: Repo, from: Repo) => {
   if (r.key === from.key) return page.path;
   const to = r.prefix + (page.type === "doc" ? "docs" : page.path.slice(from.prefix.length));

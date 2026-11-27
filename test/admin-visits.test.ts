@@ -1,9 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { defined } from "@hackersandwizards/scaffolding/defined";
+import { Window } from "happy-dom";
 import { MemoryStorage, createStore } from "../site/src/storage.ts";
 import {
   isGoneItem,
   isStaleComment,
+  pruneAnswers,
   pruneStoredAnswers,
   pruneVersions,
   recordVisit,
@@ -127,6 +129,45 @@ describe("answer pruning predicates", () => {
     pruneStoredAnswers(store, { live, liveRepos, reportVersions: reports });
 
     expect(store.answerIds().sort()).toEqual(["alpha:gone-fresh", "alpha:item-1", "alpha:r#fresh"]);
+  });
+
+  test("pruneAnswers removes copied comments on deleted reports only from a full report list", async () => {
+    const window = new Window();
+    const document = window.document as unknown as Document;
+    try {
+      const store = createStore(new MemoryStorage(), "admin-answers:");
+      const copied = "2026-01-01T12:00:00.000Z";
+      store.setText("copied", copied);
+      store.writeJson("alpha:gone#old", { note: "Old note", at: copied });
+      store.writeJson("alpha:gone#fresh", { note: "New note", at: "2026-01-01T13:00:00.000Z" });
+      store.writeJson("beta:gone#old", { note: "Other note", at: copied });
+      store.writeJson("alpha:live#old", { note: "Live note", at: copied });
+      document.body.innerHTML =
+        '<table><tbody><tr data-report data-k="#alpha:live" data-version="v1"></tr></tbody></table>';
+
+      pruneAnswers(store, document);
+      expect(store.answerIds().sort()).toEqual([
+        "alpha:gone#fresh",
+        "alpha:gone#old",
+        "alpha:live#old",
+        "beta:gone#old",
+      ]);
+
+      const table = defined(document.querySelector("table"), "report table");
+      table.setAttribute("data-report-repo", "alpha");
+      pruneAnswers(store, document);
+      expect(store.answerIds().sort()).toEqual([
+        "alpha:gone#fresh",
+        "alpha:live#old",
+        "beta:gone#old",
+      ]);
+
+      table.replaceChildren();
+      pruneAnswers(store, document);
+      expect(store.answerIds().sort()).toEqual(["alpha:gone#fresh", "beta:gone#old"]);
+    } finally {
+      await window.happyDOM.close();
+    }
   });
 });
 
@@ -367,7 +408,7 @@ describe("recordVisit", () => {
     );
   });
 
-  test("stops without marking rows or overwriting versions when before holds invalid JSON", () => {
+  test("keeps corrupt history untouched during a visit and repairs it after the gap", () => {
     const mem = new MemoryStorage();
     const store = createStore(mem, "admin-answers:");
     const prev = Date.UTC(2026, 0, 2, 9, 30);
@@ -383,7 +424,24 @@ describe("recordVisit", () => {
     );
 
     expect(outcome).toEqual({ updatedSince: 0, changes: [] });
-    expect(store.readRecord("versions")).toEqual({ "alpha:item-1": "v1 q1" });
-    expect(store.getText("before")).toBe("{broken");
+    expect({
+      versions: store.readRecord("versions"),
+      before: store.getText("before"),
+      seen: store.getText("seen"),
+      visit: store.getText("visit"),
+    }).toEqual({
+      versions: { "alpha:item-1": "v1 q1" },
+      before: "{broken",
+      seen: String(prev),
+      visit: String(Date.UTC(2026, 0, 2, 7, 0)),
+    });
+
+    const next = Date.UTC(2026, 0, 2, 10, 45);
+    expect(recordVisit(store, { live, liveRepos, rows: [sampleRow] }, next)).toEqual({
+      updatedSince: prev,
+      changes: [{ changed: true, text: "question or options changed ·" }],
+    });
+    expect(store.readRecord("before")).toEqual({ "alpha:item-1": "v1 q1" });
+    expect(store.getText("seen")).toBe(String(next));
   });
 });
