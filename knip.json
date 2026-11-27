@@ -1,4 +1,3 @@
 {
-  "entry": ["site/src/admin.js!", "site/src/layout.css!", "site/src/pages/**/*.astro!"],
-  "vitest": true
+  "entry": ["site/src/admin.js!", "site/src/layout.css!", "site/src/pages/**/*.astro!"]
 }

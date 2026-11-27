@@ -43,7 +43,7 @@
   },
   "devDependencies": {
     "@hackersandwizards/brand": "git+https://github.com/hackersandwizards/brand.git#v2.30.1",
-    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.47.3",
+    "@hackersandwizards/scaffolding": "git+https://github.com/hackersandwizards/scaffolding.git#v5.47.4",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.5",
     "@types/bun": "1.4.5",
