@@ -22,9 +22,9 @@ for (const repo of repos.map((r) => resolve(r))) {
   const top = existsSync(repo) && git(repo, "rev-parse", "--show-toplevel").trim();
   const problem =
     top === false
-      ? "no such folder"
+      ? "The supplied folder does not exist, so the check cannot read its items. Pass an existing repository root to admin-check."
       : top && realpathSync(top) !== realpathSync(repo) && !existsSync(join(repo, WORK_DIR))
-        ? `not the repository's root, which is ${top}`
+        ? `Item paths are relative to the supplied folder. Pass the repository root ${top} to admin-check.`
         : "";
   if (problem) {
     console.error(`${repo}: ${problem}`);

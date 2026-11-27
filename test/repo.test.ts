@@ -66,7 +66,7 @@ describe("readRepo defect order", () => {
     });
 
     expect(repo.defects).toEqual([
-      "docs/agent-work/items/broken.md: no frontmatter between --- lines",
+      "docs/agent-work/items/broken.md: The check cannot read item fields without YAML frontmatter. Put the fields between two --- lines at the top of the item file.",
       "docs/agent-work/admin.json: ignored, package.json holds admin",
       'package.json: admin.name "../bad" is not letters, digits, ".", "_" and "-": its pages are under sample-repo',
       "package.json: admin.label is not text",

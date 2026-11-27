@@ -77,7 +77,9 @@ describe("admin-check", () => {
       `---\n${front}\noptions: foo\nimages:\n  - caption: x\n---\n# Odd\n`,
     );
     const repo = await readRepo(dir, treeSource(dir));
-    expect(repo.defects.join("\n")).toContain("odd.md: options is not a list");
+    expect(repo.defects.join("\n")).toContain(
+      "odd.md: Choices need a list. Write options as YAML list entries with key and label.",
+    );
     const out = join(scratch(), "out");
     await buildSite(siteData([repo]), out);
     expect(readFileSync(join(out, "r/decisions.html"), "utf8")).toContain("Odd");

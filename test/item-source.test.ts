@@ -77,20 +77,28 @@ describe("loadItemFile", () => {
       read: () => "---\nkind: goal\nstatus: open\norder: soon\n---\n# Odd",
       expected: {
         item: { ...emptyFields, id: "odd", kind: "goal", status: "open", title: "Odd", body: "" },
-        defects: ["order soon"],
+        defects: ["Order soon cannot sort the item. Use a number for order or omit it."],
       },
     },
     {
       label: "file with parse error",
       id: "bad",
       read: () => "No frontmatter",
-      expected: { defects: ["no frontmatter between --- lines"] },
+      expected: {
+        defects: [
+          "The check cannot read item fields without YAML frontmatter. Put the fields between two --- lines at the top of the item file.",
+        ],
+      },
     },
     {
       label: "unreadable file returning undefined",
       id: "missing",
       read: () => undefined,
-      expected: { defects: ["no frontmatter between --- lines"] },
+      expected: {
+        defects: [
+          "The check cannot read item fields without YAML frontmatter. Put the fields between two --- lines at the top of the item file.",
+        ],
+      },
     },
     {
       label: "reader throwing ItemError",
@@ -138,9 +146,9 @@ describe("legacyPathDefects", () => {
       "GOAL.md and docs/tracking files in order",
       ["docs/tracking/a.md", "GOAL.md", "docs/tracking/b.md"],
       [
-        "GOAL.md: legacy file, items live in docs/agent-work/items",
-        "docs/tracking/a.md: legacy folder, move it to docs/agent-work",
-        "docs/tracking/b.md: legacy folder, move it to docs/agent-work",
+        "GOAL.md: The hub reads goals as items. Move the goal to docs/agent-work/items/goal.md with kind: goal and status: open, then remove the legacy file.",
+        "docs/tracking/a.md: This file sits outside the agent-work layout. Move it to the matching path under docs/agent-work.",
+        "docs/tracking/b.md: This file sits outside the agent-work layout. Move it to the matching path under docs/agent-work.",
       ],
     ],
   ])("reports defects for %s", (_label, paths, expected) => {
@@ -221,11 +229,11 @@ describe("readItems defect ordering", () => {
 
     expect(items.map((item) => item.id)).toEqual(["alpha", "beta", "self"]);
     expect(defects).toEqual([
-      "docs/agent-work/items/gone/shot.png: no item gone.md",
-      "docs/agent-work/items/notes.txt: only <id>.md files and <id>/<image> belong in docs/agent-work/items",
-      "docs/agent-work/items/alpha.md: order late",
-      "GOAL.md: legacy file, items live in docs/agent-work/items",
-      "docs/tracking/old.md: legacy folder, move it to docs/agent-work",
+      "docs/agent-work/items/gone/shot.png: The hub has no item gone.md to attach this image to. Add that item beside the image folder or move the image out of the items directory.",
+      "docs/agent-work/items/notes.txt: The hub skips this path when reading items in docs/agent-work/items. Move the file out of the items directory or place it at <id>.md for an item or <id>/<image> for an item image.",
+      "docs/agent-work/items/alpha.md: Order late cannot sort the item. Use a number for order or omit it.",
+      "GOAL.md: The hub reads goals as items. Move the goal to docs/agent-work/items/goal.md with kind: goal and status: open, then remove the legacy file.",
+      "docs/tracking/old.md: This file sits outside the agent-work layout. Move it to the matching path under docs/agent-work.",
       "docs/agent-work/items/beta.md: needs closes a cycle (alpha → beta → alpha). Remove a prerequisite in this cycle",
       'docs/agent-work/items/beta.md: needs unknown item "missing". Use an id for an item in this repository, or remove this entry once the needed item is done',
       'docs/agent-work/items/self.md: needs itself. Remove "self"',

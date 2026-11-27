@@ -386,7 +386,9 @@ describe("item files", () => {
     "an item needs a title (%#)",
     (body) => {
       expect(() => parseItem("untitled", `---\nkind: goal\nstatus: open\n---\n${body}`)).toThrow(
-        new ItemError('body does not start with "# <title>"'),
+        new ItemError(
+          'The hub gets the item title from the first heading. Start the body after frontmatter with "# " followed by a nonempty title.',
+        ),
       );
     },
   );
@@ -396,19 +398,43 @@ describe("item files", () => {
   });
 
   test.each([
-    [{ priority: 4 }, "priority 4"],
-    [{ kind: "task" }, "kind task"],
-    [{ status: "done" }, "status done"],
-    [{ owner: undefined }, "lacks owner"],
-    [{ options: [{ key: "a", label: "A" }] }, "fewer than two options"],
-    [{ status: "decided" }, "decided without decision or by"],
-    [{ status: "assumed", recommended: undefined }, "assumed without"],
-    [{ due: "3 Nov" }, "not ISO"],
-    [{ id: "Bad_Id" }, "not lower-case kebab"],
-    [{ kind: "work", status: "assumed" }, "work is assumed"],
-    [{ kind: "goal", priority: 2 }, "goal has a priority"],
-    [{ recommended: ["a", "b"] }, "several recommended without multiple"],
-    [{ multiple: "yes" }, "multiple yes is not true or false"],
+    [{ priority: 4 }, "Priority 4 cannot rank this item. Set priority to the number 1, 2 or 3."],
+    [{ kind: "task" }, "Kind task is unsupported. Set kind to decision, review, work or goal."],
+    [{ status: "done" }, "Status done is unsupported. Set status to open, assumed or decided."],
+    [{ owner: undefined }, "No one is assigned to move this item. Set owner in the frontmatter."],
+    [
+      { options: [{ key: "a", label: "A" }] },
+      "An open decision needs at least two options for a choice. Add entries under options or set kind to review for a review request.",
+    ],
+    [{ status: "decided" }, "Record what was decided and who decided it. Fill in decision and by."],
+    [
+      { status: "assumed", recommended: undefined },
+      "The hub shows what was assumed. Fill in assumption or recommended.",
+    ],
+    [
+      { due: "3 Nov" },
+      "Due date 3 Nov is unusable for sorting. Set due to a valid YYYY-MM-DD date.",
+    ],
+    [
+      { id: "Bad_Id" },
+      "Item id Bad_Id cannot be used as a valid item reference. Rename the Markdown file using lowercase ASCII letters, digits or hyphens and start the id with a letter or digit.",
+    ],
+    [
+      { kind: "work", status: "assumed" },
+      "A work item has status assumed. Set status to open, the only state for work and goals.",
+    ],
+    [
+      { kind: "goal", priority: 2 },
+      "Goals must use the default priority. Remove priority from the frontmatter.",
+    ],
+    [
+      { recommended: ["a", "b"] },
+      "Multiple picks need opt-in. Set multiple to true or keep one recommendation.",
+    ],
+    [
+      { multiple: "yes" },
+      "Multiple value yes does not specify whether several choices are allowed. Set multiple to true or false in the frontmatter.",
+    ],
     [
       {
         options: [
@@ -416,7 +442,7 @@ describe("item files", () => {
           { key: "b", label: "B" },
         ],
       },
-      "score 8",
+      "Option a has a score of 8, which cannot be used as a numeric review score. Set score to a number.",
     ],
     [
       {
@@ -425,10 +451,16 @@ describe("item files", () => {
           { key: "b", label: "B" },
         ],
       },
-      "noise without",
+      "Noise requires a score for option a. Set both to numbers or omit noise.",
     ],
-    [{ images: [{ src: "x.jpg", alt: "x" }] }, "is not a path or {src, caption}"],
-    [{ images: { a: [{ caption: "no src" }] } }, "is not a path or {src, caption}"],
+    [
+      { images: [{ src: "x.jpg", alt: "x" }] },
+      'The hub cannot read the image entry {"src":"x.jpg","alt":"x"}. Use a path string or an object with a string src and an optional string caption.',
+    ],
+    [
+      { images: { a: [{ caption: "no src" }] } },
+      'The hub cannot read the image entry {"caption":"no src"}. Use a path string or an object with a string src and an optional string caption.',
+    ],
   ] as [Partial<Item>, string][])("defect %#: %o", (change, message) => {
     const defects = itemDefects({ ...valid, ...change } as Item, exists);
     expect(defects.join("\n")).toContain(message);
@@ -437,22 +469,26 @@ describe("item files", () => {
   test("a missing image is a defect; a bare name lies in the item's own folder", () => {
     const item = { ...valid, images: { a: "docs/x.jpg", b: [{ src: "y.jpg", caption: "dark" }] } };
     expect(itemDefects(item, () => false)).toEqual([
-      "image docs/x.jpg not found",
-      "image docs/agent-work/items/a-question/y.jpg not found",
+      "The hub cannot display image docs/x.jpg. Add the missing file or fix its path in images.",
+      "The hub cannot display image docs/agent-work/items/a-question/y.jpg. Add the missing file or fix its path in images.",
     ]);
   });
 
   test("an item without page: the field is gone", () => {
     expect(() =>
       parseItem("x", "---\nkind: review\npage: docs/p/index.html\n---\n\n# T\n"),
-    ).toThrow("unknown field page");
+    ).toThrow(
+      "Unrecognized item fields: page. Remove them or use a supported field from docs/items.md.",
+    );
   });
 
   test.each([
     {
       label: "out-of-range ISO month and day",
       change: { due: "2026-13-45" },
-      expected: ["due 2026-13-45 not ISO"],
+      expected: [
+        "Due date 2026-13-45 is unusable for sorting. Set due to a valid YYYY-MM-DD date.",
+      ],
     },
     {
       label: "leap-day ISO due date",
@@ -462,7 +498,7 @@ describe("item files", () => {
     {
       label: "object-valued area on an otherwise valid item",
       change: { area: { a: 1 } },
-      expected: ["area is not text"],
+      expected: ["area needs text for display. Use a string or number."],
     },
     {
       label: "plain text area",
@@ -477,7 +513,9 @@ describe("item files", () => {
           { key: "b", label: "B" },
         ],
       },
-      expected: ["option a label or detail is not text"],
+      expected: [
+        "The hub needs text to display the label and detail for option a. Set label and any detail to strings or numbers.",
+      ],
     },
     {
       label: "option key containing a comma",
@@ -488,7 +526,9 @@ describe("item files", () => {
         ],
         recommended: "b",
       },
-      expected: ['option 1 key "a,b" is not one word'],
+      expected: [
+        'Option 1 has an invalid reference key "a,b". Set its key to a string or number without whitespace or commas.',
+      ],
     },
     {
       // A numeric key is the key an images mapping names, 0 included.
@@ -533,7 +573,7 @@ describe("item files", () => {
         "---\nkind: review\nstatus: open\npriority: 2\nowner: Alex\nimages: [docs/agent-work/2026-01-01-r]\n---\n# Shot\n",
     });
     expect(found).toEqual([
-      "docs/agent-work/items/shot.md: image docs/agent-work/2026-01-01-r not found",
+      "docs/agent-work/items/shot.md: The hub cannot display image docs/agent-work/2026-01-01-r. Add the missing file or fix its path in images.",
     ]);
   });
 
@@ -543,7 +583,9 @@ describe("item files", () => {
       read: () =>
         '---\nkind: work\nstatus: open\n"priority": 2\nowner: Alex\noptions:\n  - key: a\n    label: A\n  - key: b\n    label: B\npriority: 3\n---\n# Twice\n',
     });
-    expect(defects).toEqual(["docs/agent-work/items/twice.md: repeated field priority"]);
+    expect(defects).toEqual([
+      "docs/agent-work/items/twice.md: Repeated frontmatter fields overwrite earlier values: priority. Keep each listed field once with the intended value.",
+    ]);
   });
 
   test("the first heading supplies the title even when it ends the file", () => {
@@ -558,21 +600,48 @@ describe("item files", () => {
   });
 
   test.each([
-    ["An introduction\n---\nkind: work\n---\n# Move", "no frontmatter"],
-    ["---\n[work, open]\n---\n# Move", "frontmatter is not a mapping"],
-    ["---\nwork\n---\n# Move", "frontmatter is not a mapping"],
-    ["---\n[unfinished\n---\n# Move", "frontmatter:"],
-    ["---\nkind: work\n---\nIntro first.\n# Move", 'body does not start with "# <title>"'],
-    ["---\ncolour: red\nsize: big\n---\n# Move", "unknown field colour, size"],
-    ["---\nkind: work\nkind : review\n---\n# Move", "repeated field kind"],
+    [
+      "An introduction\n---\nkind: work\n---\n# Move",
+      "The check cannot read item fields without YAML frontmatter. Put the fields between two --- lines at the top of the item file.",
+    ],
+    [
+      "---\n[work, open]\n---\n# Move",
+      "The check reads item fields from a YAML mapping. Write each frontmatter field as a key-value pair, such as kind: goal.",
+    ],
+    [
+      "---\nwork\n---\n# Move",
+      "The check reads item fields from a YAML mapping. Write each frontmatter field as a key-value pair, such as kind: goal.",
+    ],
+    [
+      "---\n[unfinished\n---\n# Move",
+      "frontmatter: YAML Parse error: Unexpected token. Correct the YAML between the opening and closing --- lines in the item file.",
+    ],
+    [
+      "---\nkind: work\n---\nIntro first.\n# Move",
+      'The hub gets the item title from the first heading. Start the body after frontmatter with "# " followed by a nonempty title.',
+    ],
+    [
+      "---\ncolour: red\nsize: big\n---\n# Move",
+      "Unrecognized item fields: colour, size. Remove them or use a supported field from docs/items.md.",
+    ],
+    [
+      "---\nkind: work\nkind : review\n---\n# Move",
+      "Repeated frontmatter fields overwrite earlier values: kind. Keep each listed field once with the intended value.",
+    ],
   ])("reports the defect in an item file (%#)", (text, message) => {
     expect(() => parseItem("move", text)).toThrow(message);
   });
 
   test.each([
-    [{ order: "first" }, "order first"],
-    [{ options: "" }, "options is not a list"],
-    [{ options: [null, { key: "b", label: "B" }] }, "option 1 lacks key or label"],
+    [{ order: "first" }, "Order first cannot sort the item. Use a number for order or omit it."],
+    [
+      { options: "" },
+      "Choices need a list. Write options as YAML list entries with key and label.",
+    ],
+    [
+      { options: [null, { key: "b", label: "B" }] },
+      "Option 1 needs a key for references and a label to display. Fill in both fields on that options entry.",
+    ],
     [
       {
         options: [
@@ -580,7 +649,7 @@ describe("item files", () => {
           { key: "b", label: "B" },
         ],
       },
-      "option 1 lacks key or label",
+      "Option 1 needs a key for references and a label to display. Fill in both fields on that options entry.",
     ],
     [
       {
@@ -589,7 +658,7 @@ describe("item files", () => {
           { key: null, label: "B" },
         ],
       },
-      "option 2 lacks key or label",
+      "Option 2 needs a key for references and a label to display. Fill in both fields on that options entry.",
     ],
     [
       {
@@ -598,7 +667,7 @@ describe("item files", () => {
           { key: "b", label: "B" },
         ],
       },
-      "option a label or detail is not text",
+      "The hub needs text to display the label and detail for option a. Set label and any detail to strings or numbers.",
     ],
     [
       {
@@ -607,11 +676,20 @@ describe("item files", () => {
           { key: "b", label: "B" },
         ],
       },
-      "option a noise without a numeric score",
+      "Noise requires a score for option a. Set both to numbers or omit noise.",
     ],
-    [{ status: "decided", decision: "Use A" }, "decided without decision or by"],
-    [{ status: "decided", by: "Alex" }, "decided without decision or by"],
-    [{ images: "one.png" }, "images is neither a list nor a mapping"],
+    [
+      { status: "decided", decision: "Use A" },
+      "Record what was decided and who decided it. Fill in decision and by.",
+    ],
+    [
+      { status: "decided", by: "Alex" },
+      "Record what was decided and who decided it. Fill in decision and by.",
+    ],
+    [
+      { images: "one.png" },
+      "The hub groups images by item or option. Use a list or mapping in images.",
+    ],
   ])("reports a malformed item field (%#)", (change, message) => {
     expect(itemDefects({ ...valid, ...change } as Item, exists)).toContain(message);
   });

@@ -43,11 +43,17 @@ export function legacyPathDefects(paths: readonly string[]): string[] {
   const has = new Set(paths);
   const defects: string[] = [];
   for (const p of LEGACY) {
-    if (has.has(p)) defects.push(`${p}: legacy file, items live in ${ITEMS_DIR}`);
+    if (has.has(p))
+      defects.push(
+        `${p}: The hub reads goals as items. Move the goal to ${ITEMS_DIR}/goal.md with kind: goal and status: open, then remove the legacy file.`,
+      );
   }
   // The folder was renamed: a file left at the old path would vanish from every page unnoticed.
   for (const p of paths) {
-    if (p.startsWith("docs/tracking/")) defects.push(`${p}: legacy folder, move it to ${WORK_DIR}`);
+    if (p.startsWith("docs/tracking/"))
+      defects.push(
+        `${p}: This file sits outside the agent-work layout. Move it to the matching path under ${WORK_DIR}.`,
+      );
   }
   return defects;
 }
@@ -93,11 +99,15 @@ export function readItems(src: Source): ReadItems {
     if (entry.kind === "outside") continue;
     if (entry.kind === "image") {
       if (!has.has(`${ITEMS_DIR}/${entry.ownerId}.md`))
-        defects.push(`${p}: no item ${entry.ownerId}.md`);
+        defects.push(
+          `${p}: The hub has no item ${entry.ownerId}.md to attach this image to. Add that item beside the image folder or move the image out of the items directory.`,
+        );
       continue;
     }
     if (entry.kind === "stray") {
-      defects.push(`${p}: only <id>.md files and <id>/<image> belong in ${ITEMS_DIR}`);
+      defects.push(
+        `${p}: The hub skips this path when reading items in ${ITEMS_DIR}. Move the file out of the items directory or place it at <id>.md for an item or <id>/<image> for an item image.`,
+      );
       continue;
     }
     const loaded = loadItemFile(entry.id, () => src.read(p), exists);

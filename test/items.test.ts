@@ -34,11 +34,31 @@ describe("parseFrontmatter", () => {
   });
 
   test.each([
-    ["invalid YAML syntax", "[unfinished", /^frontmatter:/],
-    ["sequence instead of mapping", "[work, open]", "frontmatter is not a mapping"],
-    ["scalar instead of mapping", "work", "frontmatter is not a mapping"],
-    ["unknown fields", "colour: red\nsize: big", "unknown field colour, size"],
-    ["repeated top-level field", 'kind: work\n"kind": review', "repeated field kind"],
+    [
+      "invalid YAML syntax",
+      "[unfinished",
+      "frontmatter: YAML Parse error: Unexpected token. Correct the YAML between the opening and closing --- lines in the item file.",
+    ],
+    [
+      "sequence instead of mapping",
+      "[work, open]",
+      "The check reads item fields from a YAML mapping. Write each frontmatter field as a key-value pair, such as kind: goal.",
+    ],
+    [
+      "scalar instead of mapping",
+      "work",
+      "The check reads item fields from a YAML mapping. Write each frontmatter field as a key-value pair, such as kind: goal.",
+    ],
+    [
+      "unknown fields",
+      "colour: red\nsize: big",
+      "Unrecognized item fields: colour, size. Remove them or use a supported field from docs/items.md.",
+    ],
+    [
+      "repeated top-level field",
+      'kind: work\n"kind": review',
+      "Repeated frontmatter fields overwrite earlier values: kind. Keep each listed field once with the intended value.",
+    ],
   ])("rejects %s with an ItemError", (_label, yaml, message) => {
     expect(() => parseFrontmatter(yaml)).toThrow(ItemError);
     expect(() => parseFrontmatter(yaml)).toThrow(message);
@@ -67,7 +87,9 @@ describe("splitItemBody", () => {
     ["blank heading", "#  \t\n\nBody"],
   ])("rejects %s without a leading heading", (_label, markdown) => {
     expect(() => splitItemBody(markdown)).toThrow(
-      new ItemError('body does not start with "# <title>"'),
+      new ItemError(
+        'The hub gets the item title from the first heading. Start the body after frontmatter with "# " followed by a nonempty title.',
+      ),
     );
   });
 });

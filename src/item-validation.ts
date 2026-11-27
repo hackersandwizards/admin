@@ -27,34 +27,48 @@ const optionKey = (v: unknown) => (v == null || v === "" ? undefined : String(v)
 const isPriority = (v: unknown): v is number => [1, 2, 3].includes(v as number);
 
 export function priorityDefects(kind: Item["kind"], priority: unknown): string[] {
-  if (kind === "goal") return priority !== undefined ? ["goal has a priority"] : [];
-  return isPriority(priority) ? [] : [`priority ${priority}`];
+  if (kind === "goal")
+    return priority !== undefined
+      ? ["Goals must use the default priority. Remove priority from the frontmatter."]
+      : [];
+  return isPriority(priority)
+    ? []
+    : [`Priority ${priority} cannot rank this item. Set priority to the number 1, 2 or 3.`];
 }
 
 export function coreFieldDefects(
   item: Pick<Item, "id" | "kind" | "status" | "priority" | "order" | "owner">,
 ): string[] {
   const defects: string[] = [];
-  if (!ITEM_ID.test(item.id)) defects.push(`id ${item.id} is not lower-case kebab`);
-  if (!KINDS.includes(item.kind)) defects.push(`kind ${item.kind}`);
-  if (!STATUSES.includes(item.status)) defects.push(`status ${item.status}`);
+  if (!ITEM_ID.test(item.id))
+    defects.push(
+      `Item id ${item.id} cannot be used as a valid item reference. Rename the Markdown file using lowercase ASCII letters, digits or hyphens and start the id with a letter or digit.`,
+    );
+  if (!KINDS.includes(item.kind))
+    defects.push(`Kind ${item.kind} is unsupported. Set kind to decision, review, work or goal.`);
+  if (!STATUSES.includes(item.status))
+    defects.push(`Status ${item.status} is unsupported. Set status to open, assumed or decided.`);
   defects.push(...priorityDefects(item.kind, item.priority));
   if (item.order !== undefined && typeof item.order !== "number")
-    defects.push(`order ${item.order}`);
-  if (item.kind !== "goal" && !item.owner) defects.push("lacks owner");
+    defects.push(`Order ${item.order} cannot sort the item. Use a number for order or omit it.`);
+  if (item.kind !== "goal" && !item.owner)
+    defects.push("No one is assigned to move this item. Set owner in the frontmatter.");
   return defects;
 }
 
 export function textFieldDefects(item: Pick<Item, (typeof TEXTS)[number]>): string[] {
   const defects: string[] = [];
   for (const field of TEXTS) {
-    if (item[field] !== undefined && !isText(item[field])) defects.push(`${field} is not text`);
+    if (item[field] !== undefined && !isText(item[field]))
+      defects.push(`${field} needs text for display. Use a string or number.`);
   }
   return defects;
 }
 
 export function dueDefects(due: unknown): string[] {
-  return due !== undefined && !isDay(due) ? [`due ${due} not ISO`] : [];
+  return due !== undefined && !isDay(due)
+    ? [`Due date ${due} is unusable for sorting. Set due to a valid YYYY-MM-DD date.`]
+    : [];
 }
 
 export function topicDefects(topic: unknown, exists: (path: string) => boolean): string[] {
@@ -89,7 +103,11 @@ export function parseNeeds(raw: unknown): { value: string[] | undefined; defects
 }
 
 export function openKindDefects(kind: Item["kind"], status: Item["status"]): string[] {
-  return (kind === "work" || kind === "goal") && status !== "open" ? [`${kind} is ${status}`] : [];
+  return (kind === "work" || kind === "goal") && status !== "open"
+    ? [
+        `A ${kind} item has status ${status}. Set status to open, the only state for work and goals.`,
+      ]
+    : [];
 }
 
 export function openDecisionDefects(
@@ -98,18 +116,20 @@ export function openDecisionDefects(
   optionCount: number,
 ): string[] {
   return kind === "decision" && status === "open" && optionCount < 2
-    ? ["open decision with fewer than two options (a review request is kind: review)"]
+    ? [
+        "An open decision needs at least two options for a choice. Add entries under options or set kind to review for a review request.",
+      ]
     : [];
 }
 
 export function optionEntryDefect(option: unknown, index: number): string | undefined {
   const o = option as Partial<Option> | null | undefined;
   if (o == null || !optionKey(o.key) || !optionKey(o.label))
-    return `option ${index + 1} lacks key or label`;
+    return `Option ${index + 1} needs a key for references and a label to display. Fill in both fields on that options entry.`;
   if (!isText(o.key) || /[\s,]/.test(String(o.key)))
-    return `option ${index + 1} key ${JSON.stringify(o.key)} is not one word`;
+    return `Option ${index + 1} has an invalid reference key ${JSON.stringify(o.key)}. Set its key to a string or number without whitespace or commas.`;
   if (!isText(o.label) || (o.detail !== undefined && !isText(o.detail)))
-    return `option ${o.key} label or detail is not text`;
+    return `The hub needs text to display the label and detail for option ${o.key}. Set label and any detail to strings or numbers.`;
   return undefined;
 }
 
@@ -122,7 +142,11 @@ export function parseOptions(raw: unknown): {
 } {
   if (raw == null) return { value: undefined, keys: [], defects: [] };
   if (!Array.isArray(raw))
-    return { value: undefined, keys: [], defects: ["options is not a list"] };
+    return {
+      value: undefined,
+      keys: [],
+      defects: ["Choices need a list. Write options as YAML list entries with key and label."],
+    };
   const entries = raw as RawOption[];
   const keys = entries.map((o) => optionKey(o?.key));
   const defects: string[] = [];
@@ -130,7 +154,10 @@ export function parseOptions(raw: unknown): {
     const defect = optionEntryDefect(o, i);
     if (defect) defects.push(defect);
   });
-  if (new Set(keys).size !== keys.length) defects.push("duplicate option key");
+  if (new Set(keys).size !== keys.length)
+    defects.push(
+      "Duplicate option keys make references ambiguous. Give each options entry a unique key and update any recommended or images references to the renamed key.",
+    );
   const value: Option[] = entries
     .filter((o): o is NonNullable<RawOption> => Boolean(optionKey(o?.key)))
     .map((o) => ({
@@ -161,11 +188,15 @@ export function recommendationDefects(
 ): string[] {
   const defects: string[] = [];
   if (multiple !== undefined && typeof multiple !== "boolean")
-    defects.push(`multiple ${multiple} is not true or false`);
+    defects.push(
+      `Multiple value ${multiple} does not specify whether several choices are allowed. Set multiple to true or false in the frontmatter.`,
+    );
   const recommended = parseRecommended(rawRecommended, defects) ?? [];
-  if (recommended.length > 1 && !multiple) defects.push("several recommended without multiple");
+  if (recommended.length > 1 && !multiple)
+    defects.push("Multiple picks need opt-in. Set multiple to true or keep one recommendation.");
   for (const r of recommended) {
-    if (!keys.includes(r)) defects.push(`recommended ${r} is not an option`);
+    if (!keys.includes(r))
+      defects.push(`Recommended key ${r} has no choice. Use an option key in recommended.`);
   }
   return defects;
 }
@@ -175,9 +206,13 @@ export function optionScoreDefects(options: unknown): string[] {
   const defects: string[] = [];
   for (const o of options as RawOption[]) {
     if (o?.score !== undefined && typeof o.score !== "number")
-      defects.push(`option ${String(o.key)} score ${String(o.score)} is not a number`);
+      defects.push(
+        `Option ${String(o.key)} has a score of ${String(o.score)}, which cannot be used as a numeric review score. Set score to a number.`,
+      );
     if (o?.noise !== undefined && (typeof o.noise !== "number" || o.score === undefined))
-      defects.push(`option ${String(o.key)} noise without a numeric score`);
+      defects.push(
+        `Noise requires a score for option ${String(o.key)}. Set both to numbers or omit noise.`,
+      );
   }
   return defects;
 }
@@ -188,9 +223,9 @@ export function settledStatusDefects(
   const defects: string[] = [];
   const recommended = parseRecommended(item.recommended) ?? [];
   if (item.status === "assumed" && !item.assumption && !recommended.length)
-    defects.push("assumed without assumption or recommended");
+    defects.push("The hub shows what was assumed. Fill in assumption or recommended.");
   if (item.status === "decided" && (!item.decision || !item.by))
-    defects.push("decided without decision or by");
+    defects.push("Record what was decided and who decided it. Fill in decision and by.");
   return defects;
 }
 
@@ -206,9 +241,10 @@ export function imageEntryDefect(
     !["string", "undefined"].includes(typeof caption) ||
     Object.keys(rest).length
   )
-    return `image ${JSON.stringify(image)} is not a path or {src, caption}`;
+    return `The hub cannot read the image entry ${JSON.stringify(image)}. Use a path string or an object with a string src and an optional string caption.`;
   const path = imagePath(itemId, src);
-  if (!exists(path)) return `image ${path} not found`;
+  if (!exists(path))
+    return `The hub cannot display image ${path}. Add the missing file or fix its path in images.`;
   return undefined;
 }
 
@@ -218,13 +254,17 @@ export function imageDefects(
   exists: (path: string) => boolean,
 ): string[] {
   const images = item.images ?? [];
-  if (typeof images !== "object") return ["images is neither a list nor a mapping"];
+  if (typeof images !== "object")
+    return ["The hub groups images by item or option. Use a list or mapping in images."];
   const groups: [string | undefined, unknown][] = Array.isArray(images)
     ? [[undefined, images]]
     : Object.entries(images);
   const defects: string[] = [];
   for (const [k, value] of groups) {
-    if (k !== undefined && !keys.includes(k)) defects.push(`image key ${k} is not an option`);
+    if (k !== undefined && !keys.includes(k))
+      defects.push(
+        `Image key ${k} has no matching choice. Use a key from options in the images mapping or use an images list for the item as a whole.`,
+      );
     for (const image of [value].flat()) {
       const defect = imageEntryDefect(item.id, image, exists);
       if (defect) defects.push(defect);

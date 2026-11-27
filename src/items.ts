@@ -64,19 +64,29 @@ export function parseFrontmatter(yaml: string): Partial<Item> {
   try {
     front = (Bun.YAML.parse(yaml) ?? {}) as Record<string, unknown>;
   } catch (e) {
-    throw new ItemError(`frontmatter: ${(e as Error).message}`);
+    throw new ItemError(
+      `frontmatter: ${(e as Error).message}. Correct the YAML between the opening and closing --- lines in the item file.`,
+    );
   }
   if (typeof front !== "object" || Array.isArray(front))
-    throw new ItemError("frontmatter is not a mapping");
+    throw new ItemError(
+      "The check reads item fields from a YAML mapping. Write each frontmatter field as a key-value pair, such as kind: goal.",
+    );
   const unknown = Object.keys(front).filter((k) => !FIELDS.includes(k));
-  if (unknown.length) throw new ItemError(`unknown field ${unknown.join(", ")}`);
+  if (unknown.length)
+    throw new ItemError(
+      `Unrecognized item fields: ${unknown.join(", ")}. Remove them or use a supported field from docs/items.md.`,
+    );
   // The parser keeps a repeated key's last value without a word; a top-level key starts a line.
   const keys = [...yaml.matchAll(/^(["']?)([\w-]+)\1[ \t]*:/gm)].map(([line, , key]) => {
     if (key === undefined) throw new ItemError(`frontmatter key missing: ${line}`);
     return key;
   });
   const repeated = [...new Set(keys.filter((k, i) => keys.indexOf(k) !== i))];
-  if (repeated.length) throw new ItemError(`repeated field ${repeated.join(", ")}`);
+  if (repeated.length)
+    throw new ItemError(
+      `Repeated frontmatter fields overwrite earlier values: ${repeated.join(", ")}. Keep each listed field once with the intended value.`,
+    );
   return front as Partial<Item>;
 }
 
@@ -84,13 +94,19 @@ export function splitItemBody(markdown: string): { title: string; body: string }
   const rest = markdown.replace(/^\s*\n/, "");
   const heading = rest.match(/^# ([^\r\n]+)\n?/);
   const title = heading?.[1]?.trim();
-  if (!heading || !title) throw new ItemError('body does not start with "# <title>"');
+  if (!heading || !title)
+    throw new ItemError(
+      'The hub gets the item title from the first heading. Start the body after frontmatter with "# " followed by a nonempty title.',
+    );
   return { title, body: rest.slice(heading[0].length).trim() };
 }
 
 export function parseItem(id: string, text: string): Item {
   const m = text.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
-  if (!m) throw new ItemError("no frontmatter between --- lines");
+  if (!m)
+    throw new ItemError(
+      "The check cannot read item fields without YAML frontmatter. Put the fields between two --- lines at the top of the item file.",
+    );
   const [, yaml, markdown] = m;
   if (yaml === undefined) throw new ItemError(`${id}: frontmatter capture missing`);
   const front = parseFrontmatter(yaml);

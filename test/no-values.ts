@@ -18,22 +18,46 @@ const walk = (dir: string): string[] =>
 const files = process.argv.slice(2).length
   ? process.argv.slice(2)
   : [...walk(join(root, "site/src")), ...walk(join(root, "catalog")), ...walk(join(root, "src"))];
-const RULES: [RegExp, string][] = [
-  [/#[0-9a-f]{3,8}\b(?![\w-])/gi, "colour literal"],
-  [/\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color-mix)\(/gi, "colour function"],
-  [/(?<![\w-])--(?!hw-)[\w-]+\s*:/g, "custom property defined"],
-  [/--hw-[\w-]+\s*:(?!\s*var\(--)/g, "--hw-* set to something other than a brand token"],
-  [/[\w:-]-\[[^\]]*\d[^\]]*\]/g, "Tailwind arbitrary value"],
-  [/style="[^"]*\d(?:px|rem|em|pt|%)/g, "length in a style attribute"],
+const RULES: [RegExp, string, string][] = [
+  [
+    /#[0-9a-f]{3,8}\b(?![\w-])/gi,
+    "colour literal",
+    "Use a shared colour token such as var(--foreground) so the colour follows the theme.",
+  ],
+  [
+    /\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color-mix)\(/gi,
+    "colour function",
+    "Use a shared colour token such as var(--foreground) so the colour follows the theme.",
+  ],
+  [
+    /(?<![\w-])--(?!hw-)[\w-]+\s*:/g,
+    "custom property defined",
+    "Remove the local declaration and use a shared token where it was consumed so design values have one source.",
+  ],
+  [
+    /--hw-[\w-]+\s*:(?!\s*var\(--)/g,
+    "--hw-* set to something other than a brand token",
+    "Set the element property with var() around a shared token so the override follows the theme.",
+  ],
+  [
+    /[\w:-]-\[[^\]]*\d[^\]]*\]/g,
+    "Tailwind arbitrary value",
+    "Replace the class with a token-backed utility so the value comes from the shared scale.",
+  ],
+  [
+    /style="[^"]*\d(?:px|rem|em|pt|%)/g,
+    "length in a style attribute",
+    "Use a shared spacing utility to keep spacing on the shared scale, or move a shell layout length into site/src/layout.css.",
+  ],
 ];
 let found = 0;
 for (const file of files) {
   const text = readFileSync(file, "utf8").replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
-  for (const [re, what] of RULES)
+  for (const [re, what, fix] of RULES)
     for (const m of text.matchAll(re)) {
       // A URL fragment or an HTML entity is no colour.
       if (what === "colour literal" && /[&"'`/]$/.test(text.slice(0, m.index).slice(-1))) continue;
-      console.error(`${file.replace(root + "/", "")}: ${what}: ${m[0]}`);
+      console.error(`${file.replace(root + "/", "")}: ${what}: ${m[0]}. ${fix}`);
       found++;
     }
 }

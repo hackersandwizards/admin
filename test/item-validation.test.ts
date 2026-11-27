@@ -66,27 +66,27 @@ describe("itemDefects ordering", () => {
     } as unknown as Item;
 
     expect(itemDefects(broken, () => false)).toEqual([
-      "id Bad_Id is not lower-case kebab",
-      "priority 9",
-      "order first",
-      "lacks owner",
-      "area is not text",
-      "evidence is not text",
-      "due 2026-02-30 not ISO",
+      "Item id Bad_Id cannot be used as a valid item reference. Rename the Markdown file using lowercase ASCII letters, digits or hyphens and start the id with a letter or digit.",
+      "Priority 9 cannot rank this item. Set priority to the number 1, 2 or 3.",
+      "Order first cannot sort the item. Use a number for order or omit it.",
+      "No one is assigned to move this item. Set owner in the frontmatter.",
+      "area needs text for display. Use a string or number.",
+      "evidence needs text for display. Use a string or number.",
+      "Due date 2026-02-30 is unusable for sorting. Set due to a valid YYYY-MM-DD date.",
       "topic report docs/agent-work/2026-01-15-missing.md not found. Add the report or correct topic",
       "needs entry 1 must be a string. Use an item id",
       'needs has duplicate item "dep". Remove entry 3',
-      'option 3 key "b c" is not one word',
-      "option d label or detail is not text",
-      "option 5 lacks key or label",
-      "duplicate option key",
-      "several recommended without multiple",
-      "recommended missing is not an option",
-      "option a score high is not a number",
-      "option a noise without a numeric score",
-      "image docs/agent-work/items/Bad_Id/missing.png not found",
-      "image key ghost is not an option",
-      'image {"src":5} is not a path or {src, caption}',
+      'Option 3 has an invalid reference key "b c". Set its key to a string or number without whitespace or commas.',
+      "The hub needs text to display the label and detail for option d. Set label and any detail to strings or numbers.",
+      "Option 5 needs a key for references and a label to display. Fill in both fields on that options entry.",
+      "Duplicate option keys make references ambiguous. Give each options entry a unique key and update any recommended or images references to the renamed key.",
+      "Multiple picks need opt-in. Set multiple to true or keep one recommendation.",
+      "Recommended key missing has no choice. Use an option key in recommended.",
+      "Option a has a score of high, which cannot be used as a numeric review score. Set score to a number.",
+      "Noise requires a score for option a. Set both to numbers or omit noise.",
+      "The hub cannot display image docs/agent-work/items/Bad_Id/missing.png. Add the missing file or fix its path in images.",
+      "Image key ghost has no matching choice. Use a key from options in the images mapping or use an images list for the item as a whole.",
+      'The hub cannot read the image entry {"src":5}. Use a path string or an object with a string src and an optional string caption.',
     ]);
   });
 
@@ -105,12 +105,12 @@ describe("itemDefects ordering", () => {
         body: "",
       },
       [
-        "goal has a priority",
+        "Goals must use the default priority. Remove priority from the frontmatter.",
         "topic must be a plain report name: YYYY-MM-DD- followed by lower-case letters, digits and hyphens, without .md. Rename the report or correct the field",
-        "goal is assumed",
-        "options is not a list",
-        "assumed without assumption or recommended",
-        "images is neither a list nor a mapping",
+        "A goal item has status assumed. Set status to open, the only state for work and goals.",
+        "Choices need a list. Write options as YAML list entries with key and label.",
+        "The hub shows what was assumed. Fill in assumption or recommended.",
+        "The hub groups images by item or option. Use a list or mapping in images.",
       ],
     ],
     [
@@ -121,8 +121,8 @@ describe("itemDefects ordering", () => {
         multiple: "yes",
       },
       [
-        "open decision with fewer than two options (a review request is kind: review)",
-        "multiple yes is not true or false",
+        "An open decision needs at least two options for a choice. Add entries under options or set kind to review for a review request.",
+        "Multiple value yes does not specify whether several choices are allowed. Set multiple to true or false in the frontmatter.",
       ],
     ],
     [
@@ -132,7 +132,10 @@ describe("itemDefects ordering", () => {
         kind: "work",
         status: "decided",
       },
-      ["work is decided", "decided without decision or by"],
+      [
+        "A work item has status decided. Set status to open, the only state for work and goals.",
+        "Record what was decided and who decided it. Fill in decision and by.",
+      ],
     ],
   ])("reports status and kind rules in order for %s", (_label, item, expected) => {
     expect(itemDefects(item as unknown as Item, () => true)).toEqual(expected);
@@ -168,20 +171,20 @@ describe("priorityDefects", () => {
       label: "goal with priority",
       kind: "goal" as const,
       priority: 2,
-      expected: ["goal has a priority"],
+      expected: ["Goals must use the default priority. Remove priority from the frontmatter."],
     },
     { label: "decision with priority 1", kind: "decision" as const, priority: 1, expected: [] },
     {
       label: "decision with priority 4",
       kind: "decision" as const,
       priority: 4,
-      expected: ["priority 4"],
+      expected: ["Priority 4 cannot rank this item. Set priority to the number 1, 2 or 3."],
     },
     {
       label: "work without priority",
       kind: "work" as const,
       priority: undefined,
-      expected: ["priority undefined"],
+      expected: ["Priority undefined cannot rank this item. Set priority to the number 1, 2 or 3."],
     },
   ])("checks $label", ({ kind, priority, expected }) => {
     expect(priorityDefects(kind, priority)).toEqual(expected);
@@ -195,12 +198,12 @@ describe("coreFieldDefects", () => {
       "invalid id, kind, status, priority, order, and missing owner",
       { id: "Bad", kind: "task", status: "done", priority: 5, order: "soon" },
       [
-        "id Bad is not lower-case kebab",
-        "kind task",
-        "status done",
-        "priority 5",
-        "order soon",
-        "lacks owner",
+        "Item id Bad cannot be used as a valid item reference. Rename the Markdown file using lowercase ASCII letters, digits or hyphens and start the id with a letter or digit.",
+        "Kind task is unsupported. Set kind to decision, review, work or goal.",
+        "Status done is unsupported. Set status to open, assumed or decided.",
+        "Priority 5 cannot rank this item. Set priority to the number 1, 2 or 3.",
+        "Order soon cannot sort the item. Use a number for order or omit it.",
+        "No one is assigned to move this item. Set owner in the frontmatter.",
       ],
     ],
   ])("checks %s", (_label, fields, expected) => {
@@ -214,7 +217,10 @@ describe("textFieldDefects", () => {
     [
       "non-text area and quote",
       { area: { a: 1 }, quote: ["x"] },
-      ["area is not text", "quote is not text"],
+      [
+        "area needs text for display. Use a string or number.",
+        "quote needs text for display. Use a string or number.",
+      ],
     ],
   ])("checks %s", (_label, fields, expected) => {
     expect(textFieldDefects(fields as unknown as Item)).toEqual(expected);
@@ -225,8 +231,16 @@ describe("dueDefects", () => {
   test.each([
     ["absent due date", undefined, []],
     ["valid leap day", "2028-02-29", []],
-    ["impossible calendar day", "2026-02-30", ["due 2026-02-30 not ISO"]],
-    ["non-ISO date string", "3 Nov", ["due 3 Nov not ISO"]],
+    [
+      "impossible calendar day",
+      "2026-02-30",
+      ["Due date 2026-02-30 is unusable for sorting. Set due to a valid YYYY-MM-DD date."],
+    ],
+    [
+      "non-ISO date string",
+      "3 Nov",
+      ["Due date 3 Nov is unusable for sorting. Set due to a valid YYYY-MM-DD date."],
+    ],
   ])("checks %s", (_label, due, expected) => {
     expect(dueDefects(due)).toEqual(expected);
   });
@@ -292,13 +306,17 @@ describe("openKindDefects", () => {
       label: "assumed work",
       kind: "work" as const,
       status: "assumed" as const,
-      expected: ["work is assumed"],
+      expected: [
+        "A work item has status assumed. Set status to open, the only state for work and goals.",
+      ],
     },
     {
       label: "decided goal",
       kind: "goal" as const,
       status: "decided" as const,
-      expected: ["goal is decided"],
+      expected: [
+        "A goal item has status decided. Set status to open, the only state for work and goals.",
+      ],
     },
     {
       label: "decided decision",
@@ -318,7 +336,9 @@ describe("openDecisionDefects", () => {
       kind: "decision" as const,
       status: "open" as const,
       count: 1,
-      expected: ["open decision with fewer than two options (a review request is kind: review)"],
+      expected: [
+        "An open decision needs at least two options for a choice. Add entries under options or set kind to review for a review request.",
+      ],
     },
     {
       label: "open decision with two options",
@@ -360,24 +380,33 @@ describe("optionEntryDefect", () => {
       index: 0,
       expected: undefined,
     },
-    { label: "null entry", option: null, index: 0, expected: "option 1 lacks key or label" },
+    {
+      label: "null entry",
+      option: null,
+      index: 0,
+      expected:
+        "Option 1 needs a key for references and a label to display. Fill in both fields on that options entry.",
+    },
     {
       label: "empty label",
       option: { key: "a", label: "" },
       index: 1,
-      expected: "option 2 lacks key or label",
+      expected:
+        "Option 2 needs a key for references and a label to display. Fill in both fields on that options entry.",
     },
     {
       label: "key with comma",
       option: { key: "a,b", label: "AB" },
       index: 0,
-      expected: 'option 1 key "a,b" is not one word',
+      expected:
+        'Option 1 has an invalid reference key "a,b". Set its key to a string or number without whitespace or commas.',
     },
     {
       label: "non-text detail",
       option: { key: "a", label: "Alpha", detail: ["list"] },
       index: 0,
-      expected: "option a label or detail is not text",
+      expected:
+        "The hub needs text to display the label and detail for option a. Set label and any detail to strings or numbers.",
     },
   ])("checks $label", ({ option, index, expected }) => {
     expect(optionEntryDefect(option, index)).toBe(expected);
@@ -387,7 +416,15 @@ describe("optionEntryDefect", () => {
 describe("parseOptions", () => {
   test.each([
     ["undefined options", undefined, { value: undefined, keys: [], defects: [] }],
-    ["non-list options", "a", { value: undefined, keys: [], defects: ["options is not a list"] }],
+    [
+      "non-list options",
+      "a",
+      {
+        value: undefined,
+        keys: [],
+        defects: ["Choices need a list. Write options as YAML list entries with key and label."],
+      },
+    ],
     [
       "mixed valid, malformed, and duplicate options",
       [null, { key: 0, label: { bad: true }, detail: 7 }, { key: "0", label: "Zero" }],
@@ -398,9 +435,9 @@ describe("parseOptions", () => {
         ],
         keys: [undefined, "0", "0"],
         defects: [
-          "option 1 lacks key or label",
-          "option 0 label or detail is not text",
-          "duplicate option key",
+          "Option 1 needs a key for references and a label to display. Fill in both fields on that options entry.",
+          "The hub needs text to display the label and detail for option 0. Set label and any detail to strings or numbers.",
+          "Duplicate option keys make references ambiguous. Give each options entry a unique key and update any recommended or images references to the renamed key.",
         ],
       },
     ],
@@ -442,14 +479,19 @@ describe("recommendationDefects", () => {
       recommended: "a",
       multiple: "yes",
       keys: ["a"],
-      expected: ["multiple yes is not true or false"],
+      expected: [
+        "Multiple value yes does not specify whether several choices are allowed. Set multiple to true or false in the frontmatter.",
+      ],
     },
     {
       label: "several recommended without multiple and unknown option",
       recommended: ["a", "z"],
       multiple: false,
       keys: ["a", "b"],
-      expected: ["several recommended without multiple", "recommended z is not an option"],
+      expected: [
+        "Multiple picks need opt-in. Set multiple to true or keep one recommendation.",
+        "Recommended key z has no choice. Use an option key in recommended.",
+      ],
     },
   ])("checks $label", ({ recommended, multiple, keys, expected }) => {
     expect(recommendationDefects(recommended, multiple, keys)).toEqual(expected);
@@ -468,9 +510,9 @@ describe("optionScoreDefects", () => {
         { key: "c", score: 7, noise: "low" },
       ],
       [
-        "option a score 8 is not a number",
-        "option b noise without a numeric score",
-        "option c noise without a numeric score",
+        "Option a has a score of 8, which cannot be used as a numeric review score. Set score to a number.",
+        "Noise requires a score for option b. Set both to numbers or omit noise.",
+        "Noise requires a score for option c. Set both to numbers or omit noise.",
       ],
     ],
   ])("checks %s", (_label, options, expected) => {
@@ -483,17 +525,21 @@ describe("settledStatusDefects", () => {
     ["open item", { status: "open" }, []],
     ["assumed with assumption", { status: "assumed", assumption: "Hold" }, []],
     ["assumed with recommended", { status: "assumed", recommended: "a" }, []],
-    ["assumed with neither", { status: "assumed" }, ["assumed without assumption or recommended"]],
+    [
+      "assumed with neither",
+      { status: "assumed" },
+      ["The hub shows what was assumed. Fill in assumption or recommended."],
+    ],
     ["decided with decision and by", { status: "decided", decision: "Use A", by: "Alex" }, []],
     [
       "decided without by",
       { status: "decided", decision: "Use A" },
-      ["decided without decision or by"],
+      ["Record what was decided and who decided it. Fill in decision and by."],
     ],
     [
       "decided without decision",
       { status: "decided", by: "Alex" },
-      ["decided without decision or by"],
+      ["Record what was decided and who decided it. Fill in decision and by."],
     ],
   ])("checks %s", (_label, fields, expected) => {
     expect(settledStatusDefects(fields as Item)).toEqual(expected);
@@ -508,13 +554,21 @@ describe("imageEntryDefect", () => {
     ["existing bare file", "a.png", undefined],
     ["existing repo-relative path", "docs/shared.png", undefined],
     ["captioned existing file", { src: "a.png", caption: "Front" }, undefined],
-    ["missing bare file", "missing.png", "image docs/agent-work/items/pick/missing.png not found"],
+    [
+      "missing bare file",
+      "missing.png",
+      "The hub cannot display image docs/agent-work/items/pick/missing.png. Add the missing file or fix its path in images.",
+    ],
     [
       "unexpected extra key",
       { src: "a.png", alt: "x" },
-      'image {"src":"a.png","alt":"x"} is not a path or {src, caption}',
+      'The hub cannot read the image entry {"src":"a.png","alt":"x"}. Use a path string or an object with a string src and an optional string caption.',
     ],
-    ["null entry", null, "image null is not a path or {src, caption}"],
+    [
+      "null entry",
+      null,
+      "The hub cannot read the image entry null. Use a path string or an object with a string src and an optional string caption.",
+    ],
   ])("checks %s", (_label, image, expected) => {
     expect(imageEntryDefect("pick", image, existing)).toBe(expected);
   });
@@ -529,7 +583,7 @@ describe("imageDefects", () => {
       label: "scalar images",
       images: "a.png",
       keys: ["a"],
-      expected: ["images is neither a list nor a mapping"],
+      expected: ["The hub groups images by item or option. Use a list or mapping in images."],
     },
     { label: "valid list", images: ["a.png"], keys: [], expected: [] },
     {
@@ -537,8 +591,8 @@ describe("imageDefects", () => {
       images: { a: "a.png", ghost: "missing.png" },
       keys: ["a"],
       expected: [
-        "image key ghost is not an option",
-        "image docs/agent-work/items/pick/missing.png not found",
+        "Image key ghost has no matching choice. Use a key from options in the images mapping or use an images list for the item as a whole.",
+        "The hub cannot display image docs/agent-work/items/pick/missing.png. Add the missing file or fix its path in images.",
       ],
     },
   ])("checks $label", ({ images, keys, expected }) => {

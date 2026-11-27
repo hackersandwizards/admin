@@ -77,7 +77,9 @@ test.prop([id, unicodeString], {
 })("unknown quoted top-level keys are reported as written", (itemId, key) => {
   const unknown = /^[a-z]+$/.test(key) ? `_${key}` : key;
   const text = `---\nkind: work\n${JSON.stringify(unknown)}: 1\n---\n# Draft`;
-  expect(() => parseItem(itemId, text)).toThrow(`unknown field ${unknown}`);
+  expect(() => parseItem(itemId, text)).toThrow(
+    `Unrecognized item fields: ${unknown}. Remove them or use a supported field from docs/items.md.`,
+  );
 });
 
 const optionKey = unicodeString.map((key) => key.replace(/[\s,]/g, "_") || "option");
@@ -104,7 +106,10 @@ test.prop([optionKeys], {
       },
       () => true,
     ),
-  ).toEqual([`recommended ${missing} is not an option`, `image key ${missing} is not an option`]);
+  ).toEqual([
+    `Recommended key ${missing} has no choice. Use an option key in recommended.`,
+    `Image key ${missing} has no matching choice. Use a key from options in the images mapping or use an images list for the item as a whole.`,
+  ]);
 });
 
 test.prop([optionKey, unicodeString], {
@@ -116,7 +121,7 @@ test.prop([optionKey, unicodeString], {
 })("a repeated option key is a defect regardless of its spelling", (key, label) => {
   const option = { key, label: `Option ${label}` };
   expect(itemDefects({ ...work, options: [option, option] }, () => true)).toEqual([
-    "duplicate option key",
+    "Duplicate option keys make references ambiguous. Give each options entry a unique key and update any recommended or images references to the renamed key.",
   ]);
 });
 

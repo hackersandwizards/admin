@@ -26,6 +26,21 @@ import {
 } from "./admin-fixtures.ts";
 
 describe("admin-check", () => {
+  test.each([
+    [
+      join(FIX, "spoke", "missing"),
+      "The supplied folder does not exist, so the check cannot read its items. Pass an existing repository root to admin-check.",
+    ],
+    [
+      join(FIX, "spoke", "scripts"),
+      `Item paths are relative to the supplied folder. Pass the repository root ${resolve(import.meta.dirname, "..")} to admin-check.`,
+    ],
+  ])("reports an unusable repository path %s", (path, message) => {
+    const cli = Bun.spawnSync(["bun", join(import.meta.dirname, "../bin/admin-check.ts"), path]);
+    expect(cli.exitCode).toBe(1);
+    expect(cli.stderr.toString().trim()).toBe(`${path}: ${message}`);
+  });
+
   test("admin-check accepts a prerequisite until its tracked item is deleted", () => {
     const repo = repoFrom("spoke");
     const args = ["bun", join(import.meta.dirname, "../bin/admin-check.ts"), repo];
@@ -44,15 +59,19 @@ describe("admin-check", () => {
     cpSync(join(FIX, "legacy/GOAL.md"), join(dir, "GOAL.md"));
     await Bun.write(join(dir, "docs/agent-work/items/broken.md"), "no frontmatter\n");
     const { defects } = readItems(treeSource(dir));
-    expect(defects).toContain("GOAL.md: legacy file, items live in docs/agent-work/items");
-    expect(defects).toContain("docs/agent-work/items/broken.md: no frontmatter between --- lines");
+    expect(defects).toContain(
+      "GOAL.md: The hub reads goals as items. Move the goal to docs/agent-work/items/goal.md with kind: goal and status: open, then remove the legacy file.",
+    );
+    expect(defects).toContain(
+      "docs/agent-work/items/broken.md: The check cannot read item fields without YAML frontmatter. Put the fields between two --- lines at the top of the item file.",
+    );
     await Bun.write(join(dir, "docs/agent-work/items/gone/shot.jpg"), "x");
     expect(readItems(treeSource(dir)).defects).toContain(
-      "docs/agent-work/items/gone/shot.jpg: no item gone.md",
+      "docs/agent-work/items/gone/shot.jpg: The hub has no item gone.md to attach this image to. Add that item beside the image folder or move the image out of the items directory.",
     );
     await Bun.write(join(dir, "docs/tracking/items/old.md"), "x");
     expect(readItems(treeSource(dir)).defects).toContain(
-      "docs/tracking/items/old.md: legacy folder, move it to docs/agent-work",
+      "docs/tracking/items/old.md: This file sits outside the agent-work layout. Move it to the matching path under docs/agent-work.",
     );
     const cli = Bun.spawnSync(["bun", join(import.meta.dirname, "../bin/admin-check.ts"), dir]);
     expect(cli.exitCode).toBe(1);
