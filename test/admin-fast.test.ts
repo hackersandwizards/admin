@@ -399,6 +399,7 @@ describe("item files", () => {
 
   test.each([
     [{ priority: 4 }, "Priority 4 cannot rank this item. Set priority to the number 1, 2 or 3."],
+    [{ priority: undefined }, "No priority is set. Set priority to the number 1, 2 or 3."],
     [{ kind: "task" }, "Kind task is unsupported. Set kind to decision, review, work or goal."],
     [{ status: "done" }, "Status done is unsupported. Set status to open, assumed or decided."],
     [{ owner: undefined }, "No one is assigned to move this item. Set owner in the frontmatter."],
@@ -442,7 +443,7 @@ describe("item files", () => {
           { key: "b", label: "B" },
         ],
       },
-      "Option a has a score of 8, which cannot be used as a numeric review score. Set score to a number.",
+      'Option a has a score of "8", which cannot be used as a numeric review score. Set score to a number.',
     ],
     [
       {
@@ -478,7 +479,7 @@ describe("item files", () => {
     expect(() =>
       parseItem("x", "---\nkind: review\npage: docs/p/index.html\n---\n\n# T\n"),
     ).toThrow(
-      "Unrecognized item fields: page. Remove them or use a supported field from docs/items.md.",
+      "Unrecognized item fields: page. Remove them or use a supported field from node_modules/@hackersandwizards/admin/docs/items.md.",
     );
   });
 
@@ -622,7 +623,7 @@ describe("item files", () => {
     ],
     [
       "---\ncolour: red\nsize: big\n---\n# Move",
-      "Unrecognized item fields: colour, size. Remove them or use a supported field from docs/items.md.",
+      "Unrecognized item fields: colour, size. Remove them or use a supported field from node_modules/@hackersandwizards/admin/docs/items.md.",
     ],
     [
       "---\nkind: work\nkind : review\n---\n# Move",
@@ -1659,7 +1660,6 @@ describe("pages", () => {
   });
 
   test("a leading whitespace entity before an address or fragment stays as written", () => {
-    // An address or a fragment behind a leading space stays as written, as a browser reads it.
     const lead = renderDocMarkdown(
       "/r",
       "docs/x.md",

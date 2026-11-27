@@ -21,7 +21,15 @@ test.each([
   ],
   [
     '<div class="gap-[10px]"></div>',
-    "Tailwind arbitrary value: p-[10px]. Replace the class with a token-backed utility so the value comes from the shared scale.",
+    "Tailwind arbitrary value: gap-[10px]. Replace the class with a token-backed utility so the value comes from the shared scale.",
+  ],
+  [
+    '<div class="md:gap-[10px]"></div>',
+    "Tailwind arbitrary value: md:gap-[10px]. Replace the class with a token-backed utility so the value comes from the shared scale.",
+  ],
+  [
+    '<div class="grid-cols-[1fr_2fr]"></div>',
+    "Tailwind arbitrary value: grid-cols-[1fr_2fr]. Replace the class with a token-backed utility so the value comes from the shared scale.",
   ],
   [
     '<div style="gap: 10px"></div>',

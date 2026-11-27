@@ -1,14 +1,5 @@
-import {
-  KINDS,
-  ITEM_ID,
-  STATUSES,
-  WORK_DIR,
-  imagePath,
-  isPlainReportName,
-  type Image,
-  type Item,
-  type Option,
-} from "./items.ts";
+import { KINDS, ITEM_ID, STATUSES, WORK_DIR, imagePath, isPlainReportName } from "./items.ts";
+import type { Image, Item, Option } from "./items.ts";
 
 const isDay = (v: unknown) => {
   const t = Date.parse(`${v}T00:00Z`);
@@ -18,22 +9,23 @@ const isDay = (v: unknown) => {
     new Date(t).toISOString().startsWith(String(v))
   );
 };
-// The fields a page prints as text.
 const TEXTS = ["area", "owner", "assumption", "decision", "by", "quote", "evidence"] as const;
 const isText = (v: unknown) => typeof v === "string" || typeof v === "number";
 const asText = (v: unknown) => (isText(v) ? String(v) : undefined);
 // An option key as the pages store and compare it: text.
 const optionKey = (v: unknown) => (v == null || v === "" ? undefined : String(v));
 const isPriority = (v: unknown): v is number => [1, 2, 3].includes(v as number);
+const received = (v: unknown) => (typeof v === "string" ? JSON.stringify(v) : String(v));
 
 export function priorityDefects(kind: Item["kind"], priority: unknown): string[] {
   if (kind === "goal")
     return priority !== undefined
       ? ["Goals must use the default priority. Remove priority from the frontmatter."]
       : [];
-  return isPriority(priority)
-    ? []
-    : [`Priority ${priority} cannot rank this item. Set priority to the number 1, 2 or 3.`];
+  if (isPriority(priority)) return [];
+  const fix = "Set priority to the number 1, 2 or 3.";
+  if (priority === undefined) return [`No priority is set. ${fix}`];
+  return [`Priority ${received(priority)} cannot rank this item. ${fix}`];
 }
 
 export function coreFieldDefects(
@@ -207,7 +199,7 @@ export function optionScoreDefects(options: unknown): string[] {
   for (const o of options as RawOption[]) {
     if (o?.score !== undefined && typeof o.score !== "number")
       defects.push(
-        `Option ${String(o.key)} has a score of ${String(o.score)}, which cannot be used as a numeric review score. Set score to a number.`,
+        `Option ${String(o.key)} has a score of ${received(o.score)}, which cannot be used as a numeric review score. Set score to a number.`,
       );
     if (o?.noise !== undefined && (typeof o.noise !== "number" || o.score === undefined))
       defects.push(

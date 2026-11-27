@@ -368,7 +368,6 @@ describe("pages", () => {
           readFileSync(resolve(dirname(docPath), defined(css, "stylesheet reference")), "utf8"),
         )
         .join("");
-      // Typography's plugin is loaded: without it, prose styles nothing.
       expect(sheets).toContain(".prose :where(p)");
     });
 
@@ -383,7 +382,6 @@ describe("pages", () => {
     });
 
     test("the bundled admin script ships brand elements and copy-button wiring as one classic script", () => {
-      // brand's element script reaches the page as one classic script, which a page from disk loads.
       const scriptMatch = decisionsHtml.match(/<script nonce="[^"]+" src="([^"]*admin[^"]*\.js)"/);
       assert(scriptMatch, "decisions page should link the bundled admin script");
       const bundled = readFileSync(
@@ -392,10 +390,8 @@ describe("pages", () => {
       );
       expect(bundled).toContain("hw-menu");
       expect(bundled).not.toMatch(/^import\b/m);
-      // brand's enhance() wires the Copy button by its data-hw-copy attribute.
       expect(decisionsHtml).toMatch(/id="copy"[^>]*data-hw-copy/);
       expect(bundled).toContain("[data-hw-copy]");
-      // The copy time is set from brand's hw-copy event, which says whether the copy worked.
       expect(bundled).toMatch(/addEventListener\("hw-copy"[^]*?\.detail\?\.ok/);
     });
 
@@ -594,8 +590,6 @@ describe("pages", () => {
     });
 
     test("provenance lists checkouts behind their push branch and sits after Settled", () => {
-      // The hub's provenance names the checkouts behind and says when it is from, at the page's end,
-      // so the lists come first.
       expect(html).toMatch(/class="admin-provenance[^>]*>[^<]*· as of <span data-stamp>\d/);
       const provenance = html.match(/<p class="admin-provenance[^>]*>([^<]*)/);
       expect(provenance).not.toBeNull();
@@ -2214,7 +2208,6 @@ describe("admin.js", () => {
       page.document.getElementById("spoke:pick-a-variant"),
       "element spoke:pick-a-variant",
     );
-    // Reset shows only once there is an answer to take back.
     expect((row.querySelector(".clear") as DomElement).hidden).toBe(true);
     const pick = row.querySelector('input[data-option][value="b"]') as DomInput;
     pick.checked = true;
@@ -2382,7 +2375,6 @@ describe("admin.js", () => {
       });
 
       test("clears the pick, marks the row later, and leaves it out of the copy", () => {
-        // Putting a question off clears its pick, and the copy leaves it out.
         expect(stage.logo.querySelectorAll("input[data-option]:checked").length).toBe(0);
         expect(
           defined(stage.logo.querySelector(".mark"), "element matching .mark").textContent,
@@ -2394,7 +2386,6 @@ describe("admin.js", () => {
       });
 
       test("the next visit drops the deferral and keeps every other stored answer", () => {
-        // The next visit asks it again; the answers stay.
         const back = open("spoke/decisions", {
           ...stored(stage.page),
           "admin-answers:seen": String(Date.now() - 2 * 36e5),
@@ -2492,7 +2483,6 @@ describe("admin.js", () => {
       });
 
       test("unchecks Decide later and includes the note in the copy", () => {
-        // A note is an answer: it takes a question put off up again.
         expect(stage.later.checked).toBe(false);
         expect((stage.page.document.getElementById("copy") as DomElement).dataset.hwCopy).toContain(
           "spoke:pick-a-logo: ask the printer",
@@ -2711,7 +2701,6 @@ describe("admin.js", () => {
 
     test("a copy made in another tab marks uncopied rows here as copied", () => {
       const page = open("spoke/decisions", copySeed());
-      // A copy made in another tab marks the rows here too.
       const mark = () =>
         defined(
           defined(
@@ -2876,7 +2865,6 @@ describe("admin.js", () => {
   });
 
   test("a search matching only another person's row on Decisions says so", () => {
-    // Where no other list shows it, a row of another person the search finds is named.
     const decisions = open("spoke/decisions", { "admin-answers:who": "Alex" });
     const find = decisions.document.getElementById("admin-search") as DomInput;
     find.value = "monthly";
@@ -2975,7 +2963,6 @@ describe("admin.js", () => {
     });
 
     test("hiding a repository is not an answer and leaves the copy block with real answers alone", () => {
-      // The choice is no answer: the copy holds the one answer alone.
       const copy = defined(
         (hiddenHub.document.getElementById("copy") as DomElement).dataset.hwCopy,
         "answer copy payload",
@@ -2984,7 +2971,6 @@ describe("admin.js", () => {
     });
 
     test("a repository page shows its rows even when that repository is hidden on the hub", () => {
-      // Another page hides nothing by repository.
       const decisions = open("spoke/decisions", hiddenRepoSeed());
       expect(decisions.document.querySelector("details.item:not([hidden])")).not.toBeNull();
     });
@@ -2992,7 +2978,6 @@ describe("admin.js", () => {
     test("searching for a row in a hidden repository names hidden repositories", () => {
       const page = open("index", hiddenRepoSeed());
       const doc = page.document;
-      // A search finding rows only there says so.
       const search = doc.getElementById("admin-search") as DomInput;
       search.value = "monthly";
       search.dispatchEvent(new page.Event("input"));
@@ -3004,7 +2989,6 @@ describe("admin.js", () => {
     test("a hash link reveals a row in a hidden repository and clearing the hash hides it again", () => {
       const page = open("index", hiddenRepoSeed());
       const doc = page.document;
-      // A link to an item there opens it.
       page.location.hash = "#spoke:pick-a-variant";
       page.dispatchEvent(new page.Event("hashchange"));
       expect(
@@ -3013,7 +2997,6 @@ describe("admin.js", () => {
         ),
       ).toBeNull();
       expect(shownRepoKeys(doc)).toEqual(["spoke:pick-a-variant"]);
-      // Once the address names another row, the row it named before hides with its repository.
       page.location.hash = "";
       page.dispatchEvent(new page.Event("hashchange"));
       expect(shownRepoRows(doc)).toBe(0);
@@ -3024,7 +3007,6 @@ describe("admin.js", () => {
       const doc = page.document;
       page.location.hash = "#spoke:pick-a-variant";
       page.dispatchEvent(new page.Event("hashchange"));
-      // "Show all" brings every row back and forgets the choice.
       (doc.querySelector("[data-repo-all]") as unknown as HTMLButtonElement).click();
       expect(shownRepoRows(doc)).toBe(9);
       expect(stored(page)["admin-answers:repos"]).toBeUndefined();
@@ -3095,7 +3077,6 @@ describe("admin.js", () => {
       const box = doc.querySelector('[data-repo-box][value="spoke"]') as unknown as DomInput;
       box.checked = false;
       box.dispatchEvent(new page.Event("change"));
-      // All but the row the address names.
       expect(shownRepoKeys(doc)).toEqual(["spoke:pick-a-variant"]);
       expect(stored(page)["admin-answers:repos"]).toBe('["spoke"]');
     });
@@ -3403,7 +3384,6 @@ describe("admin.js", () => {
     });
 
     test("a fold with changed rows counts them and the page banner reports how many changed", () => {
-      // Each fold that holds a marked row counts it, and the page says how many changed.
       const fold = defined(
         back.document.querySelector("details[data-group] [data-updated-count]:not([hidden])"),
         "element matching details[data-group] [data-updated-count]:not([hidden])",
@@ -3415,7 +3395,6 @@ describe("admin.js", () => {
     });
 
     test("a hidden repository's changed rows count nowhere unless a hash link opens one", () => {
-      // A hidden repository's rows count nowhere.
       const away = open("index", {
         "admin-answers:seen": hours(2),
         "admin-answers:repos": '["spoke"]',
@@ -3426,7 +3405,6 @@ describe("admin.js", () => {
           "hidden",
         ),
       ).toBe(true);
-      // But the row a link opens there.
       away.location.hash = "#spoke:check-the-copy";
       away.dispatchEvent(new away.Event("hashchange"));
       expect(
@@ -3559,7 +3537,6 @@ describe("serve", () => {
       expect(await hub.pages()).toBe(fetched);
       const after = at(await get("/spoke/dashboard"));
       expect(after).not.toBe(before);
-      // As a build from scratch prints it.
       const fresh = createHub({ root: dirname(repo) });
       const control = await (
         await fresh.fetch(new Request("http://admin.localhost/spoke/dashboard"))
@@ -3795,7 +3772,7 @@ describe("serve", () => {
         );
         nonLocalStatus = (await hub.fetch(new Request("http://evil.example/"))).status;
 
-        // Stage 4: LFS object committed after the hub is already warm.
+        // Stage 4 commits an LFS pointer after the hub has served its first page.
         const oid = "ab".repeat(32);
         const store = join(repo, ".git/lfs/objects/ab/ab");
         mkdirSync(store, { recursive: true });
@@ -3876,7 +3853,6 @@ describe("serve", () => {
 
     test("renders a styled 404 page with root-relative links for an unknown path", () => {
       expect(unknownStatus).toBe(404);
-      // In the hub's styles, with the way back.
       expect(lost).toMatch(/<a class="hw-link" href="\/index\.html">\s*Open the hub\s*<\/a>/);
       expect(lost).toMatch(/<link rel="stylesheet" href="\/_astro\/[^"]+\.css">/);
       expect(lost).not.toMatch(/(?:href|src)="(?!\/|#|[a-z]+:)/);
@@ -3895,7 +3871,6 @@ describe("serve", () => {
     );
 
     test("stamps the hub home page with the request minute", () => {
-      // The hub says it is current as of the request, in the minute it was asked or the next.
       const stamp = first.match(/· as of <span data-stamp>([^<]*)<\/span>/);
       expect(stamp).not.toBeNull();
       expect(defined(stamp, "timestamp match")[1]).toBe("10 May at 12:00");
@@ -3907,7 +3882,6 @@ describe("serve", () => {
     });
 
     test("gzips HTML responses when the client accepts gzip", () => {
-      // A page travels gzipped where the browser takes it, and a hashed asset stays in its cache.
       expect(zippedEncoding).toBe("gzip");
       expect(sansNonce(new TextDecoder().decode(Bun.gunzipSync(zippedBytes)))).toBe(
         sansNonce(nested),

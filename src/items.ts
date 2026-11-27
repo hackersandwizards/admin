@@ -75,7 +75,7 @@ export function parseFrontmatter(yaml: string): Partial<Item> {
   const unknown = Object.keys(front).filter((k) => !FIELDS.includes(k));
   if (unknown.length)
     throw new ItemError(
-      `Unrecognized item fields: ${unknown.join(", ")}. Remove them or use a supported field from docs/items.md.`,
+      `Unrecognized item fields: ${unknown.join(", ")}. Remove them or use a supported field from node_modules/@hackersandwizards/admin/docs/items.md.`,
     );
   // The parser keeps a repeated key's last value without a word; a top-level key starts a line.
   const keys = [...yaml.matchAll(/^(["']?)([\w-]+)\1[ \t]*:/gm)].map(([line, , key]) => {

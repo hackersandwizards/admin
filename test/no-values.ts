@@ -1,7 +1,4 @@
-// The engine holds no design value: every colour, size and font comes from brand (decision
-// design-system-hub-spoke, strict). Fails on a colour literal, a custom property the engine
-// defines (other than setting a brand element's --hw-* to a brand token), a Tailwind arbitrary
-// value and a length in a style attribute.
+// The design-system-hub-spoke decision takes design values from brand, with shell layout lengths in site/src/layout.css.
 // Usage: bun test/no-values.ts [<file> ...]   default: every file under site/src, catalog and src
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -40,7 +37,7 @@ const RULES: [RegExp, string, string][] = [
     "Set the element property with var() around a shared token so the override follows the theme.",
   ],
   [
-    /[\w:-]-\[[^\]]*\d[^\]]*\]/g,
+    /[\w:-]+-\[[^\]]*\d[^\]]*\]/g,
     "Tailwind arbitrary value",
     "Replace the class with a token-backed utility so the value comes from the shared scale.",
   ],

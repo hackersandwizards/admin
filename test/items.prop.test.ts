@@ -78,7 +78,7 @@ test.prop([id, unicodeString], {
   const unknown = /^[a-z]+$/.test(key) ? `_${key}` : key;
   const text = `---\nkind: work\n${JSON.stringify(unknown)}: 1\n---\n# Draft`;
   expect(() => parseItem(itemId, text)).toThrow(
-    `Unrecognized item fields: ${unknown}. Remove them or use a supported field from docs/items.md.`,
+    `Unrecognized item fields: ${unknown}. Remove them or use a supported field from node_modules/@hackersandwizards/admin/docs/items.md.`,
   );
 });
 

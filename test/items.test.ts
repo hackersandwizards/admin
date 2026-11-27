@@ -52,7 +52,7 @@ describe("parseFrontmatter", () => {
     [
       "unknown fields",
       "colour: red\nsize: big",
-      "Unrecognized item fields: colour, size. Remove them or use a supported field from docs/items.md.",
+      "Unrecognized item fields: colour, size. Remove them or use a supported field from node_modules/@hackersandwizards/admin/docs/items.md.",
     ],
     [
       "repeated top-level field",

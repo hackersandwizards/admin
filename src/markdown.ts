@@ -265,7 +265,7 @@ export function extractTitle(html: string): { title?: string; titleId?: string; 
   const h1 = html
     .slice(Math.max(html.indexOf("<h1"), 0))
     .match(/^<h1(?=[\s>])(?:[^"'<>]|"[^"]*"|'[^']*')*>([\s\S]*?)<\/h1>\n?/);
-  // Bun's renderer decodes every other entity itself.
+  // Bun leaves HTML-sensitive characters escaped in rendered headings.
   const title = h1?.[1] && entities(plainText(h1[1]));
   // An h1 without text, such as a lone image, stays in the article.
   if (!h1 || !title) return { html };

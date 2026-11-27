@@ -48,7 +48,7 @@ export function legacyPathDefects(paths: readonly string[]): string[] {
         `${p}: The hub reads goals as items. Move the goal to ${ITEMS_DIR}/goal.md with kind: goal and status: open, then remove the legacy file.`,
       );
   }
-  // The folder was renamed: a file left at the old path would vanish from every page unnoticed.
+  // Markdown left under docs/tracking/ can appear as ordinary docs after the agent-work rename.
   for (const p of paths) {
     if (p.startsWith("docs/tracking/"))
       defects.push(

@@ -666,13 +666,11 @@ describe("pages", () => {
 
     test("lists repository agents and every person owning an open item", () => {
       expect(repo.agents).toEqual(["Ivo"]);
-      // The filter offers every person who owns an open item, work alone included.
       expect(siteData([repo]).people.toSorted()).toEqual(["Alex", "Kim", "Sam"]);
     });
 
     test.each([
       {
-        // The first person stands for the hub's user when none is named.
         label: "default (none named)",
         hubUser: undefined,
         firstPerson: "Alex",
@@ -685,7 +683,6 @@ describe("pages", () => {
         others: ["Alex", "Kim"],
       },
       {
-        // A git name no owner writes stands for nobody: the first person does.
         label: "unmatched git name kimlee",
         hubUser: "kimlee",
         firstPerson: "Alex",
@@ -844,7 +841,6 @@ describe("admin.js", () => {
 
 describe("serve", () => {
   test("a repository that never serves the hub installs no Tailwind or Astro for it", () => {
-    // admin-serve stops and names a missing optional peer, so only a repository that serves pins it.
     for (const p of ["astro", "tailwindcss", "@tailwindcss/vite", "@tailwindcss/typography"])
       expect(peerDependenciesMeta).toHaveProperty([p, "optional"], true);
   });

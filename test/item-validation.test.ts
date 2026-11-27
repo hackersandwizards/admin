@@ -82,7 +82,7 @@ describe("itemDefects ordering", () => {
       "Duplicate option keys make references ambiguous. Give each options entry a unique key and update any recommended or images references to the renamed key.",
       "Multiple picks need opt-in. Set multiple to true or keep one recommendation.",
       "Recommended key missing has no choice. Use an option key in recommended.",
-      "Option a has a score of high, which cannot be used as a numeric review score. Set score to a number.",
+      'Option a has a score of "high", which cannot be used as a numeric review score. Set score to a number.',
       "Noise requires a score for option a. Set both to numbers or omit noise.",
       "The hub cannot display image docs/agent-work/items/Bad_Id/missing.png. Add the missing file or fix its path in images.",
       "Image key ghost has no matching choice. Use a key from options in the images mapping or use an images list for the item as a whole.",
@@ -181,10 +181,16 @@ describe("priorityDefects", () => {
       expected: ["Priority 4 cannot rank this item. Set priority to the number 1, 2 or 3."],
     },
     {
+      label: "decision with a string priority",
+      kind: "decision" as const,
+      priority: "2",
+      expected: ['Priority "2" cannot rank this item. Set priority to the number 1, 2 or 3.'],
+    },
+    {
       label: "work without priority",
       kind: "work" as const,
       priority: undefined,
-      expected: ["Priority undefined cannot rank this item. Set priority to the number 1, 2 or 3."],
+      expected: ["No priority is set. Set priority to the number 1, 2 or 3."],
     },
   ])("checks $label", ({ kind, priority, expected }) => {
     expect(priorityDefects(kind, priority)).toEqual(expected);
@@ -510,7 +516,7 @@ describe("optionScoreDefects", () => {
         { key: "c", score: 7, noise: "low" },
       ],
       [
-        "Option a has a score of 8, which cannot be used as a numeric review score. Set score to a number.",
+        'Option a has a score of "8", which cannot be used as a numeric review score. Set score to a number.',
         "Noise requires a score for option b. Set both to numbers or omit noise.",
         "Noise requires a score for option c. Set both to numbers or omit noise.",
       ],

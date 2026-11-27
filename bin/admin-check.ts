@@ -17,8 +17,7 @@ if (args.some((a) => a === "--help" || a === "-h")) {
 const repos = args.length ? args : ["."];
 let defects = 0;
 for (const repo of repos.map((r) => resolve(r))) {
-  // Paths are read relative to the folder named, so a subfolder of a repository would pass with
-  // none of its items; a folder holding docs/agent-work of its own, such as a fixture, is checked.
+  // Item paths are relative to the supplied folder, so a repository subfolder needs its own docs/agent-work path.
   const top = existsSync(repo) && git(repo, "rev-parse", "--show-toplevel").trim();
   const problem =
     top === false

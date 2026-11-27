@@ -47,6 +47,7 @@ export function shelled(data: SiteData): SiteData {
 // Every path is resolved, since the package may sit hoisted or nested.
 export function stylesheet() {
   const at = (spec: string) => Bun.resolveSync(spec, PKG);
+  // Knip credits Tailwind dependencies only through createRequire.
   const require = createRequire(import.meta.url);
   const brandRoot = dirname(at("@hackersandwizards/brand/package.json"));
   return [
