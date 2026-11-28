@@ -1,0 +1,4 @@
+interface:
+  display_name: "Retro"
+  short_description: "Review a week of runs and sessions and repair the artifact that owned each defect"
+  default_prompt: "Use $retro for this task."
