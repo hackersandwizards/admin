@@ -43,224 +43,226 @@ const notes: Record<string, string> = {
 ---
 
 <Home>
-  <p class="mb-4 text-ui">
-    {elements.uses.length} elements from brand, {Object.keys(elements.exceptions).length} kept as
-    the engine's own.
-  </p>
-  <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-    {elements.uses.map((name) => (
-      <div class="flex flex-col gap-2" data-hw-tile={name} data-hw-version={version}>
-        <p class="text-ui">
-          from brand v{version} · <code class="hw-inline-code">hw-{name}</code> ·{" "}
-          <a class="hw-link" href={anchor(name)}>
-            catalog
-          </a>
-        </p>
-        <p class="text-ui text-foreground/70">{notes[name]}</p>
-        {name === "label" && <p class="hw-label">spoke</p>}
-        {name === "pill" && (
-          <p class="flex flex-wrap gap-2">
-            <span class="hw-pill" data-caps>
-              Recommended
-            </span>
-            <span class="hw-pill" data-tone="neutral">
-              optional
-            </span>
-          </p>
-        )}
-        {name === "button" && (
-          <p class="flex flex-wrap gap-2">
-            <button type="button" class="hw-button">
-              Copy answers
-            </button>
-            <button type="button" class="hw-button" data-variant="secondary">
-              Reset
-            </button>
-          </p>
-        )}
-        {name === "card" && <div class="hw-card text-ui">Open questions</div>}
-        {name === "callout" && (
-          <p class="hw-callout text-ui">
-            <b>Assumed:</b> the cache stays in node_modules.
-          </p>
-        )}
-        {name === "quote" && <blockquote class="hw-quote">Ship the smaller one.</blockquote>}
-        {name === "table" && (
-          <table class="hw-table w-full">
-            <tbody>
-              <tr>
-                <td class="font-mono">check</td>
-                <td class="font-mono">bun run lint && bun test</td>
-              </tr>
-            </tbody>
-          </table>
-        )}
-        {name === "link" && (
+  <div data-hw-surface="internal">
+    <p class="mb-4 text-ui">
+      {elements.uses.length} elements from brand, {Object.keys(elements.exceptions).length} kept as
+      the engine's own.
+    </p>
+    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {elements.uses.map((name) => (
+        <div class="flex flex-col gap-2" data-hw-tile={name} data-hw-version={version}>
           <p class="text-ui">
-            See{" "}
-            <a class="hw-link" href="#">
-              the sample topic
-            </a>{" "}
-            first.
+            from brand v{version} · <code class="hw-inline-code">hw-{name}</code> ·{" "}
+            <a class="hw-link" href={anchor(name)}>
+              catalog
+            </a>
           </p>
-        )}
-        {name === "segmented" && (
-          <div class="hw-segmented" role="group" aria-label="For whom">
-            <button type="button" aria-pressed="true">
-              Alex
-            </button>
-            <button type="button" aria-pressed="false">
-              All
-            </button>
-          </div>
-        )}
-        {name === "check" && (
-          <div class="flex flex-col gap-1 text-ui">
-            <label class="flex items-start gap-2">
-              <input type="checkbox" class="hw-check" checked /> Option A
-            </label>
-            <label class="flex items-start gap-2">
-              <input type="checkbox" class="hw-check" /> Option B
-            </label>
-            <label class="flex items-start gap-2">
-              <input type="radio" class="hw-check" name="check-tile" checked /> One
-            </label>
-            <label class="flex items-start gap-2">
-              <input type="radio" class="hw-check" name="check-tile" /> Other
-            </label>
-          </div>
-        )}
-        {name === "breadcrumb" && (
-          <nav class="hw-breadcrumb" aria-label="Breadcrumb">
-            <ol>
-              <li>
-                <a href="#">Hub</a>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  class="hw-button"
-                  data-variant="secondary"
-                  aria-current="location"
-                >
-                  spoke <span aria-hidden="true">▾</span>
-                </button>
-              </li>
-            </ol>
-          </nav>
-        )}
-        {name === "field" && <input class="hw-field" type="search" aria-label="Search" />}
-        {name === "search" && (
-          <div class="hw-search">
-            <input class="hw-field" type="search" aria-label="Search" placeholder="Search /" />
-          </div>
-        )}
-        {name === "nav" && (
-          <div class="admin-shell p-0!">
-            <nav class="hw-nav" aria-label="Menu">
-              <p class="hw-label hw-nav-group" data-tone="muted">
-                spoke
-              </p>
-              <ul>
-                <li>
-                  <a href="#">Dashboard</a>
-                </li>
-                <li>
-                  <a href="#" aria-current="page">
-                    Decisions <span class="hw-nav-count">4</span>
-                  </a>
-                </li>
-                <li>
-                  <a href="#">
-                    {"an-invented-repository-with-a-long-sample-name"}
-                    <span class="hw-nav-count">22</span>
-                  </a>
-                </li>
-                <li>
-                  <a href="#">
-                    {"another-invented-repository-with-a-long-name"}
-                    <span class="hw-nav-count">128</span>
-                  </a>
-                </li>
-              </ul>
-            </nav>
-          </div>
-        )}
-        {name === "choice" && (
-          <nav class="hw-choices" aria-label="Menu">
-            <a class="hw-choice" href="#">
-              Dashboard
-            </a>
-            <a class="hw-choice" href="#" aria-current="page">
-              Decisions <span class="hw-choice-count">4</span>
-            </a>
-          </nav>
-        )}
-        {name === "popover" && (
-          <div class="hw-popover" role="dialog" aria-label="Which repositories">
-            <p class="hw-popover-title">Show on the hub</p>
-            <label class="flex items-start gap-2 py-1 wrap-anywhere">
-              <input type="checkbox" class="hw-check" checked />
-              <span>
-                Sample spoke{" "}
-                <span class="block font-mono text-micro break-all text-foreground/70">spoke</span>
+          <p class="text-ui text-foreground/70">{notes[name]}</p>
+          {name === "label" && <p class="hw-label">spoke</p>}
+          {name === "pill" && (
+            <p class="flex flex-wrap gap-2">
+              <span class="hw-pill" data-caps>
+                Recommended
               </span>
-            </label>
-          </div>
-        )}
-        {name === "menu" && (
-          <div class="hw-menu" role="menu" aria-label="Repos">
-            <a class="hw-menu-item" role="menuitemradio" aria-checked="true" href="#">
-              spoke
-            </a>
-            <a class="hw-menu-item" role="menuitemradio" aria-checked="false" href="#">
-              plain
-            </a>
-          </div>
-        )}
-        {name === "disclosure" && (
-          <details class="hw-disclosure" open>
-            <summary class="py-2 font-mono font-semibold text-ui">Priority 1</summary>
-            <p class="text-ui">Two items wait on a decision.</p>
-          </details>
-        )}
-        {name === "code" && <pre class="hw-code">bun run check</pre>}
-        {name === "status" && (
-          <p class="hw-status text-ui" data-tone="warning">
-            You picked “Variant A” on 2 Jan, 09:05. The question or its options changed since.
-          </p>
-        )}
-        {name === "prose" && (
-          <article
-            class="prose hw-prose"
-            set:html={withElements(
-              Bun.markdown.html("Done when:\n\n- [x] Draft the report.\n- [ ] Review it.\n"),
-            )}
-          />
-        )}
-        {name === "inline-code" && (
-          <p class="text-ui">
-            Set <code class="hw-inline-code">admin.designSystem</code> in package.json.
-          </p>
-        )}
-      </div>
-    ))}
-  </div>
-  <h3>Kept as the engine's own</h3>
-  <div class="grid gap-4 xl:grid-cols-3">
-    {Object.entries(elements.exceptions).map(([name, reason]) => (
-      <section class="flex flex-col gap-2" data-hw-exception={name}>
-        <p class="font-medium text-ui">{name}</p>
-        <p class="text-ui text-foreground/70">{reason}</p>
-        {name === "item-list" && <ItemGroups items={items.slice(0, 2)} title="Priority 1" />}
-        {name === "option-list" && <ItemRow item={item("pick-recipients")} open />}
-        {name === "image-tile" && (
-          <span class="hw-card flex flex-col gap-1 p-2!">
-            <span class="aspect-video w-full rounded-brand bg-muted" />
-            <span class="truncate font-mono text-micro text-foreground/70">variant-a.svg</span>
-          </span>
-        )}
-      </section>
-    ))}
+              <span class="hw-pill" data-tone="neutral">
+                optional
+              </span>
+            </p>
+          )}
+          {name === "button" && (
+            <p class="flex flex-wrap gap-2">
+              <button type="button" class="hw-button">
+                Copy answers
+              </button>
+              <button type="button" class="hw-button" data-variant="secondary">
+                Reset
+              </button>
+            </p>
+          )}
+          {name === "card" && <div class="hw-card text-ui">Open questions</div>}
+          {name === "callout" && (
+            <p class="hw-callout text-ui">
+              <b>Assumed:</b> the cache stays in node_modules.
+            </p>
+          )}
+          {name === "quote" && <blockquote class="hw-quote">Ship the smaller one.</blockquote>}
+          {name === "table" && (
+            <table class="hw-table w-full">
+              <tbody>
+                <tr>
+                  <td class="font-mono">check</td>
+                  <td class="font-mono">bun run lint && bun test</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+          {name === "link" && (
+            <p class="text-ui">
+              See{" "}
+              <a class="hw-link" href="#">
+                the sample topic
+              </a>{" "}
+              first.
+            </p>
+          )}
+          {name === "segmented" && (
+            <div class="hw-segmented" role="group" aria-label="For whom">
+              <button type="button" aria-pressed="true">
+                Alex
+              </button>
+              <button type="button" aria-pressed="false">
+                All
+              </button>
+            </div>
+          )}
+          {name === "check" && (
+            <div class="flex flex-col gap-1 text-ui">
+              <label class="flex items-start gap-2">
+                <input type="checkbox" class="hw-check" checked /> Option A
+              </label>
+              <label class="flex items-start gap-2">
+                <input type="checkbox" class="hw-check" /> Option B
+              </label>
+              <label class="flex items-start gap-2">
+                <input type="radio" class="hw-check" name="check-tile" checked /> One
+              </label>
+              <label class="flex items-start gap-2">
+                <input type="radio" class="hw-check" name="check-tile" /> Other
+              </label>
+            </div>
+          )}
+          {name === "breadcrumb" && (
+            <nav class="hw-breadcrumb" aria-label="Breadcrumb">
+              <ol>
+                <li>
+                  <a href="#">Hub</a>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    class="hw-button"
+                    data-variant="secondary"
+                    aria-current="location"
+                  >
+                    spoke <span aria-hidden="true">▾</span>
+                  </button>
+                </li>
+              </ol>
+            </nav>
+          )}
+          {name === "field" && <input class="hw-field" type="search" aria-label="Search" />}
+          {name === "search" && (
+            <div class="hw-search">
+              <input class="hw-field" type="search" aria-label="Search" placeholder="Search /" />
+            </div>
+          )}
+          {name === "nav" && (
+            <div class="admin-shell p-0!">
+              <nav class="hw-nav" aria-label="Menu">
+                <p class="hw-label hw-nav-group" data-tone="muted">
+                  spoke
+                </p>
+                <ul>
+                  <li>
+                    <a href="#">Dashboard</a>
+                  </li>
+                  <li>
+                    <a href="#" aria-current="page">
+                      Decisions <span class="hw-nav-count">4</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="#">
+                      {"an-invented-repository-with-a-long-sample-name"}
+                      <span class="hw-nav-count">22</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="#">
+                      {"another-invented-repository-with-a-long-name"}
+                      <span class="hw-nav-count">128</span>
+                    </a>
+                  </li>
+                </ul>
+              </nav>
+            </div>
+          )}
+          {name === "choice" && (
+            <nav class="hw-choices" aria-label="Menu">
+              <a class="hw-choice" href="#">
+                Dashboard
+              </a>
+              <a class="hw-choice" href="#" aria-current="page">
+                Decisions <span class="hw-choice-count">4</span>
+              </a>
+            </nav>
+          )}
+          {name === "popover" && (
+            <div class="hw-popover" role="dialog" aria-label="Which repositories">
+              <p class="hw-popover-title">Show on the hub</p>
+              <label class="flex items-start gap-2 py-1 wrap-anywhere">
+                <input type="checkbox" class="hw-check" checked />
+                <span>
+                  Sample spoke{" "}
+                  <span class="block font-mono text-micro break-all text-foreground/70">spoke</span>
+                </span>
+              </label>
+            </div>
+          )}
+          {name === "menu" && (
+            <div class="hw-menu" role="menu" aria-label="Repos">
+              <a class="hw-menu-item" role="menuitemradio" aria-checked="true" href="#">
+                spoke
+              </a>
+              <a class="hw-menu-item" role="menuitemradio" aria-checked="false" href="#">
+                plain
+              </a>
+            </div>
+          )}
+          {name === "disclosure" && (
+            <details class="hw-disclosure" open>
+              <summary class="py-2 font-mono font-semibold text-ui">Priority 1</summary>
+              <p class="text-ui">Two items wait on a decision.</p>
+            </details>
+          )}
+          {name === "code" && <pre class="hw-code">bun run check</pre>}
+          {name === "status" && (
+            <p class="hw-status text-ui" data-tone="warning">
+              You picked “Variant A” on 2 Jan, 09:05. The question or its options changed since.
+            </p>
+          )}
+          {name === "prose" && (
+            <article
+              class="prose hw-prose"
+              set:html={withElements(
+                Bun.markdown.html("Done when:\n\n- [x] Draft the report.\n- [ ] Review it.\n"),
+              )}
+            />
+          )}
+          {name === "inline-code" && (
+            <p class="text-ui">
+              Set <code class="hw-inline-code">admin.designSystem</code> in package.json.
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+    <h3>Kept as the engine's own</h3>
+    <div class="grid gap-4 xl:grid-cols-3">
+      {Object.entries(elements.exceptions).map(([name, reason]) => (
+        <section class="flex flex-col gap-2" data-hw-exception={name}>
+          <p class="font-medium text-ui">{name}</p>
+          <p class="text-ui text-foreground/70">{reason}</p>
+          {name === "item-list" && <ItemGroups items={items.slice(0, 2)} title="Priority 1" />}
+          {name === "option-list" && <ItemRow item={item("pick-recipients")} open />}
+          {name === "image-tile" && (
+            <span class="hw-card flex flex-col gap-1 p-2!">
+              <span class="aspect-video w-full rounded-brand bg-muted" />
+              <span class="truncate font-mono text-micro text-foreground/70">variant-a.svg</span>
+            </span>
+          )}
+        </section>
+      ))}
+    </div>
   </div>
 </Home>
